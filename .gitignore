@@ -38,3 +38,6 @@ yarn-error.log*
 next-env.d.ts
 
 /lib/generated/prisma
+
+# Claude Code local settings (personal permissions, not for sharing)
+.claude/settings.local.json

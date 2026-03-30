@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(npx prisma:*)",
+      "Bash(npx next:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(cat:*)"
+    ],
+    "deny": [
+      "Read(.env.local)",
+      "Read(.env)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [[ \"$file_path\" == *.ts || \"$file_path\" == *.tsx || \"$file_path\" == *.js || \"$file_path\" == *.jsx ]]; then npx prettier --write \"$file_path\" 2>/dev/null || true; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
