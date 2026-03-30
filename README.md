@@ -106,33 +106,40 @@ resolveModelId 优先级链：
 ```
 User
   ├── id, name, email, image
-  ├── preferredModel  String?   ← 全局模型偏好（EPIC 7）
+  ├── isGuest         Boolean   ← Guest 匿名账户标记
+  ├── preferredModel  String?   ← 全局模型偏好
+  ├── createdAt, updatedAt
   ├── Account[]                 ← NextAuth OAuth
   ├── Session[]                 ← NextAuth Session
   └── Project[]
 
 Project
   ├── id, name, description
-  ├── currentCode     String?   ← 当前预览代码
-  ├── preferredModel  String?   ← 项目级模型覆盖（EPIC 7）
+  ├── preferredModel  String?   ← 项目级模型覆盖（优先于用户全局偏好）
   ├── userId          ─────────► User
+  ├── createdAt, updatedAt
   ├── Version[]
   └── Message[]
 
-Version
-  ├── id, code, prompt
-  ├── createdAt                 ← 不可变，只 INSERT
-  └── projectId       ─────────► Project
-
-Message
-  ├── id, role, content, metadata (JSONB)
+Version                         ← 不可变，只 INSERT，不 UPDATE/DELETE
+  ├── id, code
+  ├── versionNumber   Int       ← 项目内自增，unique([projectId, versionNumber])
+  ├── description     String?   ← 生成时 prompt 的前 80 字符
+  ├── agentMessages   Json?     ← 保留字段，供未来使用
   ├── createdAt
   └── projectId       ─────────► Project
 
-DynamicAppData
-  ├── id, appId (= projectId), key
-  ├── data            JSONB     ← 生成应用的运行时数据
-  └── createdAt, updatedAt
+Message
+  ├── id, role, content
+  ├── metadata        JSONB     ← { agentName?, agentColor?, thinkingDuration? }
+  ├── createdAt
+  └── projectId       ─────────► Project
+
+DynamicAppData                  ← 生成应用的运行时数据
+  ├── id (uuid), appId (= projectId), key
+  ├── data            JSONB
+  ├── createdAt, updatedAt
+  └── unique([appId, key])
 ```
 
 ## Project Structure

@@ -61,7 +61,7 @@ Each agent call in `useAgentStream` is fully sequential with `await`. The AbortC
 request-level → project.preferredModel → user.preferredModel → AI_PROVIDER env → DEFAULT_MODEL_ID
 ```
 
-`DEFAULT_MODEL_ID = "deepseek-chat"`. All four models are defined in `lib/model-registry.ts`. A model is "available" only if its `envKey` is set in `process.env`.
+`DEFAULT_MODEL_ID = "gemini-2.0-flash"`. All four models are defined in `lib/model-registry.ts`. A model is "available" only if its `envKey` is set in `process.env`.
 
 ### API conventions
 
