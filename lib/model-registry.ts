@@ -43,7 +43,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     badge: "Balanced",
     description: "当前默认模型，代码生成能力强",
     envKey: "DEEPSEEK_API_KEY",
-    maxOutputTokens: 16384,
+    maxOutputTokens: 8192,
   },
   {
     id: "llama-3.3-70b",
@@ -53,7 +53,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     badge: "Fast",
     description: "超低延迟，适合快速迭代",
     envKey: "GROQ_API_KEY",
-    maxOutputTokens: 16384,
+    maxOutputTokens: 8192,
   },
 ];
 

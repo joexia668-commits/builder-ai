@@ -171,6 +171,10 @@ export function ChatArea({
           signal: abortController.signal,
         });
 
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 200)}`);
+        }
         if (!response.body) throw new Error("No response body");
 
         // Clear previous agent's handoff text now that this agent is streaming.

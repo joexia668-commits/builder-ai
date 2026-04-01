@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
 
         send(controller, { type: "done" });
       } catch (err) {
+        console.error(`[generate] agent=${agent} model=${resolvedModelId} error:`, err);
         send(controller, {
           type: "error",
           error: err instanceof Error ? err.message : "Generation failed",

@@ -114,9 +114,13 @@ export class DeepSeekProvider implements AIProvider {
       max_tokens: this.maxOutputTokens,
     });
 
-    for await (const chunk of result) {
-      const text = chunk.choices[0]?.delta?.content;
-      if (text) onChunk(text);
+    try {
+      for await (const chunk of result) {
+        const text = chunk.choices[0]?.delta?.content;
+        if (text) onChunk(text);
+      }
+    } catch (err) {
+      throw new Error(`DeepSeek stream error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }
@@ -147,10 +151,14 @@ export class GroqProvider implements AIProvider {
       max_tokens: this.maxOutputTokens,
     });
 
-    for await (const chunk of result) {
-      const text = (chunk as { choices: Array<{ delta: { content?: string } }> })
-        .choices[0]?.delta?.content;
-      if (text) onChunk(text);
+    try {
+      for await (const chunk of result) {
+        const text = (chunk as { choices: Array<{ delta: { content?: string } }> })
+          .choices[0]?.delta?.content;
+        if (text) onChunk(text);
+      }
+    } catch (err) {
+      throw new Error(`Groq stream error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }
