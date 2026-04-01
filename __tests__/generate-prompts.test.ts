@@ -40,6 +40,38 @@ describe("getSystemPrompt", () => {
     expect(prompt).not.toContain("```jsx");
   });
 
+  // GP-JSON-01: PM prompt instructs output of intent field
+  it("GP-JSON-01: pm 提示词包含 intent 字段说明", () => {
+    const prompt = getSystemPrompt("pm", projectId);
+    expect(prompt).toContain("intent");
+  });
+
+  // GP-JSON-02: PM prompt includes persistence enum values
+  it("GP-JSON-02: pm 提示词包含 persistence 枚举值说明", () => {
+    const prompt = getSystemPrompt("pm", projectId);
+    expect(prompt).toContain("persistence");
+    expect(prompt).toContain("localStorage");
+    expect(prompt).toContain("supabase");
+  });
+
+  // GP-JSON-03: PM prompt includes features array field
+  it("GP-JSON-03: pm 提示词包含 features 数组字段说明", () => {
+    const prompt = getSystemPrompt("pm", projectId);
+    expect(prompt).toContain("features");
+  });
+
+  // GP-JSON-04: PM prompt instructs not to output markdown fences
+  it("GP-JSON-04: pm 提示词禁止输出 Markdown 代码围栏", () => {
+    const prompt = getSystemPrompt("pm", projectId);
+    expect(prompt).toMatch(/不得包含.*围栏|不得包含.*Markdown|Markdown.*围栏/);
+  });
+
+  // GP-JSON-05: PM prompt is concise (≤ 600 chars to keep token usage low)
+  it("GP-JSON-05: pm 提示词长度不超过 600 字符", () => {
+    const prompt = getSystemPrompt("pm", projectId);
+    expect(prompt.length).toBeLessThanOrEqual(600);
+  });
+
   it("architect 提示词包含 React 技术约束", () => {
     const prompt = getSystemPrompt("architect", projectId);
     expect(prompt).toContain("React");

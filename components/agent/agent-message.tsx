@@ -2,8 +2,10 @@
 
 import { AGENTS } from "@/lib/types";
 import { ThinkingIndicator } from "@/components/agent/thinking-indicator";
+import { PmOutputCard } from "@/components/agent/pm-output-card";
 import { cn } from "@/lib/utils";
 import type { ProjectMessage } from "@/lib/types";
+import { extractPmOutput } from "@/lib/extract-json";
 
 interface AgentMessageProps {
   message: ProjectMessage;
@@ -64,14 +66,23 @@ export function AgentMessage({
         >
           {isThinking ? (
             <ThinkingIndicator color={agent?.color} />
-          ) : (
-            <pre className="whitespace-pre-wrap font-sans text-gray-800 text-sm leading-relaxed">
-              {message.content}
-              {isStreaming && (
-                <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse align-middle" />
-              )}
-            </pre>
-          )}
+          ) : (() => {
+            // Only attempt JSON parse for PM messages when streaming is complete
+            const pmData =
+              message.role === "pm" && !isStreaming
+                ? extractPmOutput(message.content)
+                : null;
+            return pmData ? (
+              <PmOutputCard data={pmData} />
+            ) : (
+              <pre className="whitespace-pre-wrap font-sans text-gray-800 text-sm leading-relaxed">
+                {message.content}
+                {isStreaming && (
+                  <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 animate-pulse align-middle" />
+                )}
+              </pre>
+            );
+          })()}
         </div>
       </div>
     </div>

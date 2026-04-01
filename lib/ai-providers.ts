@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
 import Groq from "groq-sdk";
 import { getModelById, DEFAULT_MODEL_ID, type ModelDefinition } from "@/lib/model-registry";
+import type { CompletionOptions } from "@/lib/types";
 
 export interface CompletionMessage {
   role: "system" | "user";
@@ -11,7 +12,8 @@ export interface CompletionMessage {
 export interface AIProvider {
   streamCompletion(
     messages: CompletionMessage[],
-    onChunk: (text: string) => void
+    onChunk: (text: string) => void,
+    options?: CompletionOptions
   ): Promise<void>;
 }
 
@@ -49,20 +51,26 @@ export async function withRetry<T>(
 
 export class GeminiProvider implements AIProvider {
   private readonly providerModel: string;
+  private readonly maxOutputTokens: number;
 
-  constructor(providerModel: string) {
+  constructor(providerModel: string, maxOutputTokens: number) {
     this.providerModel = providerModel;
+    this.maxOutputTokens = maxOutputTokens;
   }
 
   async streamCompletion(
     messages: CompletionMessage[],
-    onChunk: (text: string) => void
+    onChunk: (text: string) => void,
+    options?: CompletionOptions
   ): Promise<void> {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? "";
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: this.providerModel,
-      generationConfig: { maxOutputTokens: 8192 },
+      generationConfig: {
+        maxOutputTokens: this.maxOutputTokens,
+        ...(options?.jsonMode ? { responseMimeType: "application/json" } : {}),
+      },
     });
 
     // Split system prompt from user messages
@@ -89,14 +97,17 @@ export class GeminiProvider implements AIProvider {
 
 export class DeepSeekProvider implements AIProvider {
   private readonly providerModel: string;
+  private readonly maxOutputTokens: number;
 
-  constructor(providerModel: string) {
+  constructor(providerModel: string, maxOutputTokens: number) {
     this.providerModel = providerModel;
+    this.maxOutputTokens = maxOutputTokens;
   }
 
   async streamCompletion(
     messages: CompletionMessage[],
-    onChunk: (text: string) => void
+    onChunk: (text: string) => void,
+    options?: CompletionOptions
   ): Promise<void> {
     const client = new OpenAI({
       apiKey: process.env.DEEPSEEK_API_KEY ?? "",
@@ -107,12 +118,21 @@ export class DeepSeekProvider implements AIProvider {
       model: this.providerModel,
       messages,
       stream: true,
-      max_tokens: 8192,
+      max_tokens: this.maxOutputTokens,
+      ...(options?.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
     });
 
-    for await (const chunk of result) {
-      const text = chunk.choices[0]?.delta?.content;
-      if (text) onChunk(text);
+    try {
+      for await (const chunk of result) {
+        const text = chunk.choices[0]?.delta?.content;
+        if (text) onChunk(text);
+        if (chunk.choices[0]?.finish_reason === "length") {
+          throw new Error("max_tokens_exceeded");
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message === "max_tokens_exceeded") throw err;
+      throw new Error(`DeepSeek stream error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }
@@ -121,14 +141,17 @@ export class DeepSeekProvider implements AIProvider {
 
 export class GroqProvider implements AIProvider {
   private readonly providerModel: string;
+  private readonly maxOutputTokens: number;
 
-  constructor(providerModel: string) {
+  constructor(providerModel: string, maxOutputTokens: number) {
     this.providerModel = providerModel;
+    this.maxOutputTokens = maxOutputTokens;
   }
 
   async streamCompletion(
     messages: CompletionMessage[],
-    onChunk: (text: string) => void
+    onChunk: (text: string) => void,
+    options?: CompletionOptions
   ): Promise<void> {
     const client = new Groq({
       apiKey: process.env.GROQ_API_KEY ?? "",
@@ -138,13 +161,21 @@ export class GroqProvider implements AIProvider {
       model: this.providerModel,
       messages,
       stream: true,
-      max_tokens: 8192,
+      max_tokens: this.maxOutputTokens,
+      ...(options?.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
     });
 
-    for await (const chunk of result) {
-      const text = (chunk as { choices: Array<{ delta: { content?: string } }> })
-        .choices[0]?.delta?.content;
-      if (text) onChunk(text);
+    try {
+      for await (const chunk of result) {
+        const choice = (chunk as { choices: Array<{ delta: { content?: string }; finish_reason?: string }> }).choices[0];
+        if (choice?.delta?.content) onChunk(choice.delta.content);
+        if (choice?.finish_reason === "length") {
+          throw new Error("max_tokens_exceeded");
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message === "max_tokens_exceeded") throw err;
+      throw new Error(`Groq stream error: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }
@@ -157,11 +188,11 @@ export function createProvider(modelId: string): AIProvider {
 
   switch (model.provider) {
     case "gemini":
-      return new GeminiProvider(model.providerModel);
+      return new GeminiProvider(model.providerModel, model.maxOutputTokens);
     case "deepseek":
-      return new DeepSeekProvider(model.providerModel);
+      return new DeepSeekProvider(model.providerModel, model.maxOutputTokens);
     case "groq":
-      return new GroqProvider(model.providerModel);
+      return new GroqProvider(model.providerModel, model.maxOutputTokens);
   }
 }
 

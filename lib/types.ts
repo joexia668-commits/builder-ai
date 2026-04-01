@@ -92,6 +92,7 @@ export type SSEEventType =
   | "chunk"
   | "code_chunk"
   | "code_complete"
+  | "reset"
   | "done"
   | "error";
 
@@ -101,6 +102,27 @@ export interface SSEEvent {
   code?: string;
   messageId?: string;
   error?: string;
+}
+
+// Structured output schemas for PM and Architect agents
+export interface PmOutput {
+  readonly intent: string;
+  readonly features: readonly string[];
+  readonly persistence: "none" | "localStorage" | "supabase";
+  readonly modules: readonly string[];
+  readonly dataModel?: readonly string[];
+}
+
+export interface ArchOutput {
+  readonly components: readonly string[];
+  readonly state: string;
+  readonly storage?: string;
+  readonly icons?: readonly string[];
+}
+
+// Options passed to AIProvider.streamCompletion
+export interface CompletionOptions {
+  readonly jsonMode?: boolean;
 }
 
 // CodeRenderer interface — enables future Sandpack extension

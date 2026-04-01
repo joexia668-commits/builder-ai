@@ -12,8 +12,14 @@ import type {
   ProjectVersion,
   AgentState,
   AgentRole,
+  PmOutput,
 } from "@/lib/types";
 import { AGENT_ORDER, AGENTS } from "@/lib/types";
+import { extractPmOutput } from "@/lib/extract-json";
+import {
+  buildEngineerContext,
+  buildEngineerContextFromStructured,
+} from "@/lib/agent-context";
 
 interface ChatAreaProps {
   project: Project;
@@ -145,6 +151,7 @@ export function ChatArea({
     await persistMessage("user", prompt);
 
     const outputs: Record<AgentRole, string> = { pm: "", architect: "", engineer: "" };
+    let parsedPm: PmOutput | null = null;
     let lastCode = "";
 
     try {
@@ -156,7 +163,9 @@ export function ChatArea({
             ? undefined
             : agentRole === "architect"
               ? outputs.pm
-              : `用户原始需求：\n${prompt}\n\nPM 需求文档：\n${outputs.pm}\n\n架构师技术方案：\n${outputs.architect}`;
+              : parsedPm
+                ? buildEngineerContextFromStructured(prompt, parsedPm, outputs.architect)
+                : buildEngineerContext(prompt, outputs.pm, outputs.architect);
 
         const response = await fetch("/api/generate", {
           method: "POST",
@@ -171,6 +180,10 @@ export function ChatArea({
           signal: abortController.signal,
         });
 
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 200)}`);
+        }
         if (!response.body) throw new Error("No response body");
 
         // Clear previous agent's handoff text now that this agent is streaming.
@@ -197,6 +210,10 @@ export function ChatArea({
                 updateAgentState(agentRole, { output: agentOutput });
               } else if (event.type === "code_complete") {
                 if (event.code) lastCode = event.code;
+              } else if (event.type === "reset") {
+                // Server switched to fallback provider — discard partial output
+                agentOutput = "";
+                updateAgentState(agentRole, { output: "" });
               } else if (event.type === "error") {
                 throw new Error(event.error ?? "Stream error");
               }
@@ -228,6 +245,7 @@ export function ChatArea({
         }
 
         outputs[agentRole] = agentOutput;
+        if (agentRole === "pm") parsedPm = extractPmOutput(agentOutput);
         updateAgentState(agentRole, { status: "done", output: agentOutput });
 
         const agentMsg: ProjectMessage = {

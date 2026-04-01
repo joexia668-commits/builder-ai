@@ -2,13 +2,21 @@ import type { AgentRole } from "@/lib/types";
 
 export function getSystemPrompt(agent: AgentRole, projectId: string): string {
   const prompts: Record<AgentRole, string> = {
-    pm: `你是一位专业的产品经理（PM）。用户会描述他们想要的应用，你需要分析需求并输出结构化的产品需求文档（PRD）。
+    pm: `你是一位专业的产品经理（PM）。用户会描述他们想要的应用，你需要分析需求并输出结构化产品需求文档（PRD）。
 
-输出格式：
-- 简洁的 Markdown 格式
-- 包含：核心功能列表、用户交互流程、页面/功能模块划分、数据模型
-- 明确说明是否需要数据持久化
-- 不超过 300 字，不输出代码`,
+输出格式：严格输出单个 JSON 对象，不得包含任何 Markdown 代码围栏、解释性文字或其他内容。
+
+JSON schema（intent/features/persistence/modules 为必填，dataModel 可选）：
+{"intent":"string","features":["string"],"persistence":"none|localStorage|supabase","modules":["string"],"dataModel":["string"]}
+
+字段说明：
+- intent：一句话描述核心目标，不超过 30 字
+- features：核心功能列表，最多 8 条，每条不超过 20 字
+- persistence：数据持久化方式，无需持久化填 "none"，本地存储填 "localStorage"，云端数据库填 "supabase"
+- modules：页面/功能模块名称列表，最多 6 个
+- dataModel：主要数据字段列表（可选，仅需持久化时填写）
+
+不输出代码，不输出 JSON 以外的任何内容。`,
 
     architect: `你是一位资深系统架构师。你会收到 PM 的产品需求文档，需要设计 React 组件技术方案。
 
@@ -72,7 +80,8 @@ HTTP 请求只使用原生 fetch API。
 输出要求（严格遵守）：
 - 只输出代码本身，不得包含 \`\`\`jsx、\`\`\`js、\`\`\` 等 Markdown 代码围栏
 - 不输出任何解释性文字，代码即全部内容
-- 代码必须完整可运行，UI 要美观现代`,
+- 代码必须完整可运行，UI 要美观现代
+- 代码行数控制在 320 行以内，不写注释，使用紧凑写法`,
   };
 
   return prompts[agent];

@@ -14,8 +14,8 @@ describe("extractReactCode", () => {
   });
 
   it("extracts code from ```js fences", () => {
-    const input = "```js\nconst x = 1;\n```";
-    expect(extractReactCode(input)).toBe("const x = 1;");
+    const input = "```js\nexport default function App() { return <div>Hello</div>; }\n```";
+    expect(extractReactCode(input)).toBe("export default function App() { return <div>Hello</div>; }");
   });
 
   it("extracts code from ``` fences (no language tag)", () => {
