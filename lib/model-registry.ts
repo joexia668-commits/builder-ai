@@ -10,6 +10,8 @@ export interface ModelDefinition {
   description?: string;
   /** Environment variable key that must be non-empty for this model to be usable */
   envKey: string;
+  /** Maximum output tokens the model supports */
+  maxOutputTokens: number;
 }
 
 export const MODEL_REGISTRY: ModelDefinition[] = [
@@ -21,6 +23,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     badge: "Fast",
     description: "Google 最新快速模型，适合大多数任务",
     envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
+    maxOutputTokens: 8192,
   },
   {
     id: "gemini-1.5-pro",
@@ -30,6 +33,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     badge: "Best",
     description: "高质量、强推理能力",
     envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
+    maxOutputTokens: 8192,
   },
   {
     id: "deepseek-chat",
@@ -39,6 +43,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     badge: "Balanced",
     description: "当前默认模型，代码生成能力强",
     envKey: "DEEPSEEK_API_KEY",
+    maxOutputTokens: 16384,
   },
   {
     id: "llama-3.3-70b",
@@ -48,6 +53,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     badge: "Fast",
     description: "超低延迟，适合快速迭代",
     envKey: "GROQ_API_KEY",
+    maxOutputTokens: 16384,
   },
 ];
 

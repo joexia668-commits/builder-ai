@@ -197,6 +197,10 @@ export function ChatArea({
                 updateAgentState(agentRole, { output: agentOutput });
               } else if (event.type === "code_complete") {
                 if (event.code) lastCode = event.code;
+              } else if (event.type === "reset") {
+                // Server switched to fallback provider — discard partial output
+                agentOutput = "";
+                updateAgentState(agentRole, { output: "" });
               } else if (event.type === "error") {
                 throw new Error(event.error ?? "Stream error");
               }

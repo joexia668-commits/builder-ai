@@ -49,9 +49,11 @@ export async function withRetry<T>(
 
 export class GeminiProvider implements AIProvider {
   private readonly providerModel: string;
+  private readonly maxOutputTokens: number;
 
-  constructor(providerModel: string) {
+  constructor(providerModel: string, maxOutputTokens: number) {
     this.providerModel = providerModel;
+    this.maxOutputTokens = maxOutputTokens;
   }
 
   async streamCompletion(
@@ -62,7 +64,7 @@ export class GeminiProvider implements AIProvider {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: this.providerModel,
-      generationConfig: { maxOutputTokens: 8192 },
+      generationConfig: { maxOutputTokens: this.maxOutputTokens },
     });
 
     // Split system prompt from user messages
@@ -89,9 +91,11 @@ export class GeminiProvider implements AIProvider {
 
 export class DeepSeekProvider implements AIProvider {
   private readonly providerModel: string;
+  private readonly maxOutputTokens: number;
 
-  constructor(providerModel: string) {
+  constructor(providerModel: string, maxOutputTokens: number) {
     this.providerModel = providerModel;
+    this.maxOutputTokens = maxOutputTokens;
   }
 
   async streamCompletion(
@@ -107,7 +111,7 @@ export class DeepSeekProvider implements AIProvider {
       model: this.providerModel,
       messages,
       stream: true,
-      max_tokens: 8192,
+      max_tokens: this.maxOutputTokens,
     });
 
     for await (const chunk of result) {
@@ -121,9 +125,11 @@ export class DeepSeekProvider implements AIProvider {
 
 export class GroqProvider implements AIProvider {
   private readonly providerModel: string;
+  private readonly maxOutputTokens: number;
 
-  constructor(providerModel: string) {
+  constructor(providerModel: string, maxOutputTokens: number) {
     this.providerModel = providerModel;
+    this.maxOutputTokens = maxOutputTokens;
   }
 
   async streamCompletion(
@@ -138,7 +144,7 @@ export class GroqProvider implements AIProvider {
       model: this.providerModel,
       messages,
       stream: true,
-      max_tokens: 8192,
+      max_tokens: this.maxOutputTokens,
     });
 
     for await (const chunk of result) {
@@ -157,11 +163,11 @@ export function createProvider(modelId: string): AIProvider {
 
   switch (model.provider) {
     case "gemini":
-      return new GeminiProvider(model.providerModel);
+      return new GeminiProvider(model.providerModel, model.maxOutputTokens);
     case "deepseek":
-      return new DeepSeekProvider(model.providerModel);
+      return new DeepSeekProvider(model.providerModel, model.maxOutputTokens);
     case "groq":
-      return new GroqProvider(model.providerModel);
+      return new GroqProvider(model.providerModel, model.maxOutputTokens);
   }
 }
 

@@ -92,6 +92,7 @@ export type SSEEventType =
   | "chunk"
   | "code_chunk"
   | "code_complete"
+  | "reset"
   | "done"
   | "error";
 

@@ -69,7 +69,7 @@ describe("AI Provider maxOutputTokens configuration", () => {
       }),
     });
 
-    const provider = new GeminiProvider("gemini-2.0-flash");
+    const provider = new GeminiProvider("gemini-2.0-flash", 8192);
     await provider.streamCompletion(MESSAGES, () => {});
 
     expect(mockGetGenerativeModel).toHaveBeenCalledWith(
@@ -79,27 +79,27 @@ describe("AI Provider maxOutputTokens configuration", () => {
     );
   });
 
-  // AP-MAXTOK-02: DeepSeekProvider must pass max_tokens = 8192 to OpenAI-compat client
-  it("AP-MAXTOK-02: DeepSeekProvider 调用 create() 时传入 max_tokens: 8192", async () => {
+  // AP-MAXTOK-02: DeepSeekProvider must pass max_tokens = 16384 to OpenAI-compat client
+  it("AP-MAXTOK-02: DeepSeekProvider 调用 create() 时传入 max_tokens: 16384", async () => {
     mockOpenAICreate.mockResolvedValue(makeOpenAIStream([]));
 
-    const provider = new DeepSeekProvider("deepseek-chat");
+    const provider = new DeepSeekProvider("deepseek-chat", 16384);
     await provider.streamCompletion(MESSAGES, () => {});
 
     expect(mockOpenAICreate).toHaveBeenCalledWith(
-      expect.objectContaining({ max_tokens: 8192 })
+      expect.objectContaining({ max_tokens: 16384 })
     );
   });
 
-  // AP-MAXTOK-03: GroqProvider must pass max_tokens = 8192
-  it("AP-MAXTOK-03: GroqProvider 调用 create() 时传入 max_tokens: 8192", async () => {
+  // AP-MAXTOK-03: GroqProvider must pass max_tokens = 16384
+  it("AP-MAXTOK-03: GroqProvider 调用 create() 时传入 max_tokens: 16384", async () => {
     mockGroqCreate.mockResolvedValue(makeOpenAIStream([]));
 
-    const provider = new GroqProvider("llama-3.3-70b-versatile");
+    const provider = new GroqProvider("llama-3.3-70b-versatile", 16384);
     await provider.streamCompletion(MESSAGES, () => {});
 
     expect(mockGroqCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ max_tokens: 8192 })
+      expect.objectContaining({ max_tokens: 16384 })
     );
   });
 
@@ -111,7 +111,7 @@ describe("AI Provider maxOutputTokens configuration", () => {
       }),
     });
 
-    const provider = new GeminiProvider("gemini-2.0-flash");
+    const provider = new GeminiProvider("gemini-2.0-flash", 8192);
     await provider.streamCompletion(MESSAGES, () => {});
 
     const callArg = mockGetGenerativeModel.mock.calls[0][0] as {
@@ -120,19 +120,19 @@ describe("AI Provider maxOutputTokens configuration", () => {
     expect(callArg.generationConfig?.maxOutputTokens).toBeGreaterThanOrEqual(8192);
   });
 
-  // AP-MAXTOK-05: max_tokens for DeepSeek/Groq is exactly 8192 (not lower)
-  it("AP-MAXTOK-05: DeepSeek/Groq max_tokens 值精确为 8192，不低于此值", async () => {
+  // AP-MAXTOK-05: max_tokens for DeepSeek/Groq is at least 8192 (elevated from 8192 to 16384)
+  it("AP-MAXTOK-05: DeepSeek/Groq max_tokens 值不低于 8192", async () => {
     mockOpenAICreate.mockResolvedValue(makeOpenAIStream([]));
     mockGroqCreate.mockResolvedValue(makeOpenAIStream([]));
 
-    const deepseek = new DeepSeekProvider("deepseek-chat");
+    const deepseek = new DeepSeekProvider("deepseek-chat", 16384);
     await deepseek.streamCompletion(MESSAGES, () => {});
     const deepseekArg = mockOpenAICreate.mock.calls[0][0] as { max_tokens?: number };
     expect(deepseekArg.max_tokens).toBeGreaterThanOrEqual(8192);
 
     jest.clearAllMocks();
     mockGroqCreate.mockResolvedValue(makeOpenAIStream([]));
-    const groq = new GroqProvider("llama-3.3-70b-versatile");
+    const groq = new GroqProvider("llama-3.3-70b-versatile", 16384);
     await groq.streamCompletion(MESSAGES, () => {});
     const groqArg = mockGroqCreate.mock.calls[0][0] as { max_tokens?: number };
     expect(groqArg.max_tokens).toBeGreaterThanOrEqual(8192);

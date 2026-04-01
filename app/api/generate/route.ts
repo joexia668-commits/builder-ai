@@ -68,9 +68,12 @@ export async function POST(req: NextRequest) {
         try {
           await provider.streamCompletion(messages, onChunk);
         } catch (err) {
-          // Gemini rate-limit exhausted — silently fallback to Groq if available
+          // Gemini rate-limit exhausted — silently fallback to Groq if available.
+          // Reset fullContent and notify the client to discard partial chunks so
+          // both sides stay in sync before Groq re-generates from scratch.
           if (isRateLimitError(err) && process.env.GROQ_API_KEY) {
             fullContent = "";
+            send(controller, { type: "reset" });
             const groqProvider = createProvider("llama-3.3-70b");
             await groqProvider.streamCompletion(messages, onChunk);
           } else {

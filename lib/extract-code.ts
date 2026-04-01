@@ -32,13 +32,21 @@ export function extractReactCode(raw: string): string | null {
   // Layer 0: annotated fence (```jsx filename=App.jsx or similar) — highest priority
   // Requires a non-newline annotation token after the language tag (e.g., filename=, title=)
   const annotatedFenceMatch = raw.match(/```(?:jsx?|tsx?) [^\n]+\n([\s\S]*?)```/);
-  if (annotatedFenceMatch?.[1]) return annotatedFenceMatch[1].trim();
+  if (annotatedFenceMatch?.[1]) {
+    const candidate = annotatedFenceMatch[1].trim();
+    if (isCodeComplete(candidate)) return candidate;
+    // Truncated inside annotated fence — fall through to other layers
+  }
 
   // Layer 1: fence match (jsx/js/tsx/ts or bare fence)
   const fenceMatch =
     raw.match(/```(?:jsx?|tsx?)\n([\s\S]*?)```/) ??
     raw.match(/```\n([\s\S]*?)```/);
-  if (fenceMatch?.[1]) return fenceMatch[1].trim();
+  if (fenceMatch?.[1]) {
+    const candidate = fenceMatch[1].trim();
+    if (isCodeComplete(candidate)) return candidate;
+    // Truncated inside fence — fall through to head/tail extraction
+  }
 
   // Layer 2: head location
   let code = raw;
