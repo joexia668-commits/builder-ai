@@ -4,7 +4,7 @@ import { extractReactCode } from "@/lib/extract-code";
 import { getSystemPrompt } from "@/lib/generate-prompts";
 import { createProvider, resolveModelId, isRateLimitError } from "@/lib/ai-providers";
 import { isValidModelId } from "@/lib/model-registry";
-import type { AgentRole } from "@/lib/types";
+import type { AgentRole, CompletionOptions } from "@/lib/types";
 
 export const runtime = "edge";
 export const maxDuration = 300;
@@ -65,17 +65,34 @@ export async function POST(req: NextRequest) {
           send(controller, { type: "chunk", content: text });
         };
 
+        // PM agent outputs structured JSON — enable API-level JSON mode for reliability.
+        const completionOptions: CompletionOptions =
+          agent === "pm" ? { jsonMode: true } : {};
+
         try {
-          await provider.streamCompletion(messages, onChunk);
+          await provider.streamCompletion(messages, onChunk, completionOptions);
         } catch (err) {
-          // Gemini rate-limit exhausted — silently fallback to Groq if available.
-          // Reset fullContent and notify the client to discard partial chunks so
-          // both sides stay in sync before Groq re-generates from scratch.
-          if (isRateLimitError(err) && process.env.GROQ_API_KEY) {
+          const isMaxTokens = err instanceof Error && err.message === "max_tokens_exceeded";
+          if (isMaxTokens && agent === "engineer") {
+            // Token budget exhausted — retry with an explicit conciseness instruction.
+            fullContent = "";
+            send(controller, { type: "reset" });
+            const retryMessages: Parameters<typeof provider.streamCompletion>[0] = [
+              messages[0],
+              {
+                role: "user",
+                content: `${messages[1].content}\n\n⚠️ 严格控制：代码必须在 280 行以内完成，不写任何注释，变量名可缩短。`,
+              },
+            ];
+            await provider.streamCompletion(retryMessages, onChunk, completionOptions);
+          } else if (isRateLimitError(err) && process.env.GROQ_API_KEY) {
+            // Gemini rate-limit exhausted — silently fallback to Groq if available.
+            // Reset fullContent and notify the client to discard partial chunks so
+            // both sides stay in sync before Groq re-generates from scratch.
             fullContent = "";
             send(controller, { type: "reset" });
             const groqProvider = createProvider("llama-3.3-70b");
-            await groqProvider.streamCompletion(messages, onChunk);
+            await groqProvider.streamCompletion(messages, onChunk, completionOptions);
           } else {
             throw err;
           }

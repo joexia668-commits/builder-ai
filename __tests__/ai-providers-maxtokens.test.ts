@@ -139,6 +139,95 @@ describe("AI Provider maxOutputTokens configuration", () => {
   });
 });
 
+// ── JSON mode option tests ─────────────────────────────────────────────────
+
+describe("AIProvider jsonMode option", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  // AP-JSON-01: GeminiProvider passes responseMimeType when jsonMode: true
+  it("AP-JSON-01: GeminiProvider 启用 jsonMode 时传入 responseMimeType: application/json", async () => {
+    mockGetGenerativeModel.mockReturnValue({
+      generateContentStream: mockGenerateContentStream.mockResolvedValue({
+        stream: { [Symbol.asyncIterator]: emptyAsyncIterable },
+      }),
+    });
+
+    const provider = new GeminiProvider("gemini-2.0-flash", 8192);
+    await provider.streamCompletion(MESSAGES, () => {}, { jsonMode: true });
+
+    expect(mockGetGenerativeModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generationConfig: expect.objectContaining({
+          responseMimeType: "application/json",
+        }),
+      })
+    );
+  });
+
+  // AP-JSON-02: GeminiProvider does NOT pass responseMimeType without jsonMode
+  it("AP-JSON-02: GeminiProvider 未启用 jsonMode 时不传 responseMimeType", async () => {
+    mockGetGenerativeModel.mockReturnValue({
+      generateContentStream: mockGenerateContentStream.mockResolvedValue({
+        stream: { [Symbol.asyncIterator]: emptyAsyncIterable },
+      }),
+    });
+
+    const provider = new GeminiProvider("gemini-2.0-flash", 8192);
+    await provider.streamCompletion(MESSAGES, () => {});
+
+    const callArg = mockGetGenerativeModel.mock.calls[0][0] as {
+      generationConfig?: Record<string, unknown>;
+    };
+    expect(callArg.generationConfig?.responseMimeType).toBeUndefined();
+  });
+
+  // AP-JSON-03: DeepSeekProvider passes response_format when jsonMode: true
+  it("AP-JSON-03: DeepSeekProvider 启用 jsonMode 时传入 response_format: json_object", async () => {
+    mockOpenAICreate.mockResolvedValue(makeOpenAIStream([]));
+
+    const provider = new DeepSeekProvider("deepseek-chat", 8192);
+    await provider.streamCompletion(MESSAGES, () => {}, { jsonMode: true });
+
+    expect(mockOpenAICreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response_format: { type: "json_object" },
+      })
+    );
+  });
+
+  // AP-JSON-04: GroqProvider passes response_format when jsonMode: true
+  it("AP-JSON-04: GroqProvider 启用 jsonMode 时传入 response_format: json_object", async () => {
+    mockGroqCreate.mockResolvedValue(makeOpenAIStream([]));
+
+    const provider = new GroqProvider("llama-3.3-70b-versatile", 8192);
+    await provider.streamCompletion(MESSAGES, () => {}, { jsonMode: true });
+
+    expect(mockGroqCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        response_format: { type: "json_object" },
+      })
+    );
+  });
+
+  // AP-JSON-05: DeepSeek/Groq do NOT pass response_format without jsonMode
+  it("AP-JSON-05: DeepSeek/Groq 未启用 jsonMode 时不传 response_format", async () => {
+    mockOpenAICreate.mockResolvedValue(makeOpenAIStream([]));
+    mockGroqCreate.mockResolvedValue(makeOpenAIStream([]));
+
+    const deepseek = new DeepSeekProvider("deepseek-chat", 8192);
+    await deepseek.streamCompletion(MESSAGES, () => {});
+    const dsArg = mockOpenAICreate.mock.calls[0][0] as Record<string, unknown>;
+    expect(dsArg.response_format).toBeUndefined();
+
+    const groq = new GroqProvider("llama-3.3-70b-versatile", 8192);
+    await groq.streamCompletion(MESSAGES, () => {});
+    const groqArg = mockGroqCreate.mock.calls[0][0] as Record<string, unknown>;
+    expect(groqArg.response_format).toBeUndefined();
+  });
+});
+
 // ── Route truncation handling — verified via file content ──────────────────
 import * as fs from "fs";
 import * as path from "path";

@@ -188,7 +188,7 @@ describe("GeminiProvider.streamCompletion", () => {
       { stream: makeAsyncIterable(["Hello", " World"]) }
     );
 
-    const provider = new GeminiProvider("gemini-2.0-flash");
+    const provider = new GeminiProvider("gemini-2.0-flash", 8192);
     const chunks: string[] = [];
     await provider.streamCompletion(MESSAGES, (text) => chunks.push(text));
 
@@ -200,7 +200,7 @@ describe("GeminiProvider.streamCompletion", () => {
       { stream: makeAsyncIterable(["Hello", "", " World"]) }
     );
 
-    const provider = new GeminiProvider("gemini-2.0-flash");
+    const provider = new GeminiProvider("gemini-2.0-flash", 8192);
     const chunks: string[] = [];
     await provider.streamCompletion(MESSAGES, (text) => chunks.push(text));
 
@@ -209,7 +209,7 @@ describe("GeminiProvider.streamCompletion", () => {
 
   it("passes system prompt as first history entry", async () => {
     mockGenerateContentStream.mockResolvedValue({ stream: makeAsyncIterable([]) });
-    const provider = new GeminiProvider("gemini-2.0-flash");
+    const provider = new GeminiProvider("gemini-2.0-flash", 8192);
     await provider.streamCompletion(MESSAGES, () => {});
     expect(mockGenerateContentStream).toHaveBeenCalled();
   });
@@ -226,7 +226,7 @@ describe("DeepSeekProvider.streamCompletion", () => {
       makeOpenAIAsyncIterable(["foo", " bar"])
     );
 
-    const provider = new DeepSeekProvider("deepseek-chat");
+    const provider = new DeepSeekProvider("deepseek-chat", 8192);
     const chunks: string[] = [];
     await provider.streamCompletion(MESSAGES, (text) => chunks.push(text));
 
@@ -242,7 +242,7 @@ describe("DeepSeekProvider.streamCompletion", () => {
       },
     });
 
-    const provider = new DeepSeekProvider("deepseek-chat");
+    const provider = new DeepSeekProvider("deepseek-chat", 8192);
     const chunks: string[] = [];
     await provider.streamCompletion(MESSAGES, (text) => chunks.push(text));
 
@@ -261,7 +261,7 @@ describe("GroqProvider.streamCompletion", () => {
       makeOpenAIAsyncIterable(["abc", "def"])
     );
 
-    const provider = new GroqProvider("llama-3.3-70b-versatile");
+    const provider = new GroqProvider("llama-3.3-70b-versatile", 8192);
     const chunks: string[] = [];
     await provider.streamCompletion(MESSAGES, (text) => chunks.push(text));
 

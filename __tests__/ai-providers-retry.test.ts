@@ -115,7 +115,7 @@ describe("GeminiProvider — retry integration", () => {
       .mockRejectedValueOnce(new Error("429 rate limit"))
       .mockResolvedValueOnce({ stream: makeStream(["hello", " world"]) });
 
-    const provider = new GeminiProvider("gemini-2.0-flash");
+    const provider = new GeminiProvider("gemini-2.0-flash", 8192);
     const chunks: string[] = [];
 
     const promise = provider.streamCompletion(
@@ -132,7 +132,7 @@ describe("GeminiProvider — retry integration", () => {
   it("RT-R-02 (integration): throws after 3 failed 429 attempts", async () => {
     mockGenerateContentStream.mockRejectedValue(new Error("429 quota exceeded"));
 
-    const provider = new GeminiProvider("gemini-2.0-flash");
+    const provider = new GeminiProvider("gemini-2.0-flash", 8192);
     const promise = provider.streamCompletion(
       [{ role: "user", content: "hi" }],
       () => {}
