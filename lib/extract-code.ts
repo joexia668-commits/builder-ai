@@ -45,6 +45,16 @@ export function stripComments(code: string): string {
   return result;
 }
 
+/** Check curly braces are balanced (open count === close count). */
+function isBracesBalanced(code: string): boolean {
+  let depth = 0;
+  for (const ch of code) {
+    if (ch === "{") depth++;
+    else if (ch === "}") depth--;
+  }
+  return depth === 0;
+}
+
 /**
  * Check whether extracted code is structurally complete:
  *   1. Contains `export default` (present naturally or appended by caller)
@@ -54,13 +64,7 @@ export function stripComments(code: string): string {
  */
 function isCodeComplete(code: string): boolean {
   if (!code.includes("export default")) return false;
-
-  let depth = 0;
-  for (const ch of code) {
-    if (ch === "{") depth++;
-    else if (ch === "}") depth--;
-  }
-  return depth === 0;
+  return isBracesBalanced(code);
 }
 
 /**
@@ -120,4 +124,54 @@ export function extractReactCode(raw: string): string | null {
 
   const trimmed = code.trim();
   return isCodeComplete(trimmed) ? trimmed : null;
+}
+
+/**
+ * Extract multiple files from LLM output using FILE separator markers.
+ *
+ * Expected format:
+ *   // === FILE: /path/to/file.js ===
+ *   (code for file)
+ *   // === FILE: /another/file.js ===
+ *   (code for file)
+ *
+ * @param raw - Raw LLM output text
+ * @param expectedFiles - List of file paths that must be present
+ * @returns Record mapping path to code, or null if any file is missing or incomplete
+ */
+export function extractMultiFileCode(
+  raw: string,
+  expectedFiles: readonly string[]
+): Record<string, string> | null {
+  if (expectedFiles.length === 0) return {};
+
+  const marker = /^\/\/ === FILE: (.+?) ===/;
+  const lines = raw.split("\n");
+  const fileMap: Record<string, string[]> = {};
+  let currentPath: string | null = null;
+
+  for (const line of lines) {
+    const match = line.match(marker);
+    if (match) {
+      currentPath = match[1];
+      fileMap[currentPath] = [];
+    } else if (currentPath !== null) {
+      fileMap[currentPath].push(line);
+    }
+  }
+
+  const result: Record<string, string> = {};
+
+  for (const path of expectedFiles) {
+    const codeLines = fileMap[path];
+    if (!codeLines) return null;
+
+    const code = codeLines.join("\n").trim();
+    // For multi-file: only check brace balance (individual files don't need export default)
+    if (!isBracesBalanced(code)) return null;
+
+    result[path] = code;
+  }
+
+  return result;
 }
