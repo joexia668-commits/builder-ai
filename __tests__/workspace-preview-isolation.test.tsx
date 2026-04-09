@@ -4,7 +4,7 @@
  * Covers:
  * WPI-01: Workspace passes isPreviewingHistory=true to ChatArea when previewingVersion is set
  * WPI-02: ChatInput is disabled when isPreviewingHistory is true
- * WPI-03: previewingVersion does NOT change currentCode state
+ * WPI-03: previewingVersion does NOT change currentFiles state
  * WPI-04: onRestoreVersion adds new version to versions array and clears previewingVersion
  */
 
@@ -21,13 +21,13 @@ jest.mock("@/components/workspace/chat-area", () => ({
   ChatArea: ({
     isPreviewingHistory,
     onMessagesChange: _omm,
-    onCodeGenerated: _ocg,
+    onFilesGenerated: _ofg,
     onGeneratingChange: _ogc,
     ...rest
   }: {
     isPreviewingHistory: boolean;
     onMessagesChange: unknown;
-    onCodeGenerated: unknown;
+    onFilesGenerated: unknown;
     onGeneratingChange: unknown;
     [key: string]: unknown;
   }) => (
@@ -39,19 +39,19 @@ jest.mock("@/components/workspace/chat-area", () => ({
 
 jest.mock("@/components/preview/preview-panel", () => ({
   PreviewPanel: ({
-    code,
+    files,
     onVersionRestore: _ovr,
     onPreviewVersion,
     previewingVersion,
     ...rest
   }: {
-    code: string;
+    files: Record<string, string>;
     onVersionRestore: unknown;
     onPreviewVersion: (v: ProjectVersion | null) => void;
     previewingVersion: ProjectVersion | null;
     [key: string]: unknown;
   }) => (
-    <div data-testid="preview-panel" data-code={code} {...rest}>
+    <div data-testid="preview-panel" data-code={files["/App.js"] ?? ""} {...rest}>
       <button
         data-testid="set-preview"
         onClick={() =>
@@ -119,7 +119,7 @@ describe("Workspace previewingVersion state isolation", () => {
     expect(chatArea.getAttribute("data-previewing")).toBe("true");
   });
 
-  // WPI-03: previewingVersion does NOT change currentCode (displayCode serves preview)
+  // WPI-03: previewingVersion does NOT change currentFiles (displayFiles serves preview)
   it("WPI-03: PreviewPanel receives preview code (not currentCode) when previewing", () => {
     render(<Workspace project={project} allProjects={[]} />);
 
@@ -129,12 +129,12 @@ describe("Workspace previewingVersion state isolation", () => {
     // Trigger preview — this sets previewingVersion
     fireEvent.click(screen.getByTestId("set-preview"));
 
-    // displayCode should now be the previewingVersion's code ("preview-code")
+    // displayFiles should now be from previewingVersion ("preview-code")
     const panelAfter = screen.getByTestId("preview-panel");
     expect(panelAfter.getAttribute("data-code")).toBe("preview-code");
   });
 
-  // WPI-04: clearing preview restores currentCode
+  // WPI-04: clearing preview restores currentFiles
   it("WPI-04: clearing preview restores currentCode to PreviewPanel", () => {
     render(<Workspace project={project} allProjects={[]} />);
 
