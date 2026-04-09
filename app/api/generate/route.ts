@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { agent, prompt, context, projectId, modelId, targetFiles, completedFiles, scaffold } =
+  const { agent, prompt, context, projectId, modelId, targetFiles } =
     body as {
       projectId: string;
       prompt: string;
@@ -36,8 +36,6 @@ export async function POST(req: NextRequest) {
         deps: string[];
         hints: string;
       }>;
-      completedFiles?: Record<string, string>;
-      scaffold?: { sharedTypes: string; designNotes: string };
     };
 
   // Validate modelId if provided
