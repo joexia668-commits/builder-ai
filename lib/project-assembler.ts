@@ -27,18 +27,15 @@ function mapSandpackPath(sandpackPath: string): string {
 
 /** Recursively read all files from a directory, returning path → content map. */
 function readTemplateDir(dir: string, prefix = ''): Record<string, string> {
-  const result: Record<string, string> = {}
   const entries = fs.readdirSync(dir, { withFileTypes: true })
-  for (const entry of entries) {
+  return entries.reduce<Record<string, string>>((acc, entry) => {
     const fullPath = path.join(dir, entry.name)
     const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
     if (entry.isDirectory()) {
-      Object.assign(result, readTemplateDir(fullPath, relativePath))
-    } else {
-      result[relativePath] = fs.readFileSync(fullPath, 'utf-8')
+      return { ...acc, ...readTemplateDir(fullPath, relativePath) }
     }
-  }
-  return result
+    return { ...acc, [relativePath]: fs.readFileSync(fullPath, 'utf-8') }
+  }, {})
 }
 
 function buildSupabaseTs(mode: 'hosted' | 'export', url?: string, key?: string): string {
@@ -54,15 +51,22 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 `
 }
 
+/**
+ * Merge platform Next.js template files with AI-generated Sandpack files.
+ * Maps Sandpack paths to Next.js structure and injects Supabase credentials.
+ */
 export function assembleProject(options: AssembleOptions): AssembledProject {
   const { generatedFiles, mode, supabaseUrl, supabaseAnonKey } = options
 
   // 1. Load all platform template files
-  const templateFiles = readTemplateDir(TEMPLATE_DIR)
+  const rawTemplateFiles = readTemplateDir(TEMPLATE_DIR)
 
-  // Remove placeholder supabase files — we'll inject the right one below
-  delete templateFiles['lib/supabase.hosted.ts']
-  delete templateFiles['lib/supabase.export.ts']
+  // Remove placeholder supabase files — inject the right one below
+  const {
+    'lib/supabase.hosted.ts': _hosted,
+    'lib/supabase.export.ts': _export,
+    ...filteredTemplateFiles
+  } = rawTemplateFiles
 
   // 2. Map AI-generated files from Sandpack format to Next.js paths
   const mappedGenerated: Record<string, string> = {}
@@ -80,7 +84,7 @@ export function assembleProject(options: AssembleOptions): AssembledProject {
     'styles/globals.css', 'lib/utils.ts',
   ])
 
-  const files: Record<string, string> = { ...templateFiles }
+  const files: Record<string, string> = { ...filteredTemplateFiles }
   for (const [nextjsPath, content] of Object.entries(mappedGenerated)) {
     if (!PROTECTED.has(nextjsPath)) {
       files[nextjsPath] = content

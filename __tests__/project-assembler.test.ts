@@ -100,4 +100,39 @@ describe('assembleProject', () => {
       expect(result.files['lib/supabase.ts']).toContain('anon-key-123')
     })
   })
+
+  describe('protected files', () => {
+    it('AI-generated files cannot overwrite protected template files', () => {
+      const result = assembleProject({
+        projectName: 'test-app',
+        projectId: 'proj_123',
+        generatedFiles: { '/package.json': '{"evil": true}', '/pages/_app.tsx': 'hacked' },
+        mode: 'export',
+      })
+      expect(result.files['package.json']).not.toContain('"evil"')
+      expect(result.files['pages/_app.tsx']).not.toBe('hacked')
+    })
+
+    it('hosted mode without credentials falls back to placeholder', () => {
+      const result = assembleProject({
+        projectName: 'test-app',
+        projectId: 'proj_123',
+        generatedFiles: {},
+        mode: 'hosted',
+        // supabaseUrl and supabaseAnonKey omitted
+      })
+      expect(result.files['lib/supabase.ts']).toContain('NEXT_PUBLIC_SUPABASE_URL')
+    })
+
+    it('supabase placeholder files are not in output', () => {
+      const result = assembleProject({
+        projectName: 'test-app',
+        projectId: 'proj_123',
+        generatedFiles: {},
+        mode: 'export',
+      })
+      expect(result.files['lib/supabase.hosted.ts']).toBeUndefined()
+      expect(result.files['lib/supabase.export.ts']).toBeUndefined()
+    })
+  })
 })
