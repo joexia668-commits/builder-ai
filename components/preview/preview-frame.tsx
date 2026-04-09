@@ -20,23 +20,26 @@ export function PreviewFrame({ files, projectId }: PreviewFrameProps) {
 
   return (
     <SandpackErrorBoundary>
-      <SandpackProvider
-        key={sandpackKey}
-        template={config.template as "react"}
-        files={config.files}
-        options={config.options}
-        customSetup={config.customSetup}
-        theme={config.theme as "auto"}
-      >
-        <SandpackLayout style={{ height: "100%", border: "none" }}>
-          <SandpackPreview
-            style={{ height: "100%" }}
-            showNavigator={false}
-            showOpenInCodeSandbox={false}
-            showRefreshButton
-          />
-        </SandpackLayout>
-      </SandpackProvider>
+      <div className="absolute inset-0 flex flex-col">
+        <SandpackProvider
+          key={sandpackKey}
+          template={config.template as "react"}
+          files={config.files}
+          options={config.options}
+          customSetup={config.customSetup}
+          theme={config.theme as "auto"}
+          style={{ height: "100%", display: "flex", flexDirection: "column" }}
+        >
+          <SandpackLayout style={{ flex: 1, height: "100%", minHeight: 0, border: "none" }}>
+            <SandpackPreview
+              style={{ flex: 1, height: "100%", minHeight: 0 }}
+              showNavigator={false}
+              showOpenInCodeSandbox={false}
+              showRefreshButton
+            />
+          </SandpackLayout>
+        </SandpackProvider>
+      </div>
     </SandpackErrorBoundary>
   );
 }

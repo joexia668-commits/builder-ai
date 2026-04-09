@@ -6,7 +6,27 @@
  * We test the config builder function in isolation.
  */
 
+import React from "react";
+import { render } from "@testing-library/react";
 import { buildSandpackConfig } from "@/lib/sandpack-config";
+
+// Mock Sandpack — we only care about the wrapper style, not Sandpack internals
+jest.mock("@codesandbox/sandpack-react", () => ({
+  SandpackProvider: ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
+    <div data-testid="sandpack-provider" style={style}>{children}</div>
+  ),
+  SandpackPreview: () => <div data-testid="sandpack-preview" />,
+  SandpackLayout: ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
+    <div data-testid="sandpack-layout" style={style}>{children}</div>
+  ),
+}));
+
+jest.mock("@/components/preview/error-boundary", () => ({
+  SandpackErrorBoundary: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+// Lazy import so mocks are in place before the module loads
+const { PreviewFrame } = require("@/components/preview/preview-frame") as typeof import("@/components/preview/preview-frame");
 
 describe("buildSandpackConfig", () => {
   const projectId = "proj-abc-123";
@@ -54,5 +74,23 @@ describe("buildSandpackConfig", () => {
   it("shows placeholder when code is empty", () => {
     const config = buildSandpackConfig("", projectId);
     expect(config.files["/App.js"].code).toContain("等待 AI 生成代码");
+  });
+});
+
+describe("PreviewFrame", () => {
+  it("passes height:100% style to SandpackProvider", () => {
+    const { getByTestId } = render(
+      <PreviewFrame files={{ "/App.js": "export default () => <div/>" }} projectId="test" />
+    );
+    const provider = getByTestId("sandpack-provider");
+    expect(provider).toHaveStyle({ height: "100%" });
+  });
+
+  it("passes display:flex and flexDirection:column to SandpackProvider", () => {
+    const { getByTestId } = render(
+      <PreviewFrame files={{ "/App.js": "export default () => <div/>" }} projectId="test" />
+    );
+    const provider = getByTestId("sandpack-provider");
+    expect(provider).toHaveStyle({ display: "flex", flexDirection: "column" });
   });
 });
