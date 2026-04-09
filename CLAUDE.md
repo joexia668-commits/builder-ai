@@ -36,22 +36,25 @@ npx playwright test e2e/<spec>.spec.ts            # Single E2E file
 
 ### Request flow for AI generation
 
-Every user prompt triggers **three sequential SSE requests** — one per Agent:
+Every user prompt triggers a **multi-phase SSE sequence** orchestrated by `ChatArea`:
 
 ```
-useAgentStream (hook)
+ChatArea
   └── POST /api/generate  { agent: "pm", prompt, projectId, modelId? }
-        └── resolveModelId(modelId, project.preferredModel, user.preferredModel)
-              └── createProvider(resolvedModelId)  →  GeminiProvider | DeepSeekProvider | GroqProvider
-                    └── streamCompletion()  →  SSE chunks  →  client
-  └── POST /api/generate  { agent: "architect", context: pmOutput, ... }
-  └── POST /api/generate  { agent: "engineer",  context: pmOutput+archOutput, ... }
-        └── extractReactCode(fullOutput)  →  code_complete event
-              └── Sandpack renders preview
-              └── POST /api/versions  (immutable snapshot)
+        └── JSON PmOutput  →  extractPmOutput()
+  └── POST /api/generate  { agent: "architect", context: pmOutput, jsonMode: true }
+        └── JSON ScaffoldData  →  extractScaffold()  →  topologicalSort()  →  layers[][]
+  └── for each layer (sequential):
+        for each file in layer (parallel):
+          POST /api/generate  { agent: "engineer", targetFile, scaffold, ... }
+                └── files_complete / code_complete event
+  └── allFiles merged  →  buildSandpackConfig(files, projectId)  →  Sandpack
+                       →  POST /api/versions  { code, files }  (immutable snapshot)
 ```
 
-Each agent call in `useAgentStream` is fully sequential with `await`. The AbortController ref is replaced at the start of each generation; calling `abort()` cancels all in-flight SSE reads immediately.
+`resolveModelId(modelId, project.preferredModel, user.preferredModel)` → `createProvider()` → `GeminiProvider | DeepSeekProvider | GroqProvider`
+
+The AbortController ref is replaced at the start of each generation; calling `abort()` cancels all in-flight SSE reads immediately.
 
 ### Model selection priority chain
 
@@ -72,10 +75,11 @@ request-level → project.preferredModel → user.preferredModel → AI_PROVIDER
 
 ### State management
 
-No global store. State lives in hooks:
-- `useAgentStream` — orchestrates the three-agent SSE sequence, holds `AgentState[]`, `isGenerating`, `currentCode`, abort logic
+No global store. State lives in hooks and components:
+- `ChatArea` — orchestrates the full multi-phase generation (PM → Architect → layered Engineer), holds `AgentState[]`, `isGenerating`, `engineerProgress`, abort logic; replaced `useAgentStream` hook
 - `useVersions` — version list, selected version for timeline preview, restore action
 - `useProject` — single project data fetch + optimistic preferredModel update
+- `Workspace` — holds `currentFiles: Record<string, string>` (replaces the old `currentCode: string`)
 
 ### SSE event protocol
 
@@ -83,7 +87,8 @@ No global store. State lives in hooks:
 ```
 data: {"type":"thinking","content":"pm 正在分析..."}
 data: {"type":"chunk","content":"..."}
-data: {"type":"code_complete","code":"..."}   // engineer only
+data: {"type":"code_complete","code":"..."}          // engineer single-file fallback
+data: {"type":"files_complete","files":{...}}        // engineer multi-file output
 data: {"type":"done"}
 data: {"type":"error","error":"..."}
 ```
@@ -92,7 +97,7 @@ data: {"type":"error","error":"..."}
 
 ### Version system
 
-Versions are **immutable INSERT-only**. Restore = read old version's code → POST `/api/versions` with that code as the new current. The timeline shows `versionNumber` ascending. `useVersions` tracks `previewVersionId` (null = live, non-null = history view which disables ChatInput).
+Versions are **immutable INSERT-only**. New versions store `files: Record<string,string>` in the `files` Json column; legacy versions only have `code`. `getVersionFiles(version)` in `lib/version-files.ts` provides a unified reader: returns `files` if present, otherwise wraps `code` as `{ "/App.js": code }`. Restore = `getVersionFiles(oldVersion)` → POST `/api/versions` with those files. `useVersions` tracks `previewVersionId` (null = live, non-null = history view which disables ChatInput).
 
 ### Testing patterns
 
@@ -106,9 +111,13 @@ Versions are **immutable INSERT-only**. Restore = read old version's code → PO
 
 | File | Why |
 |------|-----|
-| `lib/types.ts` | All shared types: `AgentRole`, `SSEEvent`, `ProjectMessage`, `CodeRenderer` |
+| `lib/types.ts` | All shared types: `AgentRole`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput` |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
 | `lib/model-registry.ts` | `MODEL_REGISTRY`, `getModelById`, `getAvailableModels`, `isValidModelId` |
-| `hooks/use-agent-stream.ts` | Core orchestration — generation lock, abort, sequential SSE, state updates |
+| `lib/extract-json.ts` | `extractPmOutput`, `extractScaffold`, `extractArchOutput` — JSON parsing for structured agent output |
+| `lib/topo-sort.ts` | `topologicalSort` — groups scaffold files into dependency layers for parallel generation |
+| `lib/version-files.ts` | `getVersionFiles` — backward-compatible reader for `code` / `files` version fields |
+| `components/workspace/chat-area.tsx` | Core orchestration — PM → Architect → layered Engineer, abort, progress state |
 | `app/api/generate/route.ts` | The only Edge route — auth, model validation, provider selection, SSE stream |
-| `components/workspace/workspace.tsx` | Wires hooks to the three-column layout |
+| `components/workspace/workspace.tsx` | Wires `currentFiles: Record<string,string>` to preview and editor |
+| `lib/sandpack-config.ts` | `buildSandpackConfig(input: string \| Record<string,string>, projectId)` |
