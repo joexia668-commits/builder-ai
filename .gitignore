@@ -41,3 +41,6 @@ next-env.d.ts
 
 # Claude Code local settings (personal permissions, not for sharing)
 .claude/settings.local.json
+
+# Git worktrees
+.worktrees/
