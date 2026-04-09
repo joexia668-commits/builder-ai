@@ -153,3 +153,67 @@ describe("extractArchOutput", () => {
     expect(extractArchOutput(fenced)).not.toBeNull();
   });
 });
+
+import { extractScaffold } from "@/lib/extract-json";
+import type { ScaffoldData } from "@/lib/types";
+
+const VALID_SCAFFOLD: ScaffoldData = {
+  files: [
+    {
+      path: "/App.js",
+      description: "Root component",
+      exports: ["App"],
+      deps: ["/components/Header.js"],
+      hints: "Use useState for routing",
+    },
+    {
+      path: "/components/Header.js",
+      description: "Top navigation",
+      exports: ["Header"],
+      deps: [],
+      hints: "lucide-react icons",
+    },
+  ],
+  sharedTypes: "type User = { id: string; name: string }",
+  designNotes: "Minimalist, slate palette",
+};
+
+describe("extractScaffold", () => {
+  it("parses valid scaffold JSON", () => {
+    const result = extractScaffold(JSON.stringify(VALID_SCAFFOLD));
+    expect(result).not.toBeNull();
+    expect(result!.files).toHaveLength(2);
+    expect(result!.files[0].path).toBe("/App.js");
+    expect(result!.sharedTypes).toContain("User");
+  });
+
+  it("parses scaffold wrapped in ```json fence", () => {
+    const fenced = "```json\n" + JSON.stringify(VALID_SCAFFOLD) + "\n```";
+    const result = extractScaffold(fenced);
+    expect(result).not.toBeNull();
+    expect(result!.files).toHaveLength(2);
+  });
+
+  it("returns null when files array is empty", () => {
+    const empty = { ...VALID_SCAFFOLD, files: [] };
+    expect(extractScaffold(JSON.stringify(empty))).toBeNull();
+  });
+
+  it("returns null when file entry is missing path", () => {
+    const bad = {
+      files: [{ description: "no path", exports: [], deps: [], hints: "" }],
+      sharedTypes: "",
+      designNotes: "",
+    };
+    expect(extractScaffold(JSON.stringify(bad))).toBeNull();
+  });
+
+  it("returns null for invalid JSON", () => {
+    expect(extractScaffold("not json at all")).toBeNull();
+  });
+
+  it("returns null when files is not an array", () => {
+    const bad = { files: "not array", sharedTypes: "", designNotes: "" };
+    expect(extractScaffold(JSON.stringify(bad))).toBeNull();
+  });
+});
