@@ -52,6 +52,18 @@ describe('GET /api/export', () => {
     expect(res.status).toBe(404)
   })
 
+  it('returns 422 when version has no generated files', async () => {
+    mockGetSession.mockResolvedValue({ user: { id: 'u1' } })
+    mockProjectFindFirst.mockResolvedValue({ id: 'p1', name: 'My App', userId: 'u1' })
+    mockVersionFindFirst.mockResolvedValue({ id: 'v1', code: '', files: null })
+    // Override getVersionFiles mock to return empty content
+    const { getVersionFiles } = require('@/lib/version-files')
+    ;(getVersionFiles as jest.Mock).mockReturnValueOnce({ '/App.tsx': '' })
+    const req = new Request('http://localhost/api/export?projectId=p1&versionId=v1')
+    const res = await GET(req)
+    expect(res.status).toBe(422)
+  })
+
   it('returns zip with correct headers when successful', async () => {
     mockGetSession.mockResolvedValue({ user: { id: 'u1' } })
     mockProjectFindFirst.mockResolvedValue({ id: 'p1', name: 'My App', userId: 'u1' })

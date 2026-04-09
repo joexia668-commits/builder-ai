@@ -23,41 +23,51 @@ export async function GET(req: Request) {
     return new Response(JSON.stringify({ error: 'projectId is required' }), { status: 400 })
   }
 
-  const project = await prisma.project.findFirst({
-    where: { id: projectId, userId: session.user.id },
-  })
-  if (!project) {
-    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 })
+  try {
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, userId: session.user.id },
+    })
+    if (!project) {
+      return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 })
+    }
+
+    const version = await prisma.version.findFirst({
+      where: versionId
+        ? { id: versionId, projectId }
+        : { projectId },
+      orderBy: versionId ? undefined : { versionNumber: 'desc' },
+    })
+    if (!version) {
+      return new Response(JSON.stringify({ error: 'No version found' }), { status: 404 })
+    }
+
+    const generatedFiles = getVersionFiles(version as { code: string; files?: Record<string, string> | null })
+
+    if (Object.values(generatedFiles).every(v => !v.trim())) {
+      return new Response(JSON.stringify({ error: 'Version has no generated files' }), { status: 422 })
+    }
+
+    const projectName = slugify(project.name) || 'my-app'
+
+    const assembled = assembleProject({
+      projectName,
+      projectId,
+      generatedFiles,
+      mode: 'export',
+    })
+
+    const zipBuffer = await createProjectZip(assembled.files, projectName)
+
+    return new Response(zipBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': `attachment; filename="${projectName}.zip"`,
+        'Content-Length': String(zipBuffer.length),
+      },
+    })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    return new Response(JSON.stringify({ error: message }), { status: 500 })
   }
-
-  const version = await prisma.version.findFirst({
-    where: versionId
-      ? { id: versionId, projectId }
-      : { projectId },
-    orderBy: versionId ? undefined : { versionNumber: 'desc' },
-  })
-  if (!version) {
-    return new Response(JSON.stringify({ error: 'No version found' }), { status: 404 })
-  }
-
-  const generatedFiles = getVersionFiles(version as { code: string; files?: Record<string, string> | null })
-  const projectName = slugify(project.name) || 'my-app'
-
-  const assembled = assembleProject({
-    projectName,
-    projectId,
-    generatedFiles,
-    mode: 'export',
-  })
-
-  const zipBuffer = await createProjectZip(assembled.files, projectName)
-
-  return new Response(zipBuffer, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename="${projectName}.zip"`,
-      'Content-Length': String(zipBuffer.length),
-    },
-  })
 }
