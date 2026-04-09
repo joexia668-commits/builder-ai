@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ConversationSidebar } from "@/components/sidebar/conversation-sidebar";
 import { ChatArea } from "@/components/workspace/chat-area";
 import { PreviewPanel } from "@/components/preview/preview-panel";
+import { getVersionFiles } from "@/lib/version-files";
 import type { Project, ProjectMessage, ProjectVersion } from "@/lib/types";
 
 interface WorkspaceProps {
@@ -35,18 +36,23 @@ export function Workspace({ project, allProjects }: WorkspaceProps) {
     };
   }, []);
 
-  const [currentCode, setCurrentCode] = useState<string>(
-    project.versions[project.versions.length - 1]?.code ?? ""
+  const lastVersion = project.versions[project.versions.length - 1];
+  const [currentFiles, setCurrentFiles] = useState<Record<string, string>>(
+    lastVersion ? getVersionFiles(lastVersion as { code: string; files?: Record<string, string> | null }) : {}
   );
   const [versions, setVersions] = useState<ProjectVersion[]>(project.versions);
   const [messages, setMessages] = useState<ProjectMessage[]>(project.messages);
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewingVersion, setPreviewingVersion] = useState<ProjectVersion | null>(null);
 
-  const displayCode = previewingVersion?.code ?? currentCode;
+  const displayFiles = previewingVersion
+    ? getVersionFiles(previewingVersion as { code: string; files?: Record<string, string> | null })
+    : currentFiles;
 
   function handleRestoreVersion(newVersion: ProjectVersion) {
-    setCurrentCode(newVersion.code);
+    setCurrentFiles(
+      getVersionFiles(newVersion as { code: string; files?: Record<string, string> | null })
+    );
     setVersions((prev) => [...prev, newVersion]);
     setPreviewingVersion(null);
   }
@@ -91,37 +97,38 @@ export function Workspace({ project, allProjects }: WorkspaceProps) {
           />
         </div>
 
-        {/* Chat area: full on desktop/tablet, conditionally shown on mobile */}
+        {/* Chat area */}
         <div
           className={`flex-1 flex flex-col overflow-hidden border-r md:flex ${
             mobileTab === "chat" ? "flex" : "hidden md:flex"
           }`}
         >
-          <ChatArea initialModel={project.preferredModel ?? undefined}
+          <ChatArea
+            initialModel={project.preferredModel ?? undefined}
             project={project}
             messages={messages}
             onMessagesChange={setMessages}
             onGeneratingChange={setIsGenerating}
             isPreviewingHistory={previewingVersion !== null}
-            onCodeGenerated={(code, version) => {
-              setCurrentCode(code);
+            onFilesGenerated={(files, version) => {
+              setCurrentFiles(files);
               setVersions((prev) => [...prev, version]);
               setPreviewingVersion(null);
             }}
           />
         </div>
 
-        {/* Preview panel: full on desktop/tablet, conditionally shown on mobile */}
+        {/* Preview panel */}
         <div
           className={`relative flex-1 flex flex-col overflow-hidden ${
             mobileTab === "preview" ? "flex" : "hidden md:flex"
           }`}
         >
           <PreviewPanel
-            code={displayCode}
+            files={displayFiles}
             projectId={project.id}
             isGenerating={isGenerating}
-            onCodeChange={setCurrentCode}
+            onFilesChange={setCurrentFiles}
             versions={versions}
             previewingVersion={previewingVersion}
             onPreviewVersion={setPreviewingVersion}
