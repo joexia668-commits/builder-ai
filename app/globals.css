@@ -10,6 +10,20 @@
   }
 }
 
+/* Force Sandpack preview to fill its container */
+.sp-layout {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+.sp-preview-container {
+  height: 100% !important;
+  min-height: 0 !important;
+  flex: 1 !important;
+}
+.sp-preview-iframe {
+  height: 100% !important;
+}
+
 @layer base {
   .theme {
     --font-heading: var(--font-sans);
