@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import {
   SandpackProvider,
   SandpackPreview,
@@ -7,6 +8,12 @@ import {
 } from "@codesandbox/sandpack-react";
 import { SandpackErrorBoundary } from "@/components/preview/error-boundary";
 import { buildSandpackConfig } from "@/lib/sandpack-config";
+
+const PROVIDER_STYLE: CSSProperties = {
+  height: "100%",
+  display: "flex",
+  flexDirection: "column",
+};
 
 interface PreviewFrameProps {
   files: Record<string, string>;
@@ -28,7 +35,7 @@ export function PreviewFrame({ files, projectId }: PreviewFrameProps) {
           options={config.options}
           customSetup={config.customSetup}
           theme={config.theme as "auto"}
-          style={{ height: "100%", display: "flex", flexDirection: "column" }}
+          style={PROVIDER_STYLE}
         >
           <SandpackLayout style={{ flex: 1, height: "100%", minHeight: 0, border: "none" }}>
             <SandpackPreview

@@ -78,19 +78,15 @@ describe("buildSandpackConfig", () => {
 });
 
 describe("PreviewFrame", () => {
-  it("passes height:100% style to SandpackProvider", () => {
+  it("passes layout styles to SandpackProvider", () => {
     const { getByTestId } = render(
       <PreviewFrame files={{ "/App.js": "export default () => <div/>" }} projectId="test" />
     );
     const provider = getByTestId("sandpack-provider");
-    expect(provider).toHaveStyle({ height: "100%" });
-  });
-
-  it("passes display:flex and flexDirection:column to SandpackProvider", () => {
-    const { getByTestId } = render(
-      <PreviewFrame files={{ "/App.js": "export default () => <div/>" }} projectId="test" />
-    );
-    const provider = getByTestId("sandpack-provider");
-    expect(provider).toHaveStyle({ display: "flex", flexDirection: "column" });
+    expect(provider).toHaveStyle({
+      height: "100%",
+      display: "flex",
+      flexDirection: "column",
+    });
   });
 });
