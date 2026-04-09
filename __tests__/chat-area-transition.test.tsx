@@ -100,7 +100,7 @@ describe("agent handoff transition text lifetime", () => {
         project={project}
         messages={[]}
         onMessagesChange={jest.fn()}
-        onCodeGenerated={jest.fn()}
+        onFilesGenerated={jest.fn()}
       />
     );
 
@@ -145,7 +145,7 @@ describe("agent handoff transition text lifetime", () => {
         project={project}
         messages={[]}
         onMessagesChange={jest.fn()}
-        onCodeGenerated={jest.fn()}
+        onFilesGenerated={jest.fn()}
       />
     );
 

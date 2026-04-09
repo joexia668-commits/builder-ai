@@ -80,7 +80,7 @@ describe("ChatArea stop generation", () => {
         project={project}
         messages={[]}
         onMessagesChange={jest.fn()}
-        onCodeGenerated={jest.fn()}
+        onFilesGenerated={jest.fn()}
       />
     );
 
@@ -101,7 +101,7 @@ describe("ChatArea stop generation", () => {
         project={project}
         messages={[]}
         onMessagesChange={jest.fn()}
-        onCodeGenerated={jest.fn()}
+        onFilesGenerated={jest.fn()}
       />
     );
 
@@ -125,7 +125,7 @@ describe("ChatArea stop generation", () => {
         project={project}
         messages={[]}
         onMessagesChange={jest.fn()}
-        onCodeGenerated={jest.fn()}
+        onFilesGenerated={jest.fn()}
       />
     );
 
