@@ -58,16 +58,17 @@ model VerificationToken {
 }
 
 model Project {
-  id             String    @id @default(cuid())
+  id             String       @id @default(cuid())
   name           String
   description    String?
   userId         String
   preferredModel String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   messages       Message[]
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   versions       Version[]
+  deployments    Deployment[]
 }
 
 model Version {
@@ -104,4 +105,16 @@ model DynamicAppData {
 
   @@unique([appId, key])
   @@index([appId])
+}
+
+model Deployment {
+  id              String   @id @default(cuid())
+  projectId       String
+  versionId       String
+  vercelProjectId String
+  vercelDeployId  String
+  url             String
+  status          String   // building | ready | error
+  createdAt       DateTime @default(now())
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
