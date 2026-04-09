@@ -22,13 +22,23 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { agent, prompt, context, projectId, modelId } = body as {
-    projectId: string;
-    prompt: string;
-    agent: AgentRole;
-    context?: string;
-    modelId?: string;
-  };
+  const { agent, prompt, context, projectId, modelId, targetFiles, completedFiles, scaffold } =
+    body as {
+      projectId: string;
+      prompt: string;
+      agent: AgentRole;
+      context?: string;
+      modelId?: string;
+      targetFiles?: Array<{
+        path: string;
+        description: string;
+        exports: string[];
+        deps: string[];
+        hints: string;
+      }>;
+      completedFiles?: Record<string, string>;
+      scaffold?: { sharedTypes: string; designNotes: string };
+    };
 
   // Validate modelId if provided
   if (modelId !== undefined && modelId !== null && !isValidModelId(modelId)) {
@@ -45,7 +55,7 @@ export async function POST(req: NextRequest) {
     agent === "pm"
       ? `用户需求：${prompt}`
       : agent === "architect"
-        ? `PM 的产品需求文档：\n\n${context}\n\n请基于以上 PRD 设计 React 技术实现方案。`
+        ? `PM 的产品需求文档：\n\n${context}\n\n请基于以上 PRD 设计多文件 React 项目的文件结构和技术方案。`
         : `请根据以下完整背景信息，生成完整可运行的 React 组件代码：\n\n${context}`;
 
   const stream = new ReadableStream({
@@ -65,9 +75,9 @@ export async function POST(req: NextRequest) {
           send(controller, { type: "chunk", content: text });
         };
 
-        // PM agent outputs structured JSON — enable API-level JSON mode for reliability.
+        // PM and architect agents output structured JSON — enable API-level JSON mode.
         const completionOptions: CompletionOptions =
-          agent === "pm" ? { jsonMode: true } : {};
+          agent === "pm" || agent === "architect" ? { jsonMode: true } : {};
 
         try {
           await provider.streamCompletion(messages, onChunk, completionOptions);
@@ -99,11 +109,22 @@ export async function POST(req: NextRequest) {
         }
 
         if (agent === "engineer") {
-          const finalCode = extractReactCode(fullContent);
-          if (finalCode === null) {
-            send(controller, { type: "error", error: "生成的代码不完整，请重试" });
+          if (targetFiles && targetFiles.length > 0) {
+            const { extractMultiFileCode } = await import("@/lib/extract-code");
+            const expectedPaths = targetFiles.map((f) => f.path);
+            const filesResult = extractMultiFileCode(fullContent, expectedPaths);
+            if (filesResult === null) {
+              send(controller, { type: "error", error: "生成的代码不完整，请重试" });
+            } else {
+              send(controller, { type: "files_complete", files: filesResult });
+            }
           } else {
-            send(controller, { type: "code_complete", code: finalCode });
+            const finalCode = extractReactCode(fullContent);
+            if (finalCode === null) {
+              send(controller, { type: "error", error: "生成的代码不完整，请重试" });
+            } else {
+              send(controller, { type: "code_complete", code: finalCode });
+            }
           }
         }
 

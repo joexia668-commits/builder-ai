@@ -92,6 +92,7 @@ export type SSEEventType =
   | "chunk"
   | "code_chunk"
   | "code_complete"
+  | "files_complete"
   | "reset"
   | "done"
   | "error";
@@ -100,6 +101,7 @@ export interface SSEEvent {
   type: SSEEventType;
   content?: string;
   code?: string;
+  files?: Record<string, string>;
   messageId?: string;
   error?: string;
 }
