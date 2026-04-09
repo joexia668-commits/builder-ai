@@ -6,6 +6,13 @@ import { AgentMessage } from "@/components/agent/agent-message";
 import { ChatInput } from "@/components/workspace/chat-input";
 import { fetchAPI } from "@/lib/api-client";
 import { DEFAULT_MODEL_ID, getAvailableModels } from "@/lib/model-registry";
+import { topologicalSort } from "@/lib/topo-sort";
+import { extractPmOutput, extractScaffold } from "@/lib/extract-json";
+import { getMultiFileEngineerPrompt } from "@/lib/generate-prompts";
+import {
+  buildEngineerContext,
+  buildEngineerContextFromStructured,
+} from "@/lib/agent-context";
 import type {
   Project,
   ProjectMessage,
@@ -13,19 +20,16 @@ import type {
   AgentState,
   AgentRole,
   PmOutput,
+  EngineerProgress,
+  ScaffoldFile,
 } from "@/lib/types";
 import { AGENT_ORDER, AGENTS } from "@/lib/types";
-import { extractPmOutput } from "@/lib/extract-json";
-import {
-  buildEngineerContext,
-  buildEngineerContextFromStructured,
-} from "@/lib/agent-context";
 
 interface ChatAreaProps {
   project: Project;
   messages: ProjectMessage[];
   onMessagesChange: (messages: ProjectMessage[]) => void;
-  onCodeGenerated: (code: string, version: ProjectVersion) => void;
+  onFilesGenerated: (files: Record<string, string>, version: ProjectVersion) => void;
   onGeneratingChange?: (isGenerating: boolean) => void;
   isPreviewingHistory?: boolean;
   initialModel?: string;
@@ -44,7 +48,7 @@ export function ChatArea({
   project,
   messages,
   onMessagesChange,
-  onCodeGenerated,
+  onFilesGenerated,
   onGeneratingChange,
   isPreviewingHistory = false,
   initialModel,
@@ -67,9 +71,8 @@ export function ChatArea({
       engineer: { role: "engineer", status: "idle", output: "" },
     }
   );
+  const [engineerProgress, setEngineerProgress] = useState<EngineerProgress | null>(null);
 
-  // Derive available model IDs from env (server-rendered env vars exposed via NEXT_PUBLIC_*)
-  // We pass process.env subset; only NEXT_PUBLIC_* are available client-side
   const availableModelIds = getAvailableModels({
     GOOGLE_GENERATIVE_AI_API_KEY: process.env.NEXT_PUBLIC_GEMINI_CONFIGURED ?? "",
     DEEPSEEK_API_KEY: process.env.NEXT_PUBLIC_DEEPSEEK_CONFIGURED ?? "",
@@ -105,7 +108,6 @@ export function ChatArea({
   const handleModelChange = useCallback(
     (modelId: string) => {
       setSelectedModel(modelId);
-      // Debounce project preference persistence (500ms)
       if (persistModelTimerRef.current) clearTimeout(persistModelTimerRef.current);
       persistModelTimerRef.current = setTimeout(() => {
         fetchAPI(`/api/projects/${project.id}`, {
@@ -156,6 +158,188 @@ export function ChatArea({
 
     try {
       for (const agentRole of AGENT_ORDER) {
+        // Engineer: attempt multi-file path after architect completes
+        if (agentRole === "engineer") {
+          const scaffold = extractScaffold(outputs.architect);
+
+          if (scaffold && scaffold.files.length > 1) {
+            // === MULTI-FILE PATH ===
+            updateAgentState("engineer", { status: "thinking", output: "" });
+
+            const layers = topologicalSort(scaffold.files);
+            const totalFiles = scaffold.files.length;
+            const allCompletedFiles: Record<string, string> = {};
+            const allFailedFiles: string[] = [];
+
+            setEngineerProgress({
+              totalLayers: layers.length,
+              currentLayer: 0,
+              totalFiles,
+              currentFiles: [],
+              completedFiles: [],
+              failedFiles: [],
+            });
+
+            for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
+              const layerPaths = layers[layerIdx];
+              const layerFiles = layerPaths
+                .map((p) => scaffold.files.find((f) => f.path === p))
+                .filter((f): f is ScaffoldFile => f !== undefined);
+
+              setEngineerProgress((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      currentLayer: layerIdx + 1,
+                      currentFiles: layerPaths.map((p) => p.split("/").pop() ?? p),
+                    }
+                  : prev
+              );
+
+              updateAgentState("engineer", {
+                status: "streaming",
+                output: `正在生成第 ${layerIdx + 1}/${layers.length} 层: ${layerPaths.map((p) => p.split("/").pop()).join(", ")}`,
+              });
+
+              const engineerPrompt = getMultiFileEngineerPrompt({
+                projectId: project.id,
+                targetFiles: layerFiles,
+                sharedTypes: scaffold.sharedTypes,
+                completedFiles: allCompletedFiles,
+                designNotes: scaffold.designNotes,
+              });
+
+              const response = await fetch("/api/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  projectId: project.id,
+                  prompt,
+                  agent: "engineer",
+                  context: engineerPrompt,
+                  modelId: selectedModel,
+                  targetFiles: layerFiles,
+                  completedFiles: allCompletedFiles,
+                  scaffold: { sharedTypes: scaffold.sharedTypes, designNotes: scaffold.designNotes },
+                }),
+                signal: abortController.signal,
+              });
+
+              if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 200)}`);
+              }
+              if (!response.body) throw new Error("No response body");
+
+              setTransitionText(null);
+
+              const reader = response.body.getReader();
+              const decoder = new TextDecoder();
+              let sseBuffer = "";
+              let layerResult: Record<string, string> | null = null;
+
+              const processSSELines = (lines: string[]) => {
+                for (const line of lines) {
+                  if (!line.startsWith("data: ")) continue;
+                  const data = line.slice(6).trim();
+                  if (!data || data === "[DONE]") continue;
+                  try {
+                    const event = JSON.parse(data) as {
+                      type: string;
+                      content?: string;
+                      code?: string;
+                      files?: Record<string, string>;
+                      error?: string;
+                    };
+                    if (event.type === "files_complete") {
+                      if (event.files) layerResult = event.files;
+                    } else if (event.type === "code_complete") {
+                      if (event.code) layerResult = { "/App.js": event.code };
+                    } else if (event.type === "error") {
+                      throw new Error(event.error ?? "Stream error");
+                    }
+                  } catch (parseErr) {
+                    if (parseErr instanceof SyntaxError) continue;
+                    throw parseErr;
+                  }
+                }
+              };
+
+              while (true) {
+                const { done, value } = await reader.read();
+                sseBuffer += done
+                  ? decoder.decode()
+                  : decoder.decode(value, { stream: true });
+                const lines = sseBuffer.split("\n");
+                sseBuffer = done ? "" : (lines.pop() ?? "");
+                processSSELines(lines);
+                if (done) break;
+              }
+              if (sseBuffer.trim()) processSSELines([sseBuffer]);
+
+              if (layerResult) {
+                Object.assign(allCompletedFiles, layerResult);
+                setEngineerProgress((prev) =>
+                  prev
+                    ? { ...prev, completedFiles: Object.keys(allCompletedFiles) }
+                    : prev
+                );
+              } else {
+                allFailedFiles.push(...layerPaths);
+                setEngineerProgress((prev) =>
+                  prev
+                    ? { ...prev, failedFiles: [...prev.failedFiles, ...layerPaths] }
+                    : prev
+                );
+              }
+            }
+
+            const completedList = Object.keys(allCompletedFiles).join(", ");
+            const failedNote =
+              allFailedFiles.length > 0
+                ? `\n\n⚠️ 以下文件生成失败: ${allFailedFiles.join(", ")}`
+                : "";
+            const summaryOutput = `✅ 已生成 ${Object.keys(allCompletedFiles).length} 个文件:\n${completedList}${failedNote}`;
+
+            outputs.engineer = summaryOutput;
+            updateAgentState("engineer", { status: "done", output: summaryOutput });
+            setEngineerProgress(null);
+
+            const engineerMsg: ProjectMessage = {
+              id: `temp-agent-engineer-${Date.now()}`,
+              projectId: project.id,
+              role: "engineer",
+              content: summaryOutput,
+              metadata: null,
+              createdAt: new Date(),
+            };
+            currentMessages = [...currentMessages, engineerMsg];
+            onMessagesChange(currentMessages);
+
+            await persistMessage("engineer", summaryOutput, {
+              agentName: AGENTS.engineer.name,
+              agentColor: AGENTS.engineer.color,
+            });
+
+            if (Object.keys(allCompletedFiles).length > 0) {
+              const res = await fetchAPI("/api/versions", {
+                method: "POST",
+                body: JSON.stringify({
+                  projectId: project.id,
+                  files: allCompletedFiles,
+                  description: prompt.slice(0, 80),
+                }),
+              });
+              const version = await res.json();
+              onFilesGenerated(allCompletedFiles, version);
+            }
+
+            // Skip normal engineer loop iteration
+            continue;
+          }
+          // scaffold parse failed or single file → fall through to legacy single-file flow below
+        }
+
         updateAgentState(agentRole, { status: "thinking", output: "" });
 
         const context =
@@ -186,9 +370,6 @@ export function ChatArea({
         }
         if (!response.body) throw new Error("No response body");
 
-        // Clear previous agent's handoff text now that this agent is streaming.
-        // Doing this here (after fetch resolves) keeps the text visible during
-        // the full network wait, not just the 800ms delay window.
         setTransitionText(null);
         updateAgentState(agentRole, { status: "streaming" });
 
@@ -211,7 +392,6 @@ export function ChatArea({
               } else if (event.type === "code_complete") {
                 if (event.code) lastCode = event.code;
               } else if (event.type === "reset") {
-                // Server switched to fallback provider — discard partial output
                 agentOutput = "";
                 updateAgentState(agentRole, { output: "" });
               } else if (event.type === "error") {
@@ -222,24 +402,19 @@ export function ChatArea({
               throw parseErr;
             }
           }
-        }
+        };
 
         while (true) {
           const { done, value } = await reader.read();
-
           sseBuffer += done
-            ? decoder.decode()                        // flush残留的多字节字符
+            ? decoder.decode()
             : decoder.decode(value, { stream: true });
-
           const lines = sseBuffer.split("\n");
-          // If stream is done, process all lines; otherwise hold the last incomplete line
           sseBuffer = done ? "" : (lines.pop() ?? "");
           processSSELines(lines);
-
           if (done) break;
         }
 
-        // Process anything left in the buffer after stream ends
         if (sseBuffer.trim()) {
           processSSELines([sseBuffer]);
         }
@@ -271,6 +446,7 @@ export function ChatArea({
         }
       }
 
+      // Legacy single-file path
       if (lastCode) {
         const res = await fetchAPI("/api/versions", {
           method: "POST",
@@ -281,7 +457,7 @@ export function ChatArea({
           }),
         });
         const version = await res.json();
-        onCodeGenerated(lastCode, version);
+        onFilesGenerated({ "/App.js": lastCode }, version);
       }
     } catch (err) {
       const isAbort =
@@ -302,13 +478,18 @@ export function ChatArea({
       setIsGenerating(false);
       onGeneratingChange?.(false);
       setTransitionText(null);
+      setEngineerProgress(null);
       abortControllerRef.current = null;
     }
   }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden border-r">
-      <AgentStatusBar agentStates={agentStates} isGenerating={isGenerating} />
+      <AgentStatusBar
+        agentStates={agentStates}
+        isGenerating={isGenerating}
+        engineerProgress={engineerProgress}
+      />
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && !isGenerating && (

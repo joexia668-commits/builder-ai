@@ -1,4 +1,4 @@
-import type { PmOutput, ArchOutput } from "@/lib/types";
+import type { PmOutput, ArchOutput, ScaffoldData, ScaffoldFile } from "@/lib/types";
 
 // Strip markdown code fences (```json ... ``` or ``` ... ```) from raw LLM output.
 function stripFences(raw: string): string {
@@ -66,6 +66,37 @@ export function extractArchOutput(raw: string): ArchOutput | null {
     const parsed = parseJson(raw);
     if (!isArchOutput(parsed)) return null;
     return Object.freeze({ ...parsed }) as ArchOutput;
+  } catch {
+    return null;
+  }
+}
+
+function isScaffoldFile(val: unknown): val is ScaffoldFile {
+  if (typeof val !== "object" || val === null) return false;
+  const obj = val as Record<string, unknown>;
+  if (typeof obj.path !== "string" || obj.path.trim() === "") return false;
+  if (typeof obj.description !== "string") return false;
+  if (!Array.isArray(obj.exports)) return false;
+  if (!Array.isArray(obj.deps)) return false;
+  if (typeof obj.hints !== "string") return false;
+  return true;
+}
+
+function isScaffoldData(val: unknown): val is ScaffoldData {
+  if (typeof val !== "object" || val === null) return false;
+  const obj = val as Record<string, unknown>;
+  if (!Array.isArray(obj.files) || obj.files.length === 0) return false;
+  if (!obj.files.every(isScaffoldFile)) return false;
+  if (typeof obj.sharedTypes !== "string") return false;
+  if (typeof obj.designNotes !== "string") return false;
+  return true;
+}
+
+export function extractScaffold(raw: string): ScaffoldData | null {
+  try {
+    const parsed = parseJson(raw);
+    if (!isScaffoldData(parsed)) return null;
+    return parsed as ScaffoldData;
   } catch {
     return null;
   }

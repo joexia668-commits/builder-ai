@@ -1,7 +1,7 @@
 /**
  * TDD tests for workspace.tsx uncovered branches (Epic 4)
  *
- * UI-WS-01: handleRestoreVersion updates currentCode and appends to versions
+ * UI-WS-01: handleRestoreVersion updates currentFiles and appends to versions
  * UI-WS-02: mobile tab "chat" → ChatArea visible, PreviewPanel container in DOM
  * UI-WS-03: mobile tab "preview" → switch tab state
  */
@@ -14,7 +14,7 @@ jest.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-// Track what code PreviewPanel receives
+// Track what files/versions PreviewPanel receives
 let capturedCode = "";
 let capturedVersions: unknown[] = [];
 
@@ -24,22 +24,25 @@ jest.mock("@/components/sidebar/conversation-sidebar", () => ({
 
 jest.mock("@/components/workspace/chat-area", () => ({
   ChatArea: ({
-    onCodeGenerated,
+    onFilesGenerated,
   }: {
-    onCodeGenerated: (code: string, version: unknown) => void;
+    onFilesGenerated: (files: Record<string, string>, version: unknown) => void;
   }) => (
     <div data-testid="chat-area">
       <button
         data-testid="trigger-code"
         onClick={() =>
-          onCodeGenerated("new-code", {
-            id: "v-new",
-            projectId: "p1",
-            code: "new-code",
-            description: "test",
-            versionNumber: 2,
-            createdAt: new Date(),
-          })
+          onFilesGenerated(
+            { "/App.js": "new-code" },
+            {
+              id: "v-new",
+              projectId: "p1",
+              code: "new-code",
+              description: "test",
+              versionNumber: 2,
+              createdAt: new Date(),
+            }
+          )
         }
       >
         trigger
@@ -50,19 +53,19 @@ jest.mock("@/components/workspace/chat-area", () => ({
 
 jest.mock("@/components/preview/preview-panel", () => ({
   PreviewPanel: ({
-    code,
+    files,
     versions,
     onVersionRestore,
   }: {
-    code: string;
+    files: Record<string, string>;
     versions: unknown[];
     onVersionRestore: (v: unknown) => void;
   }) => {
-    capturedCode = code;
+    capturedCode = files["/App.js"] ?? "";
     capturedVersions = versions;
     return (
       <div data-testid="preview-panel">
-        <span data-testid="preview-code">{code}</span>
+        <span data-testid="preview-code">{files["/App.js"] ?? ""}</span>
         <button
           data-testid="trigger-restore"
           onClick={() =>
@@ -119,10 +122,8 @@ describe("Workspace branch coverage", () => {
   // UI-WS-01: handleRestoreVersion updates code
   it("UI-WS-01a: handleRestoreVersion updates displayed code via PreviewPanel", () => {
     render(<Workspace project={baseProject} allProjects={[]} />);
-    // Initial code from last version
     expect(screen.getByTestId("preview-code")).toHaveTextContent("initial-code");
 
-    // Trigger restore
     fireEvent.click(screen.getByTestId("trigger-restore"));
 
     expect(screen.getByTestId("preview-code")).toHaveTextContent("restored-code");
@@ -138,11 +139,8 @@ describe("Workspace branch coverage", () => {
   });
 
   it("UI-WS-01c: handleRestoreVersion clears previewingVersion (sets to null)", () => {
-    // After restore, workspace should NOT be in previewing mode
-    // We verify this indirectly: PreviewPanel receives previewingVersion=null
     render(<Workspace project={baseProject} allProjects={[]} />);
     fireEvent.click(screen.getByTestId("trigger-restore"));
-    // No assertion failure means previewingVersion=null was passed (mock doesn't crash)
     expect(screen.getByTestId("preview-panel")).toBeInTheDocument();
   });
 
@@ -168,9 +166,12 @@ describe("Workspace branch coverage", () => {
     expect(screen.getByTestId("mobile-tab-chat")).toHaveAttribute("data-active", "true");
   });
 
-  it("UI-WS-01d: onCodeGenerated from ChatArea updates code", () => {
+  it("UI-WS-01d: onFilesGenerated from ChatArea updates code", () => {
     render(<Workspace project={emptyProject} allProjects={[]} />);
     fireEvent.click(screen.getByTestId("trigger-code"));
     expect(screen.getByTestId("preview-code")).toHaveTextContent("new-code");
   });
+
+  // Silence unused variable warning
+  void capturedCode;
 });

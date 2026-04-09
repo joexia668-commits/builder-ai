@@ -67,3 +67,26 @@ describe("Supabase injection — engineer prompt (SB-01, SB-03, SB-06)", () => {
     expect(prompt).not.toMatch(/createClient\s*\(\s*['"][^'"]{10,}/);
   });
 });
+
+describe("buildSandpackConfig — multi-file input", () => {
+  const files = {
+    "/App.js": "export default function App() { return <div/>; }",
+    "/components/Header.js": "export function Header() { return <h1/>; }",
+  };
+  const config = buildSandpackConfig(files, "proj-multi");
+
+  it("includes all user files in config", () => {
+    expect(config.files["/App.js"].code).toContain("App");
+    expect(config.files["/components/Header.js"].code).toContain("Header");
+  });
+
+  it("still includes hidden supabaseClient.js", () => {
+    expect(config.files["/supabaseClient.js"]).toBeDefined();
+    expect(config.files["/supabaseClient.js"].hidden).toBe(true);
+  });
+
+  it("user files are not hidden", () => {
+    expect(config.files["/App.js"].hidden).toBeUndefined();
+    expect(config.files["/components/Header.js"].hidden).toBeUndefined();
+  });
+});

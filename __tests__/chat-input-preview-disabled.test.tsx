@@ -37,7 +37,7 @@ describe("ChatArea isPreviewingHistory → ChatInput disabled", () => {
         project={project}
         messages={[]}
         onMessagesChange={jest.fn()}
-        onCodeGenerated={jest.fn()}
+        onFilesGenerated={jest.fn()}
         isPreviewingHistory={true}
       />
     );
@@ -52,7 +52,7 @@ describe("ChatArea isPreviewingHistory → ChatInput disabled", () => {
         project={project}
         messages={[]}
         onMessagesChange={jest.fn()}
-        onCodeGenerated={jest.fn()}
+        onFilesGenerated={jest.fn()}
         isPreviewingHistory={false}
       />
     );
@@ -67,7 +67,7 @@ describe("ChatArea isPreviewingHistory → ChatInput disabled", () => {
         project={project}
         messages={[]}
         onMessagesChange={jest.fn()}
-        onCodeGenerated={jest.fn()}
+        onFilesGenerated={jest.fn()}
         isPreviewingHistory={true}
       />
     );

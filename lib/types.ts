@@ -92,6 +92,7 @@ export type SSEEventType =
   | "chunk"
   | "code_chunk"
   | "code_complete"
+  | "files_complete"
   | "reset"
   | "done"
   | "error";
@@ -100,6 +101,7 @@ export interface SSEEvent {
   type: SSEEventType;
   content?: string;
   code?: string;
+  files?: Record<string, string>;
   messageId?: string;
   error?: string;
 }
@@ -123,6 +125,31 @@ export interface ArchOutput {
 // Options passed to AIProvider.streamCompletion
 export interface CompletionOptions {
   readonly jsonMode?: boolean;
+}
+
+// Multi-file scaffold types (Architect agent output)
+export interface ScaffoldFile {
+  readonly path: string;
+  readonly description: string;
+  readonly exports: readonly string[];
+  readonly deps: readonly string[];
+  readonly hints: string;
+}
+
+export interface ScaffoldData {
+  readonly files: readonly ScaffoldFile[];
+  readonly sharedTypes: string;
+  readonly designNotes: string;
+}
+
+// Engineer multi-file generation progress
+export interface EngineerProgress {
+  readonly totalLayers: number;
+  readonly currentLayer: number;
+  readonly totalFiles: number;
+  readonly currentFiles: readonly string[];
+  readonly completedFiles: readonly string[];
+  readonly failedFiles: readonly string[];
 }
 
 // CodeRenderer interface — enables future Sandpack extension

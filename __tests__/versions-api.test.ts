@@ -222,6 +222,36 @@ describe("POST /api/versions", () => {
     );
   });
 
+  // API-02-multi: accepts files field and writes both code and files
+  it("API-02-multi: accepts files field, writes code from /App.js + files", async () => {
+    mockSession.mockResolvedValue(session);
+    mockProjectFindFirst.mockResolvedValue(mockProject);
+    mockVersionFindFirst.mockResolvedValue(null);
+    mockVersionCreate.mockResolvedValue({
+      id: "v1",
+      projectId: "proj-1",
+      versionNumber: 1,
+      code: "app code",
+      files: { "/App.js": "app code", "/components/Header.js": "header code" },
+      description: "multi",
+      createdAt: new Date(),
+    });
+    mockProjectUpdate.mockResolvedValue({});
+
+    const files = { "/App.js": "app code", "/components/Header.js": "header code" };
+    const res = await POST(makePostRequest({ projectId: "proj-1", files, description: "multi" }));
+    expect(res.status).toBe(201);
+
+    expect(mockVersionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          code: "app code",
+          files: { "/App.js": "app code", "/components/Header.js": "header code" },
+        }),
+      })
+    );
+  });
+
   // API-02f: returns 201 with the created version object
   it("API-02f: 成功时返回 201 和新版本对象", async () => {
     mockSession.mockResolvedValue(session);

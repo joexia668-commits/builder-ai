@@ -132,3 +132,68 @@ describe("extractReactCode", () => {
     expect(result).toContain("export default");
   });
 });
+
+import { extractMultiFileCode } from "@/lib/extract-code";
+
+describe("extractMultiFileCode", () => {
+  it("parses two files separated by FILE markers", () => {
+    const raw = [
+      "// === FILE: /App.js ===",
+      "export default function App() { return <div/>; }",
+      "// === FILE: /components/Header.js ===",
+      "export function Header() { return <header/>; }",
+    ].join("\n");
+    const result = extractMultiFileCode(raw, ["/App.js", "/components/Header.js"]);
+    expect(result).not.toBeNull();
+    expect(result!["/App.js"]).toContain("export default function App");
+    expect(result!["/components/Header.js"]).toContain("export function Header");
+  });
+
+  it("returns null when expected file is missing from output", () => {
+    const raw = "// === FILE: /App.js ===\nexport default function App() {}";
+    const result = extractMultiFileCode(raw, ["/App.js", "/missing.js"]);
+    expect(result).toBeNull();
+  });
+
+  it("returns null when a file has unbalanced braces (truncated)", () => {
+    const raw = [
+      "// === FILE: /App.js ===",
+      "export default function App() { return <div/>; }",
+      "// === FILE: /broken.js ===",
+      "export function Broken() { return (",
+    ].join("\n");
+    const result = extractMultiFileCode(raw, ["/App.js", "/broken.js"]);
+    expect(result).toBeNull();
+  });
+
+  it("trims whitespace around each file's code", () => {
+    const raw = [
+      "// === FILE: /App.js ===",
+      "",
+      "  export default function App() {}  ",
+      "",
+      "// === FILE: /utils.js ===",
+      "  export function fmt() { return 'x'; }  ",
+    ].join("\n");
+    const result = extractMultiFileCode(raw, ["/App.js", "/utils.js"]);
+    expect(result).not.toBeNull();
+    expect(result!["/App.js"]).toBe("export default function App() {}");
+    expect(result!["/utils.js"]).toBe("export function fmt() { return 'x'; }");
+  });
+
+  it("handles LLM preamble text before first FILE marker", () => {
+    const raw = [
+      "Here are the files:",
+      "// === FILE: /App.js ===",
+      "export default function App() {}",
+    ].join("\n");
+    const result = extractMultiFileCode(raw, ["/App.js"]);
+    expect(result).not.toBeNull();
+    expect(result!["/App.js"]).toBe("export default function App() {}");
+  });
+
+  it("returns empty object for empty expectedFiles", () => {
+    const result = extractMultiFileCode("anything", []);
+    expect(result).toEqual({});
+  });
+});

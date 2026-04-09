@@ -39,28 +39,47 @@ export interface SandpackConfig {
   theme?: string;
 }
 
-export function buildSandpackConfig(code: string, projectId: string): SandpackConfig {
+export function buildSandpackConfig(
+  input: string | Record<string, string>,
+  projectId: string
+): SandpackConfig {
   void projectId; // projectId reserved for future per-project isolation
+
+  // Normalize: string input becomes single-file { "/App.js": code }
+  const userFiles: Record<string, string> =
+    typeof input === "string" ? { "/App.js": input || PLACEHOLDER_APP } : { ...input };
+
+  // Ensure /App.js has a value (Sandpack entry point)
+  if (!userFiles["/App.js"]) {
+    userFiles["/App.js"] = PLACEHOLDER_APP;
+  }
+
+  // Convert to Sandpack file entries
+  const sandpackFiles: Record<string, SandpackFileEntry> = {};
+  for (const [path, code] of Object.entries(userFiles)) {
+    sandpackFiles[path] = { code };
+  }
+
+  // Inject hidden supabase client
+  sandpackFiles["/supabaseClient.js"] = {
+    code: buildSupabaseClientCode(),
+    hidden: true,
+  };
+
   return {
-    template: 'react',
-    theme: 'auto',
-    files: {
-      '/App.js': { code: code || PLACEHOLDER_APP },
-      '/supabaseClient.js': {
-        code: buildSupabaseClientCode(),
-        hidden: true,
-      },
-    },
+    template: "react",
+    theme: "auto",
+    files: sandpackFiles,
     customSetup: {
       dependencies: {
-        '@supabase/supabase-js': '^2.39.0',
-        'lucide-react': '^0.300.0',
+        "@supabase/supabase-js": "^2.39.0",
+        "lucide-react": "^0.300.0",
       },
     },
     options: {
-      recompileMode: 'delayed',
+      recompileMode: "delayed",
       recompileDelay: 500,
-      externalResources: ['https://cdn.tailwindcss.com'],
+      externalResources: ["https://cdn.tailwindcss.com"],
     },
   };
 }

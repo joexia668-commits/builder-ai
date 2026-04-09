@@ -50,7 +50,7 @@ describe("ChatArea onGeneratingChange", () => {
         project={project}
         messages={[]}
         onMessagesChange={jest.fn()}
-        onCodeGenerated={jest.fn()}
+        onFilesGenerated={jest.fn()}
         onGeneratingChange={onGeneratingChange}
       />
     );
@@ -72,7 +72,7 @@ describe("ChatArea onGeneratingChange", () => {
         project={project}
         messages={[]}
         onMessagesChange={jest.fn()}
-        onCodeGenerated={jest.fn()}
+        onFilesGenerated={jest.fn()}
         onGeneratingChange={onGeneratingChange}
       />
     );
@@ -101,7 +101,7 @@ describe("ChatArea onGeneratingChange", () => {
         project={project}
         messages={[]}
         onMessagesChange={jest.fn()}
-        onCodeGenerated={jest.fn()}
+        onFilesGenerated={jest.fn()}
         onGeneratingChange={onGeneratingChange}
       />
     );
@@ -130,7 +130,7 @@ describe("ChatArea onGeneratingChange", () => {
         project={project}
         messages={[]}
         onMessagesChange={jest.fn()}
-        onCodeGenerated={jest.fn()}
+        onFilesGenerated={jest.fn()}
         onGeneratingChange={onGeneratingChange}
       />
     );

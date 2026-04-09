@@ -2,17 +2,19 @@
 
 import { cn } from "@/lib/utils";
 import { AGENTS, AGENT_ORDER } from "@/lib/types";
-import type { AgentRole, AgentState } from "@/lib/types";
+import type { AgentRole, AgentState, EngineerProgress } from "@/lib/types";
 import { ThinkingIndicator } from "@/components/agent/thinking-indicator";
 
 interface AgentStatusBarProps {
   agentStates: Record<AgentRole, AgentState>;
   isGenerating: boolean;
+  engineerProgress?: EngineerProgress | null;
 }
 
 export function AgentStatusBar({
   agentStates,
   isGenerating,
+  engineerProgress,
 }: AgentStatusBarProps) {
   return (
     <div data-testid="agent-status-bar" className="border-b bg-white px-4 py-2 flex items-center gap-2">
@@ -45,6 +47,26 @@ export function AgentStatusBar({
               {isDone && <span>✓</span>}
               {isActive && <ThinkingIndicator color="white" />}
             </div>
+
+            {/* Engineer sub-progress */}
+            {role === "engineer" && isActive && engineerProgress && (
+              <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                <span>
+                  第 {engineerProgress.currentLayer}/{engineerProgress.totalLayers} 层
+                </span>
+                <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all"
+                    style={{
+                      width: `${(engineerProgress.completedFiles.length / engineerProgress.totalFiles) * 100}%`,
+                    }}
+                  />
+                </div>
+                <span className="text-gray-400">
+                  {engineerProgress.completedFiles.length}/{engineerProgress.totalFiles}
+                </span>
+              </div>
+            )}
 
             {index < AGENT_ORDER.length - 1 && (
               <span className="text-gray-300 text-xs">→</span>

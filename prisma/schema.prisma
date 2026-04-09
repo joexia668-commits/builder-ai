@@ -75,6 +75,7 @@ model Version {
   projectId     String
   versionNumber Int
   code          String
+  files         Json?
   description   String?
   agentMessages Json?
   createdAt     DateTime @default(now())

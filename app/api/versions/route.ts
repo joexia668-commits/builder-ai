@@ -27,10 +27,21 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { projectId, code, description } = body;
+  const { projectId, code, files, description } = body as {
+    projectId?: string;
+    code?: string;
+    files?: Record<string, string>;
+    description?: string;
+  };
 
-  if (!projectId || !code) {
-    return NextResponse.json({ error: "projectId and code are required" }, { status: 400 });
+  // Determine the effective code: from files["/App.js"] or direct code param
+  const effectiveCode = files?.["/App.js"] ?? code;
+
+  if (!projectId || !effectiveCode) {
+    return NextResponse.json(
+      { error: "projectId and (code or files with /App.js) are required" },
+      { status: 400 }
+    );
   }
 
   // Verify project belongs to user
@@ -47,7 +58,13 @@ export async function POST(req: Request) {
   const versionNumber = (lastVersion?.versionNumber ?? 0) + 1;
 
   const version = await prisma.version.create({
-    data: { projectId, code, description, versionNumber },
+    data: {
+      projectId,
+      code: effectiveCode,
+      ...(files ? { files } : {}),
+      description,
+      versionNumber,
+    },
   });
 
   // Update project updatedAt

@@ -1,5 +1,5 @@
-import { getSystemPrompt } from "@/lib/generate-prompts";
-import type { AgentRole } from "@/lib/types";
+import { getSystemPrompt, getMultiFileEngineerPrompt } from "@/lib/generate-prompts";
+import type { AgentRole, ScaffoldFile } from "@/lib/types";
 
 describe("getSystemPrompt", () => {
   const projectId = "test-project-123";
@@ -139,5 +139,97 @@ describe("getSystemPrompt", () => {
     const prompt = getSystemPrompt("architect", projectId);
     expect(prompt).toContain("lucide-react");
     expect(prompt).toContain("绝对禁止");
+  });
+
+  // GP-ARCH-JSON-01: architect prompt outputs structured JSON scaffold
+  it("GP-ARCH-JSON-01: architect 提示词要求输出 JSON 且包含 files/path/deps 字段", () => {
+    const prompt = getSystemPrompt("architect", projectId);
+    expect(prompt).toContain("JSON");
+    expect(prompt).toContain('"files"');
+    expect(prompt).toContain('"path"');
+    expect(prompt).toContain('"deps"');
+  });
+
+  // GP-ARCH-JSON-02: architect prompt specifies file count constraint 8-20
+  it("GP-ARCH-JSON-02: architect 提示词包含 8-20 文件数量约束", () => {
+    const prompt = getSystemPrompt("architect", projectId);
+    expect(prompt).toMatch(/8.*20/);
+  });
+
+  // GP-ARCH-JSON-03: architect prompt includes supabaseClient.js reference
+  it("GP-ARCH-JSON-03: architect 提示词包含 supabaseClient.js 引用", () => {
+    const prompt = getSystemPrompt("architect", projectId);
+    expect(prompt).toContain("supabaseClient.js");
+  });
+});
+
+describe("getMultiFileEngineerPrompt", () => {
+  const targetFiles: readonly ScaffoldFile[] = [
+    {
+      path: "/utils/helpers.js",
+      description: "Common utility functions",
+      exports: ["formatDate", "cn"],
+      deps: [],
+      hints: "Use Tailwind merge for cn",
+    },
+    {
+      path: "/components/TodoItem.js",
+      description: "Single todo item component",
+      exports: ["TodoItem"],
+      deps: ["/utils/helpers.js"],
+      hints: "Accept onToggle and onDelete callbacks",
+    },
+  ];
+
+  const completedFiles: Record<string, string> = {
+    "/utils/helpers.js": "export function formatDate(d) { return d.toLocaleDateString(); }\nexport function cn(...args) { return args.join(' '); }",
+  };
+
+  const input = {
+    projectId: "proj-456",
+    targetFiles,
+    sharedTypes: "type Todo = { id: string; text: string; done: boolean; }",
+    completedFiles,
+    designNotes: "Use a clean minimal design with indigo accent colors",
+  };
+
+  // GP-MFE-01: lists target files with paths and descriptions
+  it("GP-MFE-01: 列出目标文件的路径和描述", () => {
+    const prompt = getMultiFileEngineerPrompt(input);
+    expect(prompt).toContain("/utils/helpers.js");
+    expect(prompt).toContain("Common utility functions");
+    expect(prompt).toContain("/components/TodoItem.js");
+    expect(prompt).toContain("Single todo item component");
+  });
+
+  // GP-MFE-02: includes shared types
+  it("GP-MFE-02: 包含共享类型定义", () => {
+    const prompt = getMultiFileEngineerPrompt(input);
+    expect(prompt).toContain("type Todo = { id: string; text: string; done: boolean; }");
+  });
+
+  // GP-MFE-03: includes completed dependency code
+  it("GP-MFE-03: 包含已完成依赖文件的代码", () => {
+    const prompt = getMultiFileEngineerPrompt(input);
+    expect(prompt).toContain("export function formatDate");
+    expect(prompt).toContain("/utils/helpers.js");
+  });
+
+  // GP-MFE-04: specifies FILE separator format
+  it("GP-MFE-04: 指定 FILE 分隔符格式", () => {
+    const prompt = getMultiFileEngineerPrompt(input);
+    expect(prompt).toContain("// === FILE:");
+  });
+
+  // GP-MFE-05: includes package constraints
+  it("GP-MFE-05: 包含包限制（lucide-react）", () => {
+    const prompt = getMultiFileEngineerPrompt(input);
+    expect(prompt).toContain("lucide-react");
+  });
+
+  // GP-MFE-06: includes projectId for supabase
+  it("GP-MFE-06: 包含 projectId 用于 supabase appId", () => {
+    const prompt = getMultiFileEngineerPrompt(input);
+    expect(prompt).toContain("proj-456");
   });
 });
