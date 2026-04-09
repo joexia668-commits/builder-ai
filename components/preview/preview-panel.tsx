@@ -4,6 +4,7 @@ import { useState } from "react";
 import { PreviewFrame } from "@/components/preview/preview-frame";
 import { MultiFileEditor } from "@/components/preview/multi-file-editor";
 import { VersionTimeline } from "@/components/timeline/version-timeline";
+import { fetchAPI } from "@/lib/api-client";
 import type { ProjectVersion } from "@/lib/types";
 
 type Tab = "preview" | "code";
@@ -17,6 +18,7 @@ interface PreviewPanelProps {
   previewingVersion: ProjectVersion | null;
   onPreviewVersion: (version: ProjectVersion | null) => void;
   onVersionRestore: (newVersion: ProjectVersion) => void;
+  latestVersionId?: string;
 }
 
 export function PreviewPanel({
@@ -28,9 +30,32 @@ export function PreviewPanel({
   previewingVersion,
   onPreviewVersion,
   onVersionRestore,
+  latestVersionId,
 }: PreviewPanelProps) {
   const [tab, setTab] = useState<Tab>("preview");
+  const [isExporting, setIsExporting] = useState(false);
   const hasCode = Object.values(files).some((code) => code.length > 0);
+
+  async function handleExport() {
+    if (!latestVersionId) return;
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams({ projectId, versionId: latestVersionId });
+      const res = await fetchAPI(`/api/export?${params}`, { method: 'GET' });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${projectId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsExporting(false);
+    }
+  }
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-gray-100 min-w-0">
@@ -53,8 +78,18 @@ export function PreviewPanel({
           ))}
         </div>
 
-        <div className="flex items-center gap-1 text-xs text-gray-400">
-          <span>⚡ Sandpack</span>
+        <div className="flex items-center gap-2">
+          {hasCode && (
+            <button
+              data-testid="btn-export"
+              disabled={isGenerating || isExporting || !latestVersionId}
+              onClick={handleExport}
+              className="px-3 py-1 rounded text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {isExporting ? "导出中..." : "Export ↓"}
+            </button>
+          )}
+          <span className="text-xs text-gray-400">⚡ Sandpack</span>
         </div>
       </div>
 
@@ -85,7 +120,6 @@ export function PreviewPanel({
           <MultiFileEditor files={files} onFilesChange={onFilesChange} />
         )}
 
-        {/* Version timeline */}
         {versions.length > 0 && (
           <VersionTimeline
             versions={versions}

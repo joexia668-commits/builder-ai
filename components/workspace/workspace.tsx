@@ -133,6 +133,7 @@ export function Workspace({ project, allProjects }: WorkspaceProps) {
             previewingVersion={previewingVersion}
             onPreviewVersion={setPreviewingVersion}
             onVersionRestore={handleRestoreVersion}
+            latestVersionId={versions[versions.length - 1]?.id}
           />
         </div>
       </div>
