@@ -2,17 +2,17 @@
 
 import { useState } from "react";
 import { PreviewFrame } from "@/components/preview/preview-frame";
-import { CodeEditor } from "@/components/preview/code-editor";
+import { MultiFileEditor } from "@/components/preview/multi-file-editor";
 import { VersionTimeline } from "@/components/timeline/version-timeline";
 import type { ProjectVersion } from "@/lib/types";
 
 type Tab = "preview" | "code";
 
 interface PreviewPanelProps {
-  code: string;
+  files: Record<string, string>;
   projectId: string;
   isGenerating: boolean;
-  onCodeChange: (code: string) => void;
+  onFilesChange: (files: Record<string, string>) => void;
   versions: ProjectVersion[];
   previewingVersion: ProjectVersion | null;
   onPreviewVersion: (version: ProjectVersion | null) => void;
@@ -20,16 +20,17 @@ interface PreviewPanelProps {
 }
 
 export function PreviewPanel({
-  code,
+  files,
   projectId,
   isGenerating,
-  onCodeChange,
+  onFilesChange,
   versions,
   previewingVersion,
   onPreviewVersion,
   onVersionRestore,
 }: PreviewPanelProps) {
   const [tab, setTab] = useState<Tab>("preview");
+  const hasCode = Object.values(files).some((code) => code.length > 0);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-gray-100 min-w-0">
@@ -61,8 +62,8 @@ export function PreviewPanel({
       <div className="flex-1 overflow-hidden flex flex-col">
         {tab === "preview" ? (
           <div className="flex-1 overflow-hidden relative">
-            {code ? (
-              <PreviewFrame code={code} projectId={projectId} />
+            {hasCode ? (
+              <PreviewFrame files={files} projectId={projectId} />
             ) : (
               <div className="flex flex-col items-center justify-center h-full gap-3 bg-gray-50 text-center px-8">
                 <div className="text-5xl">🏗️</div>
@@ -81,7 +82,7 @@ export function PreviewPanel({
             )}
           </div>
         ) : (
-          <CodeEditor code={code} onChange={onCodeChange} />
+          <MultiFileEditor files={files} onFilesChange={onFilesChange} />
         )}
 
         {/* Version timeline */}
