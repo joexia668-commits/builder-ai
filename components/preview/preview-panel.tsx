@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { PreviewFrame } from "@/components/preview/preview-frame";
 import { MultiFileEditor } from "@/components/preview/multi-file-editor";
 import { VersionTimeline } from "@/components/timeline/version-timeline";
@@ -8,6 +8,7 @@ import { fetchAPI } from "@/lib/api-client";
 import type { ProjectVersion } from "@/lib/types";
 
 type Tab = "preview" | "code";
+type DeployState = "idle" | "building" | "ready" | "error";
 
 interface PreviewPanelProps {
   files: Record<string, string>;
@@ -34,7 +35,17 @@ export function PreviewPanel({
 }: PreviewPanelProps) {
   const [tab, setTab] = useState<Tab>("preview");
   const [isExporting, setIsExporting] = useState(false);
+  const [deployState, setDeployState] = useState<DeployState>("idle");
+  const [deployUrl, setDeployUrl] = useState<string | null>(null);
+  const deployPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasCode = Object.values(files).some((code) => code.length > 0);
+
+  // Clean up polling interval on unmount
+  useEffect(() => {
+    return () => {
+      if (deployPollRef.current) clearInterval(deployPollRef.current);
+    };
+  }, []);
 
   async function handleExport() {
     if (!latestVersionId) return;
@@ -54,6 +65,45 @@ export function PreviewPanel({
       URL.revokeObjectURL(url);
     } finally {
       setIsExporting(false);
+    }
+  }
+
+  async function handleDeploy() {
+    if (!latestVersionId) return;
+    setDeployState("building");
+    setDeployUrl(null);
+
+    try {
+      const res = await fetchAPI("/api/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, versionId: latestVersionId }),
+      });
+      if (!res.ok) throw new Error("Deploy failed");
+      const { deploymentId } = await res.json() as { deploymentId: string };
+
+      deployPollRef.current = setInterval(async () => {
+        try {
+          const pollRes = await fetchAPI(`/api/deploy/${deploymentId}`);
+          if (!pollRes.ok) return;
+          const { status, url } = await pollRes.json() as { status: string; url: string };
+
+          if (status === "ready") {
+            clearInterval(deployPollRef.current!);
+            deployPollRef.current = null;
+            setDeployState("ready");
+            setDeployUrl(url);
+          } else if (status === "error") {
+            clearInterval(deployPollRef.current!);
+            deployPollRef.current = null;
+            setDeployState("error");
+          }
+        } catch {
+          // network error during poll — keep retrying
+        }
+      }, 3000);
+    } catch {
+      setDeployState("error");
     }
   }
 
@@ -80,14 +130,47 @@ export function PreviewPanel({
 
         <div className="flex items-center gap-2">
           {hasCode && (
-            <button
-              data-testid="btn-export"
-              disabled={isGenerating || isExporting || !latestVersionId}
-              onClick={handleExport}
-              className="px-3 py-1 rounded text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {isExporting ? "导出中..." : "Export ↓"}
-            </button>
+            <>
+              <button
+                data-testid="btn-export"
+                disabled={isGenerating || isExporting || !latestVersionId}
+                onClick={handleExport}
+                className="px-3 py-1 rounded text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {isExporting ? "导出中..." : "Export ↓"}
+              </button>
+              <button
+                data-testid="btn-deploy"
+                disabled={isGenerating || deployState === "building" || !latestVersionId}
+                onClick={handleDeploy}
+                className={`px-3 py-1 rounded text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                  deployState === "ready"
+                    ? "bg-green-100 text-green-700 border border-green-200"
+                    : deployState === "error"
+                    ? "bg-red-100 text-red-700 border border-red-200"
+                    : "bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100"
+                }`}
+              >
+                {deployState === "building"
+                  ? "部署中..."
+                  : deployState === "ready"
+                  ? "已部署 ↗"
+                  : deployState === "error"
+                  ? "部署失败"
+                  : "Deploy ↗"}
+              </button>
+              {deployUrl && (
+                <a
+                  data-testid="deploy-url"
+                  href={deployUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-indigo-600 hover:underline truncate max-w-[160px]"
+                >
+                  {deployUrl.replace("https://", "")}
+                </a>
+              )}
+            </>
           )}
           <span className="text-xs text-gray-400">⚡ Sandpack</span>
         </div>

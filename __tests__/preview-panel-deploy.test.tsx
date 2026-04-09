@@ -93,3 +93,61 @@ describe('PreviewPanel export button', () => {
     jest.restoreAllMocks()
   })
 })
+
+describe('PreviewPanel deploy button', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  it('renders Deploy button when files exist', () => {
+    render(<PreviewPanel {...DEFAULT_PROPS} />)
+    expect(screen.getByTestId('btn-deploy')).toBeInTheDocument()
+  })
+
+  it('Deploy button is disabled when isGenerating', () => {
+    render(<PreviewPanel {...DEFAULT_PROPS} isGenerating={true} />)
+    expect(screen.getByTestId('btn-deploy')).toBeDisabled()
+  })
+
+  it('Deploy button is disabled when no latestVersionId', () => {
+    render(<PreviewPanel {...DEFAULT_PROPS} latestVersionId={undefined} />)
+    expect(screen.getByTestId('btn-deploy')).toBeDisabled()
+  })
+
+  it('shows building state after deploy click', async () => {
+    mockFetchAPI.mockResolvedValue({
+      ok: true,
+      json: async () => ({ deploymentId: 'dep_1', status: 'building', url: 'https://app.vercel.app' }),
+    })
+
+    render(<PreviewPanel {...DEFAULT_PROPS} />)
+    fireEvent.click(screen.getByTestId('btn-deploy'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('btn-deploy')).toBeDisabled()
+    )
+  })
+
+  it('shows deploy URL after successful deploy', async () => {
+    mockFetchAPI
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ deploymentId: 'dep_1', status: 'building', url: 'https://app.vercel.app' }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({ status: 'ready', url: 'https://app.vercel.app' }),
+      })
+
+    jest.useFakeTimers()
+    render(<PreviewPanel {...DEFAULT_PROPS} />)
+    fireEvent.click(screen.getByTestId('btn-deploy'))
+
+    await waitFor(() => expect(mockFetchAPI).toHaveBeenCalledTimes(1))
+    jest.advanceTimersByTime(3100)
+    await waitFor(() => expect(mockFetchAPI).toHaveBeenCalledTimes(2))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('deploy-url')).toBeInTheDocument()
+    )
+    jest.useRealTimers()
+  })
+})
