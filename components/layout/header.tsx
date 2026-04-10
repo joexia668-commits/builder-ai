@@ -63,9 +63,9 @@ export function Header() {
 
   return (
     <>
-      <header className="h-12 border-b bg-white flex items-center justify-between px-4 shrink-0 z-10">
+      <header className="h-14 border-b bg-white flex items-center justify-between px-6 shrink-0 z-10">
         <Link href="/" className="flex items-center gap-2">
-          <span className="text-lg font-bold text-gray-900">
+          <span className="text-lg font-bold text-[#030712] tracking-[-0.4px]">
             Builder<span className="text-indigo-600">AI</span>
           </span>
         </Link>
@@ -77,12 +77,12 @@ export function Header() {
                 <Image
                   src={session.user.image}
                   alt={session.user.name ?? "User"}
-                  width={28}
-                  height={28}
+                  width={30}
+                  height={30}
                   className="rounded-full"
                 />
               ) : (
-                <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-medium text-indigo-700">
+                <div className="w-[30px] h-[30px] rounded-full bg-indigo-100 flex items-center justify-center text-xs font-medium text-indigo-700">
                   {session.user.name?.[0]?.toUpperCase() ?? "U"}
                 </div>
               )}
