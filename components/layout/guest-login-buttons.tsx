@@ -56,7 +56,7 @@ export function GuestLoginButtons() {
           variant="outline"
           onClick={handleRestoreGuest}
           disabled={isLoading}
-          className="w-full h-[40px] rounded-[10px] border-[1.5px] border-[#e5e7eb] hover:border-[#d1d5db] transition-colors"
+          className="w-full h-[40px] rounded-[10px] border-[1.5px] border-border hover:border-border/80 transition-colors"
         >
           Continue as Guest
         </Button>
@@ -65,7 +65,7 @@ export function GuestLoginButtons() {
         variant="ghost"
         onClick={handleNewGuest}
         disabled={isLoading}
-        className="w-full text-[#9ca3af] hover:text-[#6b7280]"
+        className="w-full text-muted-foreground hover:text-foreground"
       >
         Try as Guest
       </Button>
