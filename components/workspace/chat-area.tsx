@@ -156,13 +156,17 @@ export function ChatArea({
             code?: string;
             files?: Record<string, string>;
             error?: string;
+            errorCode?: import("@/lib/types").ErrorCode;
           };
           if (event.type === "files_complete" && event.files) {
             layerResult = event.files;
           } else if (event.type === "code_complete" && event.code) {
             layerResult = { "/App.js": event.code };
           } else if (event.type === "error") {
-            throw new Error(event.error ?? "Stream error");
+            throw Object.assign(
+              new Error(event.error ?? "Stream error"),
+              { errorCode: event.errorCode ?? "unknown" }
+            );
           }
         } catch (parseErr) {
           if (parseErr instanceof SyntaxError) continue;
@@ -274,7 +278,7 @@ export function ChatArea({
             const data = line.slice(6).trim();
             if (!data || data === "[DONE]") continue;
             try {
-              const event = JSON.parse(data) as { type: string; content?: string; code?: string; files?: Record<string, string>; error?: string };
+              const event = JSON.parse(data) as { type: string; content?: string; code?: string; files?: Record<string, string>; error?: string; errorCode?: import("@/lib/types").ErrorCode };
               if (event.type === "chunk") {
                 directOutput += event.content ?? "";
                 updateAgentState("engineer", { output: directOutput });
@@ -286,7 +290,10 @@ export function ChatArea({
                 directOutput = "";
                 updateAgentState("engineer", { output: "" });
               } else if (event.type === "error") {
-                throw new Error(event.error ?? "Stream error");
+                throw Object.assign(
+                  new Error(event.error ?? "Stream error"),
+                  { errorCode: event.errorCode ?? "unknown" }
+                );
               }
             } catch (parseErr) {
               if (parseErr instanceof SyntaxError) continue;
@@ -554,7 +561,7 @@ export function ChatArea({
             if (!data || data === "[DONE]") continue;
 
             try {
-              const event = JSON.parse(data) as { type: string; content?: string; code?: string; error?: string };
+              const event = JSON.parse(data) as { type: string; content?: string; code?: string; error?: string; errorCode?: import("@/lib/types").ErrorCode };
               if (event.type === "chunk") {
                 agentOutput += event.content ?? "";
                 updateAgentState(agentRole, { output: agentOutput });
@@ -564,7 +571,10 @@ export function ChatArea({
                 agentOutput = "";
                 updateAgentState(agentRole, { output: "" });
               } else if (event.type === "error") {
-                throw new Error(event.error ?? "Stream error");
+                throw Object.assign(
+                  new Error(event.error ?? "Stream error"),
+                  { errorCode: event.errorCode ?? "unknown" }
+                );
               }
             } catch (parseErr) {
               if (parseErr instanceof SyntaxError) continue;
