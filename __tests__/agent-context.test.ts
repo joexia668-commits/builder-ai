@@ -1,4 +1,9 @@
-import { buildEngineerContext, buildEngineerContextFromStructured } from "@/lib/agent-context";
+import {
+  buildEngineerContext,
+  buildEngineerContextFromStructured,
+  buildDirectEngineerContext,
+  buildPmIterationContext,
+} from "@/lib/agent-context";
 import type { PmOutput } from "@/lib/types";
 
 describe("buildEngineerContext", () => {
@@ -136,6 +141,138 @@ describe("buildEngineerContextFromStructured", () => {
       modules: pm.modules,
     };
     const result = buildEngineerContextFromStructured(userPrompt, pmNoData, archOutput);
+    expect(result).not.toContain("[数据模型]");
+  });
+});
+
+// --- New tests for buildEngineerContext with currentFiles ---
+
+describe("buildEngineerContext — with currentFiles", () => {
+  const userPrompt = "帮我做一个待办事项应用";
+  const pmOutput = "## PRD\n核心功能";
+  const archOutput = "## 技术方案";
+  const files = { "/App.js": "export default function App() { return <div/> }" };
+
+  it("includes EXISTING FILE marker and file content when currentFiles provided", () => {
+    const result = buildEngineerContext(userPrompt, pmOutput, archOutput, files);
+    expect(result).toContain("EXISTING FILE: /App.js");
+    expect(result).toContain("export default function App()");
+  });
+
+  it("omits EXISTING FILE section when currentFiles is empty object", () => {
+    const result = buildEngineerContext(userPrompt, pmOutput, archOutput, {});
+    expect(result).not.toContain("EXISTING FILE");
+  });
+
+  it("omits EXISTING FILE section when currentFiles not provided", () => {
+    const result = buildEngineerContext(userPrompt, pmOutput, archOutput);
+    expect(result).not.toContain("EXISTING FILE");
+  });
+
+  it("no regression — existing sections still present with currentFiles", () => {
+    const result = buildEngineerContext(userPrompt, pmOutput, archOutput, files);
+    expect(result).toContain("用户原始需求");
+    expect(result).toContain(userPrompt);
+    expect(result).toContain(pmOutput);
+    expect(result).toContain(archOutput);
+  });
+});
+
+describe("buildEngineerContextFromStructured — with currentFiles", () => {
+  const userPrompt = "加个搜索功能";
+  const archOutput = "## 技术方案";
+  const pm: PmOutput = {
+    intent: "待办事项应用",
+    features: ["添加任务"],
+    persistence: "localStorage",
+    modules: ["TaskList"],
+  };
+  const files = { "/App.js": "export default function App() {}" };
+
+  it("includes file content when currentFiles provided", () => {
+    const result = buildEngineerContextFromStructured(userPrompt, pm, archOutput, files);
+    expect(result).toContain("EXISTING FILE: /App.js");
+  });
+
+  it("omits file section when currentFiles not provided", () => {
+    const result = buildEngineerContextFromStructured(userPrompt, pm, archOutput);
+    expect(result).not.toContain("EXISTING FILE");
+  });
+});
+
+describe("buildDirectEngineerContext", () => {
+  const prompt = "按钮点击没有反应";
+  const files = {
+    "/App.js": "export default function App() { return <button>click</button> }",
+  };
+
+  it("includes user prompt labeled as 用户反馈", () => {
+    const result = buildDirectEngineerContext(prompt, files);
+    expect(result).toContain("用户反馈");
+    expect(result).toContain(prompt);
+  });
+
+  it("includes existing file content with EXISTING FILE marker", () => {
+    const result = buildDirectEngineerContext(prompt, files);
+    expect(result).toContain("EXISTING FILE: /App.js");
+    expect(result).toContain("export default function App()");
+  });
+
+  it("instructs minimal change scope", () => {
+    const result = buildDirectEngineerContext(prompt, files);
+    expect(result).toContain("最小化改动");
+  });
+
+  it("includes all files when multiple files present", () => {
+    const multiFiles = {
+      "/App.js": "export default function App() {}",
+      "/components/Button.js": "export function Button() {}",
+    };
+    const result = buildDirectEngineerContext(prompt, multiFiles);
+    expect(result).toContain("EXISTING FILE: /App.js");
+    expect(result).toContain("EXISTING FILE: /components/Button.js");
+  });
+});
+
+describe("buildPmIterationContext", () => {
+  const pm: PmOutput = {
+    intent: "待办事项应用",
+    features: ["添加任务", "删除任务"],
+    persistence: "localStorage",
+    modules: ["TaskList", "TaskInput"],
+    dataModel: ["id", "text", "done"],
+  };
+
+  it("includes existing feature list", () => {
+    const result = buildPmIterationContext(pm);
+    expect(result).toContain("添加任务");
+    expect(result).toContain("删除任务");
+    expect(result).toContain("TaskList");
+  });
+
+  it("instructs not to redesign existing features", () => {
+    const result = buildPmIterationContext(pm);
+    expect(result).toContain("不要重新设计");
+  });
+
+  it("includes intent", () => {
+    const result = buildPmIterationContext(pm);
+    expect(result).toContain("待办事项应用");
+  });
+
+  it("includes dataModel when present", () => {
+    const result = buildPmIterationContext(pm);
+    expect(result).toContain("id");
+  });
+
+  it("omits dataModel section when not present", () => {
+    const pmNoData: PmOutput = {
+      intent: pm.intent,
+      features: pm.features,
+      persistence: pm.persistence,
+      modules: pm.modules,
+    };
+    const result = buildPmIterationContext(pmNoData);
     expect(result).not.toContain("[数据模型]");
   });
 });

@@ -8,13 +8,25 @@ import type { PmOutput } from "@/lib/types";
 export function buildEngineerContext(
   userPrompt: string,
   pmOutput: string,
-  archOutput: string
+  archOutput: string,
+  currentFiles?: Record<string, string>
 ): string {
-  return [
+  const sections = [
     `用户原始需求：\n${userPrompt}`,
     `PM 需求文档（PRD）：\n${pmOutput}`,
     `架构师技术方案：\n${archOutput}`,
-  ].join("\n\n");
+  ];
+
+  if (currentFiles && Object.keys(currentFiles).length > 0) {
+    const filesSection = Object.entries(currentFiles)
+      .map(([path, code]) => `// === EXISTING FILE: ${path} ===\n${code}`)
+      .join("\n\n");
+    sections.push(
+      `当前版本代码（请在此基础上修改，保留已有功能逻辑）：\n${filesSection}`
+    );
+  }
+
+  return sections.join("\n\n");
 }
 
 /**
@@ -24,9 +36,10 @@ export function buildEngineerContext(
 export function buildEngineerContextFromStructured(
   userPrompt: string,
   pm: PmOutput,
-  archOutput: string
+  archOutput: string,
+  currentFiles?: Record<string, string>
 ): string {
-  const lines = [
+  const sections = [
     `用户原始需求：\n${userPrompt}`,
     [
       `[意图]: ${pm.intent}`,
@@ -39,5 +52,54 @@ export function buildEngineerContextFromStructured(
     ].join("\n"),
     `架构师技术方案：\n${archOutput}`,
   ];
-  return lines.join("\n\n");
+
+  if (currentFiles && Object.keys(currentFiles).length > 0) {
+    const filesSection = Object.entries(currentFiles)
+      .map(([path, code]) => `// === EXISTING FILE: ${path} ===\n${code}`)
+      .join("\n\n");
+    sections.push(
+      `当前版本代码（请在此基础上修改，保留已有功能逻辑）：\n${filesSection}`
+    );
+  }
+
+  return sections.join("\n\n");
+}
+
+/**
+ * Builds Engineer context for the direct bug-fix / style-change path.
+ * Skips PM and Architect — sends V1 code directly with user feedback.
+ */
+export function buildDirectEngineerContext(
+  userPrompt: string,
+  currentFiles: Record<string, string>
+): string {
+  const filesSection = Object.entries(currentFiles)
+    .map(([path, code]) => `// === EXISTING FILE: ${path} ===\n${code}`)
+    .join("\n\n");
+
+  return [
+    `用户反馈：${userPrompt}`,
+    `当前版本代码（请定向修复/调整，最小化改动范围，保留其余功能不变）：\n${filesSection}`,
+  ].join("\n\n");
+}
+
+/**
+ * Builds supplementary context injected into PM when iterating on an existing app.
+ * PM sees a structured summary of what already exists so it generates a delta PRD,
+ * not a full-rebuild PRD.
+ */
+export function buildPmIterationContext(pm: PmOutput): string {
+  const lines = [
+    `当前应用已有以下功能（请在此基础上分析增量需求，不要重新设计已有功能）：`,
+    `[意图]: ${pm.intent}`,
+    `[功能]: ${pm.features.join(" / ")}`,
+    `[持久化]: ${pm.persistence}`,
+    `[模块]: ${pm.modules.join(" / ")}`,
+  ];
+
+  if (pm.dataModel && pm.dataModel.length > 0) {
+    lines.push(`[数据模型]: ${pm.dataModel.join(" / ")}`);
+  }
+
+  return lines.join("\n");
 }
