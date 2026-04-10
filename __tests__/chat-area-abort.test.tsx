@@ -52,7 +52,7 @@ jest.mock("@/components/workspace/chat-input", () => ({
         </button>
         {isGenerating && onStop && (
           <button data-testid="stop-btn" onClick={onStop}>
-            停止生成
+            停止
           </button>
         )}
       </div>

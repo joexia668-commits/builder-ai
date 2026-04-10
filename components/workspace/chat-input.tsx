@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { ModelSelector } from "@/components/workspace/model-selector";
 
 interface ChatInputProps {
@@ -44,9 +42,9 @@ export function ChatInput({
   }
 
   return (
-    <div className="border-t p-3 bg-white">
+    <div className="border-t border-[#f3f4f6] px-4 py-3 bg-white">
       {selectedModel !== undefined && onModelChange && (
-        <div className="mb-2 flex items-center gap-1 text-xs text-gray-500">
+        <div className="mb-2 flex items-center gap-1 text-xs text-[#6b7280]">
           <span>模型：</span>
           <ModelSelector
             value={selectedModel}
@@ -56,8 +54,9 @@ export function ChatInput({
           />
         </div>
       )}
-      <div className="flex gap-2 items-end">
-        <Textarea
+
+      <div className="flex items-end gap-2 bg-[#f9fafb] border-[1.5px] border-[#e5e7eb] rounded-xl px-3 py-2.5 transition-all duration-150 focus-within:border-[#a5b4fc] focus-within:bg-white">
+        <textarea
           ref={textareaRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -71,25 +70,38 @@ export function ChatInput({
           }
           disabled={disabled}
           rows={2}
-          className="resize-none text-sm"
+          className="flex-1 bg-transparent border-none outline-none resize-none text-sm text-[#111827] placeholder:text-[#9ca3af] font-sans leading-relaxed"
         />
+
         {isGenerating && onStop ? (
-          <Button
+          <button
             data-testid="stop-btn"
             onClick={onStop}
-            variant="outline"
-            className="shrink-0 border-red-300 text-red-600 hover:bg-red-50"
+            className="shrink-0 h-[30px] px-3 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 text-xs font-medium transition-all duration-150"
           >
-            停止生成
-          </Button>
+            停止
+          </button>
         ) : (
-          <Button
+          <button
             onClick={handleSubmit}
             disabled={!value.trim() || disabled}
-            className="shrink-0"
+            className="shrink-0 w-[30px] h-[30px] rounded-lg bg-[#4f46e5] hover:bg-[#4338ca] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-150"
+            aria-label="发送"
           >
-            {disabled ? "生成中..." : "发送"}
-          </Button>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          </button>
         )}
       </div>
     </div>
