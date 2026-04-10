@@ -111,16 +111,16 @@ export function PreviewPanel({
     <div className="flex-1 flex flex-col overflow-hidden bg-gray-100 min-w-0">
       {/* Toolbar */}
       <div className="border-b bg-white px-3 py-2 flex items-center justify-between gap-2 shrink-0">
-        <div className="flex gap-1">
+        <div className="flex gap-[1px] bg-[#f3f4f6] p-[2px] rounded-lg">
           {(["preview", "code"] as Tab[]).map((t) => (
             <button
               key={t}
               data-testid={`tab-${t}`}
               onClick={() => setTab(t)}
-              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-all duration-150 ${
                 tab === t
-                  ? "bg-indigo-100 text-indigo-700"
-                  : "text-gray-500 hover:bg-gray-100"
+                  ? "bg-white text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
+                  : "text-[#6b7280] hover:text-[#374151]"
               }`}
             >
               {t === "preview" ? "预览" : "代码"}
@@ -135,7 +135,7 @@ export function PreviewPanel({
                 data-testid="btn-export"
                 disabled={isGenerating || isExporting || !latestVersionId}
                 onClick={handleExport}
-                className="px-3 py-1 rounded text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="h-[28px] px-[10px] rounded-md text-[11px] font-medium border border-[#e5e7eb] bg-white text-[#374151] hover:border-[#c7d2fe] hover:bg-[#fafafa] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150"
               >
                 {isExporting ? "导出中..." : "Export ↓"}
               </button>
@@ -143,12 +143,12 @@ export function PreviewPanel({
                 data-testid="btn-deploy"
                 disabled={isGenerating || deployState === "building" || !latestVersionId}
                 onClick={handleDeploy}
-                className={`px-3 py-1 rounded text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                className={`h-[28px] px-[10px] rounded-md text-[11px] font-medium transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
                   deployState === "ready"
                     ? "bg-green-100 text-green-700 border border-green-200"
                     : deployState === "error"
                     ? "bg-red-100 text-red-700 border border-red-200"
-                    : "bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100"
+                    : "bg-[#4f46e5] text-white hover:bg-[#4338ca]"
                 }`}
               >
                 {deployState === "building"
@@ -183,10 +183,12 @@ export function PreviewPanel({
             {hasCode ? (
               <PreviewFrame files={files} projectId={projectId} />
             ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-3 bg-gray-50 text-center px-8">
-                <div className="text-5xl">🏗️</div>
-                <p className="font-semibold text-gray-700">BuilderAI</p>
-                <p className="text-sm text-gray-400">等待生成 — 在左侧输入需求，AI 将为你生成应用</p>
+              <div className="flex flex-col items-center justify-center h-full gap-3 bg-[#f9fafb] text-center px-8">
+                <div className="w-[44px] h-[44px] rounded-[12px] bg-gradient-to-br from-[#eef2ff] to-[#ede9fe] border border-[#e0e7ff] flex items-center justify-center text-xl">
+                  🏗️
+                </div>
+                <p className="font-semibold text-[#374151]">BuilderAI</p>
+                <p className="text-sm text-[#9ca3af]">等待生成 — 在左侧输入需求，AI 将为你生成应用</p>
               </div>
             )}
             {isGenerating && (
