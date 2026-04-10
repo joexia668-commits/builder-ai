@@ -18,6 +18,8 @@ import {
   buildPmIterationContext,
 } from "@/lib/agent-context";
 import { classifyIntent } from "@/lib/intent-classifier";
+import { ERROR_DISPLAY } from "@/lib/error-codes";
+import type { ErrorCode } from "@/lib/types";
 import type {
   Project,
   ProjectMessage,
@@ -41,6 +43,7 @@ interface ChatAreaProps {
   currentFiles?: Record<string, string>;
   lastPmOutput?: PmOutput | null;
   onPmOutputGenerated?: (pm: PmOutput) => void;
+  onNewProject?: () => void;
 }
 
 const TRANSITION_MESSAGES: Partial<Record<AgentRole, string>> = {
@@ -63,13 +66,17 @@ export function ChatArea({
   currentFiles = {},
   lastPmOutput,
   onPmOutputGenerated,
+  onNewProject,
 }: ChatAreaProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const persistModelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<{
+    code: ErrorCode;
+    raw: string;
+  } | null>(null);
   const [lastPrompt, setLastPrompt] = useState<string>("");
   const [transitionText, setTransitionText] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>(
@@ -649,7 +656,11 @@ export function ChatArea({
       if (!isAbort) {
         console.error("Generation error:", err);
         const message = err instanceof Error ? err.message : "未知错误";
-        setGenerationError(`生成失败：${message}`);
+        const errorCode: ErrorCode =
+          err !== null && typeof err === "object" && "errorCode" in err
+            ? (err as { errorCode: ErrorCode }).errorCode
+            : "unknown";
+        setGenerationError({ code: errorCode, raw: message });
       }
       if (isAbort) {
         setAgentStates({
@@ -713,22 +724,33 @@ export function ChatArea({
             );
           })}
 
-        {generationError && (
-          <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg mx-2">
-            <span className="text-red-500 text-lg shrink-0">⚠️</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-red-700 font-medium">出错了</p>
-              <p className="text-xs text-red-500 mt-0.5 truncate">{generationError}</p>
+        {generationError && (() => {
+          const display = ERROR_DISPLAY[generationError.code];
+          return (
+            <div className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg mx-2">
+              <span className="text-red-500 text-lg shrink-0">{display.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-red-700 font-medium">{display.title}</p>
+                <p className="text-xs text-red-500 mt-0.5">{display.description}</p>
+                {display.action?.type === "new_project" && (
+                  <button
+                    onClick={onNewProject}
+                    className="mt-1.5 text-xs underline text-red-700 hover:text-red-900"
+                  >
+                    {display.action.label}
+                  </button>
+                )}
+              </div>
+              <button
+                data-testid="retry-btn"
+                onClick={() => handleSubmit(lastPrompt)}
+                className="shrink-0 text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+              >
+                重试
+              </button>
             </div>
-            <button
-              data-testid="retry-btn"
-              onClick={() => handleSubmit(lastPrompt)}
-              className="shrink-0 text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-            >
-              重试
-            </button>
-          </div>
-        )}
+          );
+        })()}
 
         {transitionText && (
           <div className="flex items-center gap-2 text-sm text-gray-400 italic px-2 py-1">

@@ -144,4 +144,56 @@ describe("ChatArea error state", () => {
       expect((global.fetch as jest.Mock).mock.calls.length).toBeGreaterThan(callCountBefore);
     });
   });
+
+  it("shows typed title for rate_limited error", async () => {
+    const rateLimitErr = Object.assign(
+      new Error("HTTP 429 Too Many Requests"),
+      { errorCode: "rate_limited" as const }
+    );
+    (global.fetch as jest.Mock).mockRejectedValue(rateLimitErr);
+
+    render(
+      <ChatArea
+        project={project}
+        messages={[]}
+        onMessagesChange={jest.fn()}
+        onFilesGenerated={jest.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("submit-btn"));
+
+    await waitFor(() => {
+      expect(screen.getByText("请求太频繁")).toBeInTheDocument();
+    });
+  });
+
+  it("shows new_project button for context_overflow error", async () => {
+    const overflowErr = Object.assign(
+      new Error("context length exceeded"),
+      { errorCode: "context_overflow" as const }
+    );
+    (global.fetch as jest.Mock).mockRejectedValue(overflowErr);
+
+    const onNewProject = jest.fn();
+
+    render(
+      <ChatArea
+        project={project}
+        messages={[]}
+        onMessagesChange={jest.fn()}
+        onFilesGenerated={jest.fn()}
+        onNewProject={onNewProject}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("submit-btn"));
+
+    await waitFor(() => {
+      expect(screen.getByText("新建项目")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("新建项目"));
+    expect(onNewProject).toHaveBeenCalledTimes(1);
+  });
 });
