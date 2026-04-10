@@ -5,7 +5,7 @@
  * This utility handles the fallback case where fences slip through.
  */
 
-import { extractReactCode } from "@/lib/extract-code";
+import { extractReactCode, extractMultiFileCode, findMissingLocalImports } from "@/lib/extract-code";
 
 describe("extractReactCode", () => {
   it("extracts code from ```jsx fences", () => {
@@ -132,9 +132,6 @@ describe("extractReactCode", () => {
     expect(result).toContain("export default");
   });
 });
-
-import { extractMultiFileCode } from "@/lib/extract-code";
-import { findMissingLocalImports } from "@/lib/extract-code";
 
 describe("findMissingLocalImports", () => {
   it("returns empty array when all local imports are present", () => {

@@ -176,7 +176,6 @@ export function extractMultiFileCode(
   return result;
 }
 
-const LOCAL_IMPORT_RE = /from\s+['"](\/.+?)['"]/g;
 const WHITELISTED_LOCAL = new Set(["/supabaseClient.js"]);
 
 /**
@@ -185,15 +184,13 @@ const WHITELISTED_LOCAL = new Set(["/supabaseClient.js"]);
  * /supabaseClient.js is always whitelisted (it is injected by buildSandpackConfig).
  */
 export function findMissingLocalImports(
-  files: Record<string, string>
+  files: Readonly<Record<string, string>>
 ): string[] {
   const presentPaths = new Set(Object.keys(files));
   const missing = new Set<string>();
 
   for (const code of Object.values(files)) {
-    LOCAL_IMPORT_RE.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = LOCAL_IMPORT_RE.exec(code)) !== null) {
+    for (const match of Array.from(code.matchAll(/from\s+['"](\/.+?)['"]/g))) {
       const importedPath = match[1];
       if (!WHITELISTED_LOCAL.has(importedPath) && !presentPaths.has(importedPath)) {
         missing.add(importedPath);
