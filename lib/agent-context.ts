@@ -80,6 +80,7 @@ export function buildDirectEngineerContext(
   return [
     `用户反馈：${userPrompt}`,
     `当前版本代码（请定向修复/调整，最小化改动范围，保留其余功能不变）：\n${filesSection}`,
+    `输出要求（严格遵守）：输出单个完整可运行的 React 组件，使用 export default function App() {}，将所有组件内联合并到一个文件，不得输出多文件格式，不得使用 \`\`\` 代码围栏。`,
   ].join("\n\n");
 }
 
