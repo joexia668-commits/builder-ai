@@ -11,7 +11,16 @@ function parseJson(raw: string): unknown {
   try {
     return JSON.parse(trimmed);
   } catch {
-    return JSON.parse(stripFences(trimmed));
+    try {
+      return JSON.parse(stripFences(trimmed));
+    } catch {
+      // Try to extract JSON object from mixed content (e.g., "<thinking>...</thinking>\n{...}")
+      const jsonMatch = trimmed.match(/(\{[\s\S]*\})/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[1]);
+      }
+      throw new Error("No valid JSON found");
+    }
   }
 }
 
@@ -100,4 +109,13 @@ export function extractScaffold(raw: string): ScaffoldData | null {
   } catch {
     return null;
   }
+}
+
+export function extractScaffoldFromTwoPhase(raw: string): ScaffoldData | null {
+  const outputMatch = raw.match(/<output>\s*([\s\S]*?)\s*<\/output>/i);
+  if (outputMatch) {
+    const result = extractScaffold(outputMatch[1]);
+    if (result) return result;
+  }
+  return extractScaffold(raw);
 }

@@ -1,5 +1,5 @@
-import { extractPmOutput, extractArchOutput } from "@/lib/extract-json";
-import type { PmOutput, ArchOutput } from "@/lib/types";
+import { extractPmOutput, extractArchOutput, extractScaffold, extractScaffoldFromTwoPhase } from "@/lib/extract-json";
+import type { PmOutput, ArchOutput, ScaffoldData } from "@/lib/types";
 
 const VALID_PM: PmOutput = {
   intent: "一个极简的待办事项应用",
@@ -154,9 +154,6 @@ describe("extractArchOutput", () => {
   });
 });
 
-import { extractScaffold } from "@/lib/extract-json";
-import type { ScaffoldData } from "@/lib/types";
-
 const VALID_SCAFFOLD: ScaffoldData = {
   files: [
     {
@@ -215,5 +212,61 @@ describe("extractScaffold", () => {
   it("returns null when files is not an array", () => {
     const bad = { files: "not array", sharedTypes: "", designNotes: "" };
     expect(extractScaffold(JSON.stringify(bad))).toBeNull();
+  });
+});
+
+describe("extractScaffoldFromTwoPhase", () => {
+  const VALID_SCAFFOLD_TP: ScaffoldData = {
+    files: [
+      { path: "/App.js", description: "Entry", exports: ["default"], deps: [], hints: "main" },
+    ],
+    sharedTypes: "type Id = string",
+    designNotes: "minimal app",
+  };
+
+  // EJ-TP-01: valid two-phase format — returns scaffold from <output> block
+  it("EJ-TP-01: 正确解析双阶段输出的 <output> 块", () => {
+    const raw = `<thinking>
+分析文件依赖关系...
+</thinking>
+
+<output>
+${JSON.stringify(VALID_SCAFFOLD_TP)}
+</output>`;
+    const result = extractScaffoldFromTwoPhase(raw);
+    expect(result).not.toBeNull();
+    expect(result?.files[0].path).toBe("/App.js");
+  });
+
+  // EJ-TP-02: bare JSON (legacy format) — falls back to extractScaffold
+  it("EJ-TP-02: 无 <output> 标签时回退到 extractScaffold 兼容解析", () => {
+    const raw = JSON.stringify(VALID_SCAFFOLD_TP);
+    const result = extractScaffoldFromTwoPhase(raw);
+    expect(result).not.toBeNull();
+    expect(result?.sharedTypes).toBe("type Id = string");
+  });
+
+  // EJ-TP-03: <output> block contains malformed JSON — falls back to bare JSON
+  it("EJ-TP-03: <output> 块内 JSON 非法时回退到 bare JSON 解析", () => {
+    const raw = `<thinking>...</thinking>\n<output>broken json</output>\n${JSON.stringify(VALID_SCAFFOLD_TP)}`;
+    const result = extractScaffoldFromTwoPhase(raw);
+    expect(result).not.toBeNull();
+  });
+
+  // EJ-TP-04: completely invalid input — returns null
+  it("EJ-TP-04: 完全非法输入返回 null", () => {
+    expect(extractScaffoldFromTwoPhase("not json at all")).toBeNull();
+  });
+
+  // EJ-TP-05: empty string — returns null
+  it("EJ-TP-05: 空字符串返回 null", () => {
+    expect(extractScaffoldFromTwoPhase("")).toBeNull();
+  });
+
+  // EJ-TP-06: <output> block with fenced JSON inside
+  it("EJ-TP-06: <output> 块内包含 ```json 围栏时也能解析", () => {
+    const raw = `<thinking>x</thinking>\n<output>\n\`\`\`json\n${JSON.stringify(VALID_SCAFFOLD_TP)}\n\`\`\`\n</output>`;
+    const result = extractScaffoldFromTwoPhase(raw);
+    expect(result).not.toBeNull();
   });
 });
