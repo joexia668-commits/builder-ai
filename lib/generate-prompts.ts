@@ -101,7 +101,7 @@ function extractExportSignatures(code: string): string {
   const exportLines = code
     .split("\n")
     .filter((line) => /^export\s/.test(line))
-    .map((line) => line.replace(/\s*\{[^}]*\}.*$/, "").replace(/\s*=.*$/, "").trimEnd());
+    .map((line) => line.replace(/\s*\{[^}]*\}.*$/, " {}").replace(/\s*=.*$/, "").trimEnd());
   return exportLines.length > 0 ? exportLines.join("\n") : "// (no exports found)";
 }
 
@@ -121,9 +121,7 @@ export function snipCompletedFiles(
     if (directDeps.has(path)) {
       result[path] = code;
     } else {
-      result[path] =
-        `// === FILE: ${path} (snipped — exports only) ===\n` +
-        extractExportSignatures(code);
+      result[path] = extractExportSignatures(code);
     }
   }
   return result;
@@ -148,10 +146,18 @@ export function getMultiFileEngineerPrompt(input: MultiFileEngineerPromptInput):
     .join("\n");
 
   const snipped = snipCompletedFiles(completedFiles, targetFiles);
+  const directDepPaths = new Set(targetFiles.flatMap((f) => f.deps));
   const completedFileEntries = Object.entries(snipped);
   const completedSection =
     completedFileEntries.length > 0
-      ? `已完成的依赖文件代码（直接引用，不要重复实现）：\n${completedFileEntries.map(([path, code]) => `// === FILE: ${path} ===\n${code}`).join("\n\n")}`
+      ? `已完成的依赖文件代码（直接引用，不要重复实现）：\n${completedFileEntries
+          .map(([path, code]) => {
+            const header = directDepPaths.has(path)
+              ? `// === FILE: ${path} ===`
+              : `// === FILE: ${path} (snipped — exports only) ===`;
+            return `${header}\n${code}`;
+          })
+          .join("\n\n")}`
       : "";
 
   return `你是一位全栈工程师。根据架构师的文件脚手架，实现以下目标文件。

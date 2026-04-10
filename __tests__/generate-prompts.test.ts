@@ -253,26 +253,26 @@ describe("snipCompletedFiles", () => {
     expect(result["/A.js"]).toBe(completedFiles["/A.js"]);
   });
 
-  // GP-SC-02: non-dep gets snipped header + export lines only
+  // GP-SC-02: non-dep gets export lines only (no header — header is added in getMultiFileEngineerPrompt)
   it("GP-SC-02: 非依赖文件被压缩为 exports only", () => {
     const result = snipCompletedFiles(completedFiles, [FILE_A]);
-    expect(result["/util.js"]).toContain("snipped — exports only");
+    expect(result["/util.js"]).not.toContain("snipped — exports only");
     expect(result["/util.js"]).toContain("export const add");
     expect(result["/util.js"]).toContain("export default function noop");
     expect(result["/util.js"]).not.toContain("const x = 1");
   });
 
-  // GP-SC-03: file with no exports gets placeholder comment
+  // GP-SC-03: file with no exports gets placeholder comment (header added in prompt, not here)
   it("GP-SC-03: 无导出的文件包含 placeholder 注释", () => {
     const noExports = { "/styles.js": "const x = 1;" };
     const result = snipCompletedFiles(noExports, [FILE_A]);
-    expect(result["/styles.js"]).toContain("snipped — exports only");
+    expect(result["/styles.js"]).not.toContain("snipped — exports only");
     expect(result["/styles.js"]).toContain("(no exports found)");
   });
 
-  // GP-SC-04: non-dep file gets snipped (shorter) vs when it IS a dep (full code)
-  it("GP-SC-04: 非依赖文件被 snip 后 prompt 比完整注入时更短", () => {
-    const bigCode = "export function Big() {}\n".repeat(50);
+  // GP-SC-04: non-dep file prompt includes snipped header; full dep prompt does not
+  it("GP-SC-04: 非依赖文件在 prompt 中包含 snipped 标注", () => {
+    const bigCode = "export function Big() {}\nconst internal = 1;\n".repeat(50);
     const completed = { "/A.js": bigCode };
 
     const targetNoDep: ScaffoldFile = {
@@ -291,6 +291,8 @@ describe("snipCompletedFiles", () => {
       sharedTypes: "", completedFiles: completed, designNotes: "",
     });
 
+    expect(promptSnipped).toContain("snipped — exports only");
+    expect(promptFull).not.toContain("snipped — exports only");
     expect(promptSnipped.length).toBeLessThan(promptFull.length);
   });
 });
