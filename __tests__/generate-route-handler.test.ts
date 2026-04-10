@@ -16,7 +16,7 @@ jest.mock("@/lib/extract-code", () => ({
   extractMultiFileCode: jest.fn(),
 }));
 
-import { createHandler } from "@/app/api/generate/route";
+import { createHandler } from "@/app/api/generate/handler";
 import { extractReactCode, extractMultiFileCode } from "@/lib/extract-code";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
