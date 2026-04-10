@@ -69,6 +69,7 @@ export async function POST(req: Request) {
       { status: 202 }
     )
   } catch (error: unknown) {
+    console.error('[/api/deploy]', error)
     const message = error instanceof Error ? error.message : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
