@@ -73,9 +73,10 @@ export async function POST(req: NextRequest) {
           send(controller, { type: "chunk", content: text });
         };
 
-        // PM and architect agents output structured JSON — enable API-level JSON mode.
+        // PM outputs bare JSON — enable JSON mode. Architect uses two-phase <thinking>/<output>
+        // format, so JSON mode must be OFF to allow the thinking block to appear.
         const completionOptions: CompletionOptions =
-          agent === "pm" || agent === "architect" ? { jsonMode: true } : {};
+          agent === "pm" ? { jsonMode: true } : {};
 
         try {
           await provider.streamCompletion(messages, onChunk, completionOptions);
