@@ -30,6 +30,7 @@ export function ConversationSidebar({
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
 
   async function handleCreate() {
     if (!name.trim()) return;
@@ -47,6 +48,24 @@ export function ConversationSidebar({
       toast.error("创建失败，请重试");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRename(id: string, newName: string) {
+    setRenamingId(id);
+    try {
+      await fetchAPI(`/api/projects/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: newName }),
+      });
+      setProjects((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, name: newName } : p))
+      );
+      toast.success("项目已重命名");
+    } catch {
+      toast.error("重命名失败，请重试");
+    } finally {
+      setRenamingId(null);
     }
   }
 
@@ -91,6 +110,8 @@ export function ConversationSidebar({
             isActive={project.id === currentProjectId}
             onDelete={handleDelete}
             isDeleting={deletingId === project.id}
+            onRename={handleRename}
+            isRenaming={renamingId === project.id}
           />
         ))}
       </nav>

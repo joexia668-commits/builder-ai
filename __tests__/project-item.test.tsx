@@ -1,13 +1,16 @@
 /**
- * TDD unit tests for ProjectItem component (EPIC 6)
+ * TDD unit tests for ProjectItem component
  *
  * PI-01: renders project name and date
  * PI-02: links to /project/:id
  * PI-03: applies active styles when isActive=true
- * PI-04: delete button exists in DOM (hidden via CSS, not conditional)
- * PI-05: clicking delete button opens confirmation dialog
- * PI-06: cancel in dialog closes it without calling onDelete
- * PI-07: confirm in dialog calls onDelete with project id
+ * PI-04: more-options dropdown trigger is present in DOM
+ * PI-05: opening dropdown and clicking delete opens confirmation dialog
+ * PI-06: cancel in delete dialog closes it without calling onDelete
+ * PI-07: confirm in delete dialog calls onDelete with project id
+ * PI-08: opening dropdown and clicking rename opens rename dialog
+ * PI-09: cancel in rename dialog closes it without calling onRename
+ * PI-10: confirm in rename dialog calls onRename with id and new name
  */
 
 import React from "react";
@@ -39,67 +42,91 @@ const project = {
 };
 
 describe("ProjectItem", () => {
-  const onDelete = jest.fn();
+  let onDelete: jest.Mock;
+  let onRename: jest.Mock;
 
   beforeEach(() => {
-    onDelete.mockClear();
+    onDelete = jest.fn();
+    onRename = jest.fn();
   });
 
-  // PI-01: content
   it("PI-01a: renders project name", () => {
-    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} />);
+    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} onRename={onRename} />);
     expect(screen.getByText("My Sidebar App")).toBeInTheDocument();
   });
 
-  // PI-02: link
   it("PI-02: links to /project/:id", () => {
-    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} />);
+    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} onRename={onRename} />);
     expect(screen.getByRole("link")).toHaveAttribute("href", "/project/proj-1");
   });
 
-  // PI-03: active styles
   it("PI-03a: active item has data-active attribute", () => {
     const { container } = render(
-      <ProjectItem project={project} isActive={true} onDelete={onDelete} />
+      <ProjectItem project={project} isActive={true} onDelete={onDelete} onRename={onRename} />
     );
     expect(container.querySelector("[data-active='true']")).toBeInTheDocument();
   });
 
   it("PI-03b: inactive item does not have data-active='true'", () => {
     const { container } = render(
-      <ProjectItem project={project} isActive={false} onDelete={onDelete} />
+      <ProjectItem project={project} isActive={false} onDelete={onDelete} onRename={onRename} />
     );
     expect(container.querySelector("[data-active='true']")).not.toBeInTheDocument();
   });
 
-  // PI-04: delete button in DOM
-  it("PI-04: delete button is present in DOM", () => {
-    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} />);
-    expect(screen.getByRole("button", { name: /删除/ })).toBeInTheDocument();
+  it("PI-04: more-options dropdown trigger is present in DOM", () => {
+    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} onRename={onRename} />);
+    expect(screen.getByRole("button", { name: "My Sidebar App 操作" })).toBeInTheDocument();
   });
 
-  // PI-05: delete button opens dialog
-  it("PI-05: clicking delete button opens confirmation dialog", () => {
-    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} />);
-    fireEvent.click(screen.getByRole("button", { name: /删除/ }));
+  it("PI-05: opening dropdown and clicking delete opens confirmation dialog", () => {
+    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} onRename={onRename} />);
+    fireEvent.click(screen.getByRole("button", { name: "My Sidebar App 操作" }));
+    fireEvent.click(screen.getByText("删除项目"));
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     expect(screen.getByText(/「My Sidebar App」/)).toBeInTheDocument();
   });
 
-  // PI-06: cancel closes dialog
-  it("PI-06: cancel closes dialog without calling onDelete", () => {
-    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} />);
-    fireEvent.click(screen.getByRole("button", { name: /删除/ }));
+  it("PI-06: cancel closes delete dialog without calling onDelete", () => {
+    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} onRename={onRename} />);
+    fireEvent.click(screen.getByRole("button", { name: "My Sidebar App 操作" }));
+    fireEvent.click(screen.getByText("删除项目"));
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(onDelete).not.toHaveBeenCalled();
   });
 
-  // PI-07: confirm calls onDelete
   it("PI-07: confirm calls onDelete with project id", () => {
-    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} />);
-    fireEvent.click(screen.getByRole("button", { name: /删除/ }));
+    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} onRename={onRename} />);
+    fireEvent.click(screen.getByRole("button", { name: "My Sidebar App 操作" }));
+    fireEvent.click(screen.getByText("删除项目"));
     fireEvent.click(screen.getByRole("button", { name: "删除" }));
     expect(onDelete).toHaveBeenCalledWith("proj-1");
+  });
+
+  it("PI-08: opening dropdown and clicking rename opens rename dialog", () => {
+    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} onRename={onRename} />);
+    fireEvent.click(screen.getByRole("button", { name: "My Sidebar App 操作" }));
+    fireEvent.click(screen.getByText("重命名"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveValue("My Sidebar App");
+  });
+
+  it("PI-09: cancel closes rename dialog without calling onRename", () => {
+    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} onRename={onRename} />);
+    fireEvent.click(screen.getByRole("button", { name: "My Sidebar App 操作" }));
+    fireEvent.click(screen.getByText("重命名"));
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it("PI-10: confirm calls onRename with project id and new name", () => {
+    render(<ProjectItem project={project} isActive={false} onDelete={onDelete} onRename={onRename} />);
+    fireEvent.click(screen.getByRole("button", { name: "My Sidebar App 操作" }));
+    fireEvent.click(screen.getByText("重命名"));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Renamed Sidebar App" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(onRename).toHaveBeenCalledWith("proj-1", "Renamed Sidebar App");
   });
 });

@@ -1,7 +1,7 @@
 /**
  * TDD tests for ConversationSidebar delete functionality (EPIC 6)
  *
- * CSD-01: each project item has a delete button
+ * CSD-01: each project item has a dropdown trigger button
  * CSD-02: successful delete removes item from sidebar list
  * CSD-03: deleting current project navigates to /
  * CSD-04: failed delete shows toast.error and item remains
@@ -39,7 +39,7 @@ jest.mock("@/lib/api-client", () => ({
 
 const mockToastError = jest.fn();
 jest.mock("sonner", () => ({
-  toast: { error: (...a: unknown[]) => mockToastError(...a) },
+  toast: { error: (...a: unknown[]) => mockToastError(...a), success: jest.fn() },
 }));
 
 import { ConversationSidebar } from "@/components/sidebar/conversation-sidebar";
@@ -55,20 +55,20 @@ describe("ConversationSidebar — delete", () => {
   });
 
   async function openDeleteDialog(name: string) {
-    const cards = screen.getAllByTestId("project-item");
-    const card = cards.find((c) => c.textContent?.includes(name));
-    const btn = card?.querySelector("[aria-label^='删除']") as HTMLElement;
-    fireEvent.click(btn!);
-    // wait for React to render the dialog
+    // Click the dropdown trigger for the named project
+    fireEvent.click(screen.getByRole("button", { name: `${name} 操作` }));
+    // Click the "删除项目" menu item
+    fireEvent.click(screen.getByText("删除项目"));
+    // Wait for the confirmation dialog button to appear
     await waitFor(() => screen.getByRole("button", { name: "删除" }));
     fireEvent.click(screen.getByRole("button", { name: "删除" }));
   }
 
-  // CSD-01: delete buttons present
-  it("CSD-01: each project item has a delete button", () => {
+  // CSD-01: dropdown trigger buttons present
+  it("CSD-01: each project item has a dropdown trigger button", () => {
     render(<ConversationSidebar currentProjectId="p1" projects={projects} />);
-    const deleteBtns = screen.getAllByRole("button", { name: /^删除/ });
-    expect(deleteBtns).toHaveLength(2);
+    const triggerBtns = screen.getAllByRole("button", { name: /操作/ });
+    expect(triggerBtns).toHaveLength(2);
   });
 
   // CSD-02: successful delete removes item
@@ -101,11 +101,8 @@ describe("ConversationSidebar — delete", () => {
     mockFetchAPI.mockRejectedValue(new Error("fail"));
     render(<ConversationSidebar currentProjectId="p1" projects={projects} />);
 
-    // open and click confirm
-    const cards = screen.getAllByTestId("project-item");
-    const card = cards.find((c) => c.textContent?.includes("Alpha"));
-    const btn = card?.querySelector("[aria-label^='删除']") as HTMLElement;
-    fireEvent.click(btn!);
+    fireEvent.click(screen.getByRole("button", { name: "Alpha 操作" }));
+    fireEvent.click(screen.getByText("删除项目"));
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "删除" }));

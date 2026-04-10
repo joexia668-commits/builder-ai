@@ -2,9 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DeleteProjectDialog } from "@/components/ui/delete-project-dialog";
+import { RenameProjectDialog } from "@/components/ui/rename-project-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export interface ProjectItemData {
   id: string;
@@ -17,6 +24,8 @@ interface ProjectItemProps {
   readonly isActive: boolean;
   readonly onDelete: (id: string) => void;
   readonly isDeleting?: boolean;
+  readonly onRename: (id: string, newName: string) => void;
+  readonly isRenaming?: boolean;
 }
 
 function relativeTime(date: Date): string {
@@ -34,22 +43,20 @@ export function ProjectItem({
   isActive,
   onDelete,
   isDeleting = false,
+  onRename,
+  isRenaming = false,
 }: ProjectItemProps) {
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showRename, setShowRename] = useState(false);
 
-  function handleDeleteClick(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setShowConfirm(true);
-  }
-
-  function handleConfirm() {
+  function handleConfirmDelete() {
     onDelete(project.id);
     setShowConfirm(false);
   }
 
-  function handleCancel() {
-    setShowConfirm(false);
+  function handleConfirmRename(newName: string) {
+    onRename(project.id, newName);
+    setShowRename(false);
   }
 
   return (
@@ -70,24 +77,17 @@ export function ProjectItem({
               : "hover:bg-[#f9fafb]"
           )}
         >
-          {/* Left-bar active indicator (desktop only) */}
           {isActive && (
             <span className="hidden lg:block absolute left-0 top-1 bottom-1 w-[3px] bg-[#4f46e5] rounded-r-sm" />
           )}
-
-          {/* Tablet: first letter circle */}
           <span
             className={cn(
               "lg:hidden w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0",
-              isActive
-                ? "bg-indigo-200 text-indigo-700"
-                : "bg-gray-200 text-gray-600"
+              isActive ? "bg-indigo-200 text-indigo-700" : "bg-gray-200 text-gray-600"
             )}
           >
             {project.name.charAt(0).toUpperCase()}
           </span>
-
-          {/* Desktop: dot + name + time */}
           <span
             className={cn(
               "hidden lg:block w-1.5 h-1.5 rounded-full flex-shrink-0",
@@ -109,26 +109,50 @@ export function ProjectItem({
           </div>
         </Link>
 
-        <button
-          onClick={handleDeleteClick}
-          aria-label={`删除 ${project.name}`}
-          className={cn(
-            "absolute right-1 top-1/2 -translate-y-1/2",
-            "w-6 h-6 flex items-center justify-center rounded",
-            "text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors",
-            "opacity-0 group-hover/item:opacity-100 focus:opacity-100"
-          )}
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover/item:opacity-100 focus-within:opacity-100">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              aria-label={`${project.name} 操作`}
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem
+                className="cursor-pointer"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowRename(true); }}
+              >
+                <Pencil className="w-4 h-4 mr-2" />
+                重命名
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowConfirm(true); }}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                删除项目
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {showConfirm && (
         <DeleteProjectDialog
           projectName={project.name}
-          onConfirm={handleConfirm}
-          onCancel={handleCancel}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setShowConfirm(false)}
           isLoading={isDeleting}
+        />
+      )}
+
+      {showRename && (
+        <RenameProjectDialog
+          projectName={project.name}
+          onConfirm={handleConfirmRename}
+          onCancel={() => setShowRename(false)}
+          isLoading={isRenaming}
         />
       )}
     </>
