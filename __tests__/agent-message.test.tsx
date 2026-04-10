@@ -50,22 +50,18 @@ describe("AgentMessage", () => {
     expect(outerDiv.className).toContain("justify-end");
   });
 
-  // UT-11: PM messages have indigo border (#6366f1)
-  // Note: jsdom normalizes hex colors to rgb() in style attributes
-  it("UT-11: PM 消息气泡带有 indigo 颜色左边框 (#6366f1 → rgb(99,102,241))", () => {
+  // UT-11: PM messages have indigo background (bg-[#eef2ff])
+  it("UT-11: PM 消息气泡带有 indigo 背景色 (bg-[#eef2ff])", () => {
     const { container } = render(<AgentMessage message={pmMessage} />);
-    // jsdom renders style="border-left-color: rgb(99, 102, 241);" (kebab-case, rgb format)
-    const bubble = container.querySelector("[style*='border-left-color']") as HTMLElement;
+    const bubble = container.querySelector(".bg-\\[\\#eef2ff\\]") as HTMLElement;
     expect(bubble).not.toBeNull();
-    expect(bubble.style.borderLeftColor).toBe("rgb(99, 102, 241)");
   });
 
-  // UT-12: Architect messages have amber border (#f59e0b)
-  it("UT-12: Architect 消息气泡带有 amber 颜色左边框 (#f59e0b → rgb(245,158,11))", () => {
+  // UT-12: Architect messages have violet background (bg-[#f5f3ff])
+  it("UT-12: Architect 消息气泡带有 violet 背景色 (bg-[#f5f3ff])", () => {
     const { container } = render(<AgentMessage message={archMessage} />);
-    const bubble = container.querySelector("[style*='border-left-color']") as HTMLElement;
+    const bubble = container.querySelector(".bg-\\[\\#f5f3ff\\]") as HTMLElement;
     expect(bubble).not.toBeNull();
-    expect(bubble.style.borderLeftColor).toBe("rgb(245, 158, 11)");
   });
 
   // UT-13: isThinking=true shows ThinkingIndicator, not content
@@ -99,18 +95,17 @@ describe("AgentMessage", () => {
     expect(screen.getByText(pmMessage.content)).toBeInTheDocument();
   });
 
-  it("PM avatar 边框使用 indigo 颜色 (#6366f1 → rgb(99,102,241))", () => {
+  it("PM avatar 使用 indigo 背景色 (#eef2ff)", () => {
     const { container } = render(<AgentMessage message={pmMessage} />);
-    // Avatar has style={{ borderColor: agent.color }}
-    const avatar = container.querySelector("[style*='border-color']") as HTMLElement;
+    // Avatar has style={{ background: getAvatarBg(role) }}
+    const avatar = container.querySelector("[style*='background']") as HTMLElement;
     expect(avatar).not.toBeNull();
-    expect(avatar.style.borderColor).toBe("rgb(99, 102, 241)");
+    expect(avatar.style.background).toBe("rgb(238, 242, 255)");
   });
 
-  it("engineer 消息带有 emerald 颜色左边框 (#10b981 → rgb(16,185,129))", () => {
+  it("engineer 消息带有 emerald 背景色 (bg-[#f0fdf4])", () => {
     const { container } = render(<AgentMessage message={engineerMessage} />);
-    const bubble = container.querySelector("[style*='border-left-color']") as HTMLElement;
+    const bubble = container.querySelector(".bg-\\[\\#f0fdf4\\]") as HTMLElement;
     expect(bubble).not.toBeNull();
-    expect(bubble.style.borderLeftColor).toBe("rgb(16, 185, 129)");
   });
 });
