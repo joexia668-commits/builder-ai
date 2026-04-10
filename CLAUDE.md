@@ -62,7 +62,8 @@ ChatArea
               POST /api/generate  { agent: "engineer", targetFile, scaffold,
                                     existingFiles?: currentFiles (feature_add only) }
                     └── files_complete / code_complete event
-      └── allFiles merged  →  buildSandpackConfig(files, projectId)  →  Sandpack
+      └── allFiles merged  →  findMissingLocalImports()  →  stub 注入 / missing_imports 错误
+                           →  buildSandpackConfig(files, projectId)  →  Sandpack
                            →  POST /api/versions  { code, files }  (immutable snapshot)
 ```
 
@@ -150,11 +151,13 @@ Versions are **immutable INSERT-only**. New versions store `files: Record<string
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
 | `lib/model-registry.ts` | `MODEL_REGISTRY`, `getModelById`, `getAvailableModels`, `isValidModelId` |
 | `lib/extract-json.ts` | `extractPmOutput`, `extractScaffold`, `extractScaffoldFromTwoPhase` — JSON parsing; two-phase extracts from `<output>` block with fallback |
-| `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` (Snip compression) + `getMultiFileEngineerPrompt()` |
+| `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` (Snip compression) + `getMultiFileEngineerPrompt()` (includes `【本地文件导入限制】` rule) |
+| `lib/extract-code.ts` | Multi-layer code extraction strategy + `findMissingLocalImports(files)` — detects hallucinated local imports across all generated files |
 | `lib/engineer-circuit.ts` | `retryWithBackoff<T>` + `runLayerWithFallback()` — full-layer retry → per-file fallback → circuit breaker |
 | `lib/topo-sort.ts` | `topologicalSort` — groups scaffold files into dependency layers for parallel generation |
 | `lib/version-files.ts` | `getVersionFiles` — backward-compatible reader for `code` / `files` version fields |
-| `components/workspace/chat-area.tsx` | Core orchestration — intent classification, direct path, PM → Architect → layered Engineer, abort, progress state |
+| `lib/sandpack-config.ts` | `buildSandpackConfig(input: string \| Record<string,string>, projectId)` — calls `findMissingLocalImports` and injects Proxy stubs for missing paths |
+| `lib/error-codes.ts` | `ErrorCode` union + `ERROR_DISPLAY` map — user-facing error titles and descriptions (includes `missing_imports`) |
+| `components/workspace/chat-area.tsx` | Core orchestration — intent classification, direct path, PM → Architect → layered Engineer, abort, progress state, missing-import error |
 | `app/api/generate/route.ts` | The only Edge route — auth, model validation, provider selection, SSE stream |
 | `components/workspace/workspace.tsx` | Holds `currentFiles` + `lastPmOutput` state; wires to ChatArea and preview |
-| `lib/sandpack-config.ts` | `buildSandpackConfig(input: string \| Record<string,string>, projectId)` |
