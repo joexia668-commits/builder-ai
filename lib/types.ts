@@ -97,6 +97,14 @@ export type SSEEventType =
   | "done"
   | "error";
 
+export type ErrorCode =
+  | "rate_limited"
+  | "context_overflow"
+  | "provider_unavailable"
+  | "generation_timeout"
+  | "parse_failed"
+  | "unknown";
+
 export interface SSEEvent {
   type: SSEEventType;
   content?: string;
@@ -104,6 +112,7 @@ export interface SSEEvent {
   files?: Record<string, string>;
   messageId?: string;
   error?: string;
+  errorCode?: ErrorCode;
 }
 
 // Structured output schemas for PM and Architect agents
