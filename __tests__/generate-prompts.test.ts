@@ -161,6 +161,14 @@ describe("getSystemPrompt", () => {
     const prompt = getSystemPrompt("architect", projectId);
     expect(prompt).toContain("supabaseClient.js");
   });
+
+  // GP-ARCH-NAMING-01: architect prompt must require functional suffix on component exports
+  it("GP-ARCH-NAMING-01: architect 提示词要求组件导出名加功能性后缀，避免与 lucide-react 图标重名", () => {
+    const prompt = getSystemPrompt("architect", projectId);
+    expect(prompt).toContain("Panel");
+    expect(prompt).toContain("CalculatorPanel");
+    expect(prompt).toContain("lucide-react 图标重名");
+  });
 });
 
 describe("getMultiFileEngineerPrompt", () => {
@@ -231,6 +239,19 @@ describe("getMultiFileEngineerPrompt", () => {
   it("GP-MFE-06: 包含 projectId 用于 supabase appId", () => {
     const prompt = getMultiFileEngineerPrompt(input);
     expect(prompt).toContain("proj-456");
+  });
+
+  // GP-MFE-ALIAS-01: multi-file engineer prompt must instruct aliasing when icon and component share a name
+  it("GP-MFE-ALIAS-01: getMultiFileEngineerPrompt 包含同名 lucide 图标别名规则", () => {
+    const prompt = getMultiFileEngineerPrompt({
+      projectId: "proj-alias",
+      targetFiles: [],
+      sharedTypes: "",
+      completedFiles: {},
+      designNotes: "",
+    });
+    expect(prompt).toContain("CalculatorIcon");
+    expect(prompt).toContain("别名");
   });
 });
 
