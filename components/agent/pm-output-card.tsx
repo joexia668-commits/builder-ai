@@ -19,14 +19,14 @@ const PERSISTENCE_COLORS: Record<PmOutput["persistence"], string> = {
 export function PmOutputCard({ data }: PmOutputCardProps) {
   return (
     <div className="space-y-3 text-sm" data-testid="pm-output-card">
-      <p className="font-semibold text-gray-800">{data.intent}</p>
+      <p className="text-[13px] font-semibold text-[#3730a3] tracking-[-0.1px]">{data.intent}</p>
 
       <div>
         <p className="text-xs font-medium text-gray-500 mb-1">核心功能</p>
         <ul className="space-y-0.5">
           {data.features.map((f, i) => (
             <li key={i} className="flex items-start gap-1.5 text-gray-700">
-              <span className="mt-1 w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+              <span className="text-[#a5b4fc] text-[10px] mt-[3px] shrink-0">✦</span>
               {f}
             </li>
           ))}
