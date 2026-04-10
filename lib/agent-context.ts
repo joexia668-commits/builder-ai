@@ -89,6 +89,41 @@ export function buildDirectEngineerContext(
 }
 
 /**
+ * Builds Engineer context for the direct bug-fix / style-change path on multi-file V1 apps.
+ * Instructs the LLM to output ALL files in FILE separator format so extractMultiFileCode
+ * can parse the result. Even unchanged files must be re-emitted verbatim.
+ */
+export function buildDirectMultiFileEngineerContext(
+  userPrompt: string,
+  currentFiles: Record<string, string>
+): string {
+  const fileList = Object.keys(currentFiles)
+    .map((p) => `- ${p}`)
+    .join("\n");
+
+  const filesSection = Object.entries(currentFiles)
+    .map(([path, code]) => `<source file="${path}">\n${code}\n</source>`)
+    .join("\n\n");
+
+  return `你是一位全栈工程师。根据用户反馈，修复以下多文件 React 应用的问题。
+
+用户反馈：${userPrompt}
+
+当前应用文件列表：
+${fileList}
+
+当前版本代码（逐文件参考）：
+${filesSection}
+
+输出格式（严格遵守）：
+- 每个文件以分隔符开头：// === FILE: /path ===
+- 紧接着是该文件的完整代码
+- 必须输出全部文件（未修改的文件原样复制，不得省略）
+- 不得包含 \`\`\`jsx、\`\`\`js、\`\`\` 等 Markdown 代码围栏
+- 不输出任何解释性文字，代码即全部内容`;
+}
+
+/**
  * Builds supplementary context injected into PM when iterating on an existing app.
  * PM sees a structured summary of what already exists so it generates a delta PRD,
  * not a full-rebuild PRD.

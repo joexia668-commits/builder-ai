@@ -14,6 +14,7 @@ import {
   buildEngineerContext,
   buildEngineerContextFromStructured,
   buildDirectEngineerContext,
+  buildDirectMultiFileEngineerContext,
   buildPmIterationContext,
 } from "@/lib/agent-context";
 import { classifyIntent } from "@/lib/intent-classifier";
@@ -223,7 +224,20 @@ export function ChatArea({
       // Direct path: bug_fix / style_change skips PM + Architect
       if (intent === "bug_fix" || intent === "style_change") {
         updateAgentState("engineer", { status: "thinking", output: "" });
-        const directContext = buildDirectEngineerContext(prompt, currentFiles);
+
+        // Multi-file V1: use FILE separator format so the server can parse with
+        // extractMultiFileCode. Single-file V1: keep the merged single-file path.
+        const isMultiFileV1 = Object.keys(currentFiles).length > 1;
+        const v1Paths = Object.keys(currentFiles);
+        const directContext = isMultiFileV1
+          ? buildDirectMultiFileEngineerContext(prompt, currentFiles)
+          : buildDirectEngineerContext(prompt, currentFiles);
+
+        // For multi-file: tell the server which paths to expect so it routes to
+        // extractMultiFileCode instead of extractReactCode.
+        const targetFilesPayload = isMultiFileV1
+          ? v1Paths.map((p) => ({ path: p, description: "", exports: [], deps: [], hints: "" }))
+          : undefined;
 
         const directResponse = await fetch("/api/generate", {
           method: "POST",
@@ -234,6 +248,7 @@ export function ChatArea({
             agent: "engineer",
             context: directContext,
             modelId: selectedModel,
+            ...(targetFilesPayload ? { targetFiles: targetFilesPayload } : {}),
           }),
           signal: abortController.signal,
         });
@@ -251,6 +266,7 @@ export function ChatArea({
         let directOutput = "";
         let directSseBuffer = "";
         let directCode = "";
+        let directFiles: Record<string, string> | null = null;
 
         const processDirectLines = (lines: string[]) => {
           for (const line of lines) {
@@ -258,12 +274,14 @@ export function ChatArea({
             const data = line.slice(6).trim();
             if (!data || data === "[DONE]") continue;
             try {
-              const event = JSON.parse(data) as { type: string; content?: string; code?: string; error?: string };
+              const event = JSON.parse(data) as { type: string; content?: string; code?: string; files?: Record<string, string>; error?: string };
               if (event.type === "chunk") {
                 directOutput += event.content ?? "";
                 updateAgentState("engineer", { output: directOutput });
               } else if (event.type === "code_complete") {
                 if (event.code) directCode = event.code;
+              } else if (event.type === "files_complete" && event.files) {
+                directFiles = event.files;
               } else if (event.type === "reset") {
                 directOutput = "";
                 updateAgentState("engineer", { output: "" });
@@ -306,7 +324,20 @@ export function ChatArea({
           agentColor: AGENTS.engineer.color,
         });
 
-        if (directCode) {
+        if (isMultiFileV1 && directFiles) {
+          // Merge: LLM re-emits all files; output overrides V1 for each path.
+          const mergedFiles = { ...currentFiles, ...(directFiles as Record<string, string>) };
+          const res = await fetchAPI("/api/versions", {
+            method: "POST",
+            body: JSON.stringify({
+              projectId: project.id,
+              files: mergedFiles,
+              description: prompt.slice(0, 80),
+            }),
+          });
+          const version = await res.json();
+          onFilesGenerated(mergedFiles, version);
+        } else if (directCode) {
           const res = await fetchAPI("/api/versions", {
             method: "POST",
             body: JSON.stringify({
