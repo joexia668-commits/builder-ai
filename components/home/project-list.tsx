@@ -97,64 +97,44 @@ export function ProjectList({ projects: initialProjects }: ProjectListProps) {
         </Button>
       </div>
 
-      {/* Tab filter */}
-      {projects.length > 0 && (
-        <div className="flex gap-[2px] bg-[#f3f4f6] p-[2px] rounded-lg w-fit mb-5">
-          {(["all", "recent"] as TabFilter[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-all duration-150 ${
-                tab === t
-                  ? "bg-white text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
-                  : "text-[#6b7280] hover:text-[#374151]"
-              }`}
-            >
-              {t === "all" ? "全部" : "最近 7 天"}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {projects.length === 0 ? (
-        <div className="text-center py-20">
-          <div className="w-[52px] h-[52px] rounded-[14px] bg-gradient-to-br from-[#eef2ff] to-[#ede9fe] border border-[#e0e7ff] inline-flex items-center justify-center text-2xl mb-4">
-            🚀
-          </div>
-          <p className="text-base font-semibold text-[#111827] mb-1">开始构建你的第一个 AI 应用</p>
-          <p className="text-[13px] text-[#6b7280] leading-relaxed mb-5">
-            告诉 AI 你想要什么，多个 Agent 协作为你生成
-          </p>
-          <Button
-            onClick={() => setOpen(true)}
-            className="h-[34px] px-[14px] rounded-lg"
-          >
-            创建第一个项目
-          </Button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {visibleProjects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              onDelete={handleDelete}
-              isDeleting={deletingId === project.id}
-            />
-          ))}
-          {/* Dashed new-project card */}
+      {/* Tab filter — always visible */}
+      <div className="flex gap-[2px] bg-[#f3f4f6] p-[2px] rounded-lg w-fit mb-5">
+        {(["all", "recent"] as TabFilter[]).map((t) => (
           <button
-            onClick={() => setOpen(true)}
-            data-testid="btn-new-project-card"
-            className="border-[1.5px] border-dashed border-[#d1d5db] rounded-xl min-h-[108px] flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-150 hover:border-[#a5b4fc] hover:bg-[#f5f3ff]"
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all duration-150 ${
+              tab === t
+                ? "bg-white text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
+                : "text-[#6b7280] hover:text-[#374151]"
+            }`}
           >
-            <div className="w-7 h-7 rounded-[8px] bg-[#eef2ff] flex items-center justify-center text-[#4f46e5] text-base font-medium">
-              +
-            </div>
-            <span className="text-[13px] font-medium text-[#6b7280]">新建项目</span>
+            {t === "all" ? "全部" : "最近 7 天"}
           </button>
-        </div>
-      )}
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {visibleProjects.map((project) => (
+          <ProjectCard
+            key={project.id}
+            project={project}
+            onDelete={handleDelete}
+            isDeleting={deletingId === project.id}
+          />
+        ))}
+        {/* Dashed new-project card — always visible */}
+        <button
+          onClick={() => setOpen(true)}
+          data-testid="btn-new-project-card"
+          className="border-[1.5px] border-dashed border-[#d1d5db] rounded-xl min-h-[108px] flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-150 hover:border-[#a5b4fc] hover:bg-[#f5f3ff]"
+        >
+          <div className="w-7 h-7 rounded-[8px] bg-[#eef2ff] flex items-center justify-center text-[#4f46e5] text-base font-medium">
+            +
+          </div>
+          <span className="text-[13px] font-medium text-[#6b7280]">新建项目</span>
+        </button>
+      </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
