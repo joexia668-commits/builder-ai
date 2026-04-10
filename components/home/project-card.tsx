@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { MoreHorizontal, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,27 +49,27 @@ export function ProjectCard({ project, onDelete, isDeleting = false }: ProjectCa
       <div className="relative group" data-testid="project-card" data-projectid={project.id}>
         <Link
           href={`/project/${project.id}`}
-          className="bg-white rounded-xl border hover:border-indigo-300 hover:shadow-sm transition-all p-4 block"
+          className="bg-white rounded-xl border border-[#e5e7eb] shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:border-[#a5b4fc] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-150 p-4 block"
         >
           <div className="flex items-start justify-between mb-2">
-            <h3 className="font-semibold text-gray-900 truncate pr-8">
+            <h3 className="font-semibold text-[#030712] truncate pr-8 tracking-[-0.2px]">
               {project.name}
             </h3>
-            <Badge variant="secondary" className="shrink-0 text-xs">
+            <span className="shrink-0 bg-[#eef2ff] text-[#4f46e5] text-[11px] font-medium rounded-full px-[7px] py-[2px]">
               v{project._count.versions}
-            </Badge>
+            </span>
           </div>
           {project.description && (
-            <p className="text-sm text-gray-500 truncate mb-2">
+            <p className="text-[12px] text-[#6b7280] truncate mb-2">
               {project.description}
             </p>
           )}
           {project.messages[0] && (
-            <p className="text-xs text-gray-400 truncate">
+            <p className="text-[11px] text-[#9ca3af] truncate mb-3">
               {project.messages[0].content.slice(0, 60)}...
             </p>
           )}
-          <p className="text-xs text-gray-400 mt-2">
+          <p className="text-[11px] text-[#9ca3af]">
             {new Date(project.updatedAt).toLocaleDateString("zh-CN", {
               month: "short",
               day: "numeric",
