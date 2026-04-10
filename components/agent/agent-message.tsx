@@ -13,6 +13,24 @@ interface AgentMessageProps {
   isThinking?: boolean;
 }
 
+function getBubbleClasses(role: string): string {
+  switch (role) {
+    case "pm": return "bg-[#eef2ff] border border-[#e0e7ff]";
+    case "architect": return "bg-[#f5f3ff] border border-[#ede9fe]";
+    case "engineer": return "bg-[#f0fdf4] border border-[#dcfce7]";
+    default: return "bg-[#f9fafb] border border-[#f3f4f6]";
+  }
+}
+
+function getAvatarBg(role: string): string {
+  switch (role) {
+    case "pm": return "#eef2ff";
+    case "architect": return "#f5f3ff";
+    case "engineer": return "#f0fdf4";
+    default: return "#f3f4f6";
+  }
+}
+
 export function AgentMessage({
   message,
   isStreaming,
@@ -24,7 +42,7 @@ export function AgentMessage({
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[75%] bg-indigo-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm">
+        <div className="max-w-[75%] bg-[#4f46e5] text-white rounded-[16px_16px_4px_16px] px-4 py-2.5 text-sm">
           {message.content}
         </div>
       </div>
@@ -35,39 +53,38 @@ export function AgentMessage({
     <div className="flex gap-3 max-w-[90%]">
       {/* Avatar */}
       <div
-        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-base border-2"
-        style={{ borderColor: agent?.color ?? "#e5e7eb" }}
+        className="w-[30px] h-[30px] rounded-full flex items-center justify-center shrink-0 text-base shadow-[0_1px_3px_rgba(0,0,0,0.08)]"
+        style={{ background: getAvatarBg(message.role) }}
       >
         {agent?.avatar}
       </div>
 
-      {/* Bubble */}
+      {/* Body */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <span
-            className="text-xs font-semibold"
+            className="text-[11px] font-semibold"
             style={{ color: agent?.color }}
           >
             {agent?.role}
           </span>
           {isThinking && (
-            <span className="text-xs text-gray-400">正在思考...</span>
+            <span className="text-[11px] text-[#9ca3af]">正在思考...</span>
           )}
           {isStreaming && !isThinking && (
-            <span className="text-xs text-gray-400">生成中</span>
+            <span className="text-[11px] text-[#9ca3af]">生成中</span>
           )}
         </div>
 
         <div
           className={cn(
-            "rounded-2xl rounded-tl-sm px-4 py-3 text-sm border-l-2 bg-gray-50"
+            "rounded-[4px_16px_16px_16px] px-4 py-3 text-sm",
+            getBubbleClasses(message.role)
           )}
-          style={{ borderLeftColor: agent?.color ?? "#e5e7eb" }}
         >
           {isThinking ? (
             <ThinkingIndicator color={agent?.color} />
           ) : (() => {
-            // Only attempt JSON parse for PM messages when streaming is complete
             const pmData =
               message.role === "pm" && !isStreaming
                 ? extractPmOutput(message.content)
