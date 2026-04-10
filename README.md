@@ -88,42 +88,134 @@ npm run dev          # 启动开发服务器 → http://localhost:3000
 
 ---
 
-## Architecture
+## Multi-Agent Orchestration
 
-### 生成流
+系统通过意图分类器将每次用户输入路由到不同的 Agent 编排路径，各路径在 Agent 数量、并发模式和上下文注入上差异显著。
+
+### 场景一：新建项目 `new_project`
+
+三个 Agent 严格串行，Architect → Engineer 之间展开分层并行。
 
 ```
-User Input
-    │
-    ▼
+用户输入："做一个任务管理应用"
+      │
+      ▼
+[PM Agent]  ──────────────────────────────────────── 单次 SSE 请求
+  输入：用户原始需求
+  输出：JSON PmOutput { intent, features[], persistence, modules[] }
+      │
+      ▼
+[Architect Agent]  ────────────────────────────────── 单次 SSE 请求
+  输入：PmOutput
+  输出：<thinking> 推理依赖关系 </thinking>
+        <output> JSON ScaffoldData { files[], sharedTypes, designNotes } </output>
+  处理：topologicalSort(files) → 按依赖分层 layers[][]
+      │
+      ▼
+[Engineer Agent × N]  ─────────────────────────────── 每文件独立 SSE 请求
+  Layer 1（无依赖，并行）:  /App.js  /index.js
+  Layer 2（依赖 Layer 1，并行）:  /components/Header.js  /hooks/useTasks.js
+  Layer 3（依赖 Layer 2，并行）:  /components/TaskList.js  /components/TaskForm.js
+  ...
+  每层内文件并发生成，层间严格有序
+      │
+      ▼
+  allFiles → findMissingLocalImports() → Sandpack 预览 + /api/versions 快照
+```
+
+**并发模式：** 层间串行 × 层内并行。一个 10 文件项目分 3 层，总请求数 = 层数，而非文件数。
+
+---
+
+### 场景二：新增功能 `feature_add`
+
+与新建项目相同的三 Agent 路径，但注入了上一版本的上下文，使 Agent 输出增量而非重建。
+
+```
+用户输入："加一个分类筛选功能"（已有 V1 代码）
+      │
+      ▼
+[PM Agent]
+  额外输入：buildPmIterationContext(lastPmOutput)
+            ↳ 上一版本的 intent / features / modules 结构化摘要
+  效果：PM 输出增量 PRD（"在现有 Todo 功能基础上新增分类筛选"），而非重新规划整个应用
+      │
+      ▼
+[Architect Agent]
+  输入：增量 PmOutput（同上）
+      │
+      ▼
+[Engineer Agent × N]
+  额外输入：existingFiles = currentFiles（V1 完整代码）
+            ↳ 注入方式：// === EXISTING FILE: /path === 代码块
+  效果：Engineer 看到 V1 实现，被要求保留已有逻辑，只添加新功能
+      │
+      ▼
+  allFiles merge(V1, newFiles) → Sandpack + /api/versions
+```
+
+**关键差异：** 上下文注入贯穿全链路，PM / Engineer 均感知历史状态，避免每次迭代"失忆"。
+
+---
+
+### 场景三：修复 Bug / 调整样式 `bug_fix` | `style_change`
+
+跳过 PM 和 Architect，直接路由到 Engineer，响应时间从 ~60s 降到 ~20s。
+
+```
+用户输入："按钮颜色改成蓝色" / "修复列表不更新的 bug"
+      │
+      ▼
+[Engineer Agent]  ──────────────────────────────────── 单次 SSE 请求（跳过 PM + Architect）
+      │
+      ├── 单文件 V1:
+      │     输入：buildDirectEngineerContext(prompt, currentFiles)
+      │           ↳ <source file="/App.js"> V1 代码 </source> XML 标签
+      │     输出：code_complete → onFilesGenerated({ "/App.js": newCode })
+      │
+      └── 多文件 V1:
+            输入：buildDirectMultiFileEngineerContext(prompt, currentFiles)
+                  ↳ targetFiles = 所有 V1 文件路径
+            输出：files_complete → merge(V1, newFiles) → onFilesGenerated(mergedFiles)
+      │
+      ▼
+  Sandpack + /api/versions
+```
+
+**为什么用 XML 标签而非 `// === FILE:` 分隔符？**  
+后者与 Engineer 的输出格式标记几乎相同，LLM 会模式匹配并输出多文件格式，导致单文件提取失败。XML 标签语义上明确区分"输入参考"与"输出格式"。
+
+---
+
+### 容错与降级
+
+Engineer 层内置三级容错，确保生成始终完成而非崩溃：
+
+```
+全层请求失败
+      │
+      ▼ 指数退避重试（最多 3 次，间隔 100ms × 2^n）
+      │
+      ▼ 仍失败 → 逐文件单独请求（每文件各自重试 3 次）
+      │
+      ▼ 连续 3 文件失败 → 熔断，剩余文件标记为 failed，不阻塞已完成文件
+
+Gemini 限速（429）→ 自动 fallback 到 Groq，客户端收到 reset 事件后重置输出缓冲
+Engineer token 超限 → 追加"280 行以内"指令后重试一次
+```
+
+---
+
+### Architecture Overview
+
+```
 classifyIntent(prompt, hasExistingCode)
-    │
-    ├── bug_fix / style_change ──────────────────────── DIRECT PATH
-    │                                                        │
-    │   单文件 V1: buildDirectEngineerContext()              │
-    │   多文件 V1: buildDirectMultiFileEngineerContext()     │
-    │                                                        ▼
-    │                                          /api/generate (Engineer only)
-    │                                               │ code_complete / files_complete
-    │                                               ▼
-    │                                          merge with V1 → Sandpack + /api/versions
-    │
-    └── new_project / feature_add ──────────── FULL PIPELINE
-                                                        │
-        PM context: buildPmIterationContext()           │
-                                                        ▼
-                                           /api/generate (PM → JSON PmOutput)
-                                                        ▼
-                                           /api/generate (Architect → ScaffoldData)
-                                           topologicalSort() → layers[][]
-                                                        │
-                                           for each layer (sequential):
-                                             for each file in layer (parallel):
-                                                        ▼
-                                           /api/generate (Engineer × N)
-                                                        ▼
-                                           findMissingLocalImports() → stub 注入
-                                           Sandpack + /api/versions
+      │
+      ├── bug_fix / style_change ────► [Engineer] ──► Sandpack
+      │                                  (1 request)
+      │
+      └── new_project / feature_add ─► [PM] ─► [Architect] ─► [Engineer × N]
+                                        seq      seq           layers parallel
 ```
 
 ### 关键模块
