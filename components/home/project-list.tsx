@@ -39,6 +39,7 @@ export function ProjectList({ projects: initialProjects }: ProjectListProps) {
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabFilter>("all");
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -62,6 +63,24 @@ export function ProjectList({ projects: initialProjects }: ProjectListProps) {
       toast.error("创建失败，请重试");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRename(id: string, newName: string) {
+    setRenamingId(id);
+    try {
+      await fetchAPI(`/api/projects/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: newName }),
+      });
+      setProjects((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, name: newName } : p))
+      );
+      toast.success("项目已重命名");
+    } catch {
+      toast.error("重命名失败，请重试");
+    } finally {
+      setRenamingId(null);
     }
   }
 
@@ -121,6 +140,8 @@ export function ProjectList({ projects: initialProjects }: ProjectListProps) {
             project={project}
             onDelete={handleDelete}
             isDeleting={deletingId === project.id}
+            onRename={handleRename}
+            isRenaming={renamingId === project.id}
           />
         ))}
         {/* Dashed new-project card — always visible */}

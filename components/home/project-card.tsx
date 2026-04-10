@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DeleteProjectDialog } from "@/components/ui/delete-project-dialog";
+import { RenameProjectDialog } from "@/components/ui/rename-project-dialog";
 
 export interface ProjectCardData {
   id: string;
@@ -24,10 +25,13 @@ interface ProjectCardProps {
   readonly project: ProjectCardData;
   readonly onDelete: (id: string) => void;
   readonly isDeleting?: boolean;
+  readonly onRename: (id: string, newName: string) => void;
+  readonly isRenaming?: boolean;
 }
 
-export function ProjectCard({ project, onDelete, isDeleting = false }: ProjectCardProps) {
+export function ProjectCard({ project, onDelete, isDeleting = false, onRename, isRenaming = false }: ProjectCardProps) {
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showRename, setShowRename] = useState(false);
 
   function handleDeleteClick(e: React.MouseEvent) {
     e.preventDefault();
@@ -42,6 +46,17 @@ export function ProjectCard({ project, onDelete, isDeleting = false }: ProjectCa
 
   function handleCancel() {
     setShowConfirm(false);
+  }
+
+  function handleRenameClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowRename(true);
+  }
+
+  function handleConfirmRename(newName: string) {
+    onRename(project.id, newName);
+    setShowRename(false);
   }
 
   return (
@@ -89,6 +104,10 @@ export function ProjectCard({ project, onDelete, isDeleting = false }: ProjectCa
               <MoreHorizontal className="w-4 h-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem className="cursor-pointer" onClick={handleRenameClick}>
+                <Pencil className="w-4 h-4 mr-2" />
+                重命名
+              </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
                 onClick={handleDeleteClick}
@@ -107,6 +126,15 @@ export function ProjectCard({ project, onDelete, isDeleting = false }: ProjectCa
           onConfirm={handleConfirm}
           onCancel={handleCancel}
           isLoading={isDeleting}
+        />
+      )}
+
+      {showRename && (
+        <RenameProjectDialog
+          projectName={project.name}
+          onConfirm={handleConfirmRename}
+          onCancel={() => setShowRename(false)}
+          isLoading={isRenaming}
         />
       )}
     </>
