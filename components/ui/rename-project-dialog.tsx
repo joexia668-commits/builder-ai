@@ -28,6 +28,7 @@ export function RenameProjectDialog({ projectName, onConfirm, onCancel, isLoadin
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleConfirm()}
+          aria-label="项目名称"
           autoFocus
           className="mb-4"
         />
