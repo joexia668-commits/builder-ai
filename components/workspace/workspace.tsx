@@ -6,7 +6,7 @@ import { ConversationSidebar } from "@/components/sidebar/conversation-sidebar";
 import { ChatArea } from "@/components/workspace/chat-area";
 import { PreviewPanel } from "@/components/preview/preview-panel";
 import { getVersionFiles } from "@/lib/version-files";
-import type { Project, ProjectMessage, ProjectVersion } from "@/lib/types";
+import type { Project, ProjectMessage, ProjectVersion, PmOutput } from "@/lib/types";
 
 interface WorkspaceProps {
   project: Project & {
@@ -44,6 +44,7 @@ export function Workspace({ project, allProjects }: WorkspaceProps) {
   const [messages, setMessages] = useState<ProjectMessage[]>(project.messages);
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewingVersion, setPreviewingVersion] = useState<ProjectVersion | null>(null);
+  const [lastPmOutput, setLastPmOutput] = useState<PmOutput | null>(null);
 
   const displayFiles = previewingVersion
     ? getVersionFiles(previewingVersion as { code: string; files?: Record<string, string> | null })
@@ -110,6 +111,9 @@ export function Workspace({ project, allProjects }: WorkspaceProps) {
             onMessagesChange={setMessages}
             onGeneratingChange={setIsGenerating}
             isPreviewingHistory={previewingVersion !== null}
+            currentFiles={currentFiles}
+            lastPmOutput={lastPmOutput}
+            onPmOutputGenerated={setLastPmOutput}
             onFilesGenerated={(files, version) => {
               setCurrentFiles(files);
               setVersions((prev) => [...prev, version]);
