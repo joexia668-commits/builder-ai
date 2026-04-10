@@ -134,6 +134,63 @@ describe("extractReactCode", () => {
 });
 
 import { extractMultiFileCode } from "@/lib/extract-code";
+import { findMissingLocalImports } from "@/lib/extract-code";
+
+describe("findMissingLocalImports", () => {
+  it("returns empty array when all local imports are present", () => {
+    const files = {
+      "/App.js": `import { foo } from '/utils/helpers.js'`,
+      "/utils/helpers.js": `export const foo = () => null;`,
+    };
+    expect(findMissingLocalImports(files)).toEqual([]);
+  });
+
+  it("returns missing path when a local import is not in files", () => {
+    const files = {
+      "/components/TaskDetailView.js": `import { formatDate } from '/utils/format.js'`,
+    };
+    expect(findMissingLocalImports(files)).toEqual(["/utils/format.js"]);
+  });
+
+  it("deduplicates missing paths imported from multiple files", () => {
+    const files = {
+      "/A.js": `import { x } from '/utils/format.js'`,
+      "/B.js": `import { y } from '/utils/format.js'`,
+    };
+    expect(findMissingLocalImports(files)).toEqual(["/utils/format.js"]);
+  });
+
+  it("always whitelists /supabaseClient.js", () => {
+    const files = {
+      "/App.js": `import { supabase } from '/supabaseClient.js'`,
+    };
+    expect(findMissingLocalImports(files)).toEqual([]);
+  });
+
+  it("ignores external package imports (no leading slash)", () => {
+    const files = {
+      "/App.js": `import { Plus } from 'lucide-react'`,
+    };
+    expect(findMissingLocalImports(files)).toEqual([]);
+  });
+
+  it("handles multiple missing imports in the same file", () => {
+    const files = {
+      "/App.js": [
+        `import { formatDate } from '/utils/format.js'`,
+        `import { calcTotal } from '/utils/math.js'`,
+      ].join("\n"),
+    };
+    const result = findMissingLocalImports(files);
+    expect(result).toHaveLength(2);
+    expect(result).toContain("/utils/format.js");
+    expect(result).toContain("/utils/math.js");
+  });
+
+  it("returns empty array for empty files map", () => {
+    expect(findMissingLocalImports({})).toEqual([]);
+  });
+});
 
 describe("extractMultiFileCode", () => {
   it("parses two files separated by FILE markers", () => {

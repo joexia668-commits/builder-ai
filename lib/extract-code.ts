@@ -175,3 +175,31 @@ export function extractMultiFileCode(
 
   return result;
 }
+
+const LOCAL_IMPORT_RE = /from\s+['"](\/.+?)['"]/g;
+const WHITELISTED_LOCAL = new Set(["/supabaseClient.js"]);
+
+/**
+ * Scan all generated files for imports of local paths ('/...') that are not
+ * present in the files map. Returns a deduplicated list of missing paths.
+ * /supabaseClient.js is always whitelisted (it is injected by buildSandpackConfig).
+ */
+export function findMissingLocalImports(
+  files: Record<string, string>
+): string[] {
+  const presentPaths = new Set(Object.keys(files));
+  const missing = new Set<string>();
+
+  for (const code of Object.values(files)) {
+    LOCAL_IMPORT_RE.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = LOCAL_IMPORT_RE.exec(code)) !== null) {
+      const importedPath = match[1];
+      if (!WHITELISTED_LOCAL.has(importedPath) && !presentPaths.has(importedPath)) {
+        missing.add(importedPath);
+      }
+    }
+  }
+
+  return Array.from(missing);
+}
