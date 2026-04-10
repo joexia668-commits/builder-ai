@@ -251,6 +251,7 @@ ${JSON.stringify(VALID_SCAFFOLD_TP)}
     const raw = `<thinking>...</thinking>\n<output>broken json</output>\n${JSON.stringify(VALID_SCAFFOLD_TP)}`;
     const result = extractScaffoldFromTwoPhase(raw);
     expect(result).not.toBeNull();
+    expect(result?.files[0].path).toBe("/App.js");
   });
 
   // EJ-TP-04: completely invalid input — returns null
