@@ -58,7 +58,7 @@ export async function GET(req: Request) {
 
     const zipBuffer = await createProjectZip(assembled.files, projectName)
 
-    return new Response(zipBuffer, {
+    return new Response(new Uint8Array(zipBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',

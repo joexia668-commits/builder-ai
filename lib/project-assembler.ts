@@ -63,7 +63,9 @@ export function assembleProject(options: AssembleOptions): AssembledProject {
 
   // Remove placeholder supabase files — inject the right one below
   const {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     'lib/supabase.hosted.ts': _hosted,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     'lib/supabase.export.ts': _export,
     ...filteredTemplateFiles
   } = rawTemplateFiles
