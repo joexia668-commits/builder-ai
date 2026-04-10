@@ -42,8 +42,8 @@ Every user prompt triggers a **multi-phase SSE sequence** orchestrated by `ChatA
 ChatArea
   └── POST /api/generate  { agent: "pm", prompt, projectId, modelId? }
         └── JSON PmOutput  →  extractPmOutput()
-  └── POST /api/generate  { agent: "architect", context: pmOutput, jsonMode: true }
-        └── JSON ScaffoldData  →  extractScaffold()  →  topologicalSort()  →  layers[][]
+  └── POST /api/generate  { agent: "architect", context: pmOutput }
+        └── <thinking>推理</thinking><output>JSON ScaffoldData</output>  →  extractScaffoldFromTwoPhase()  →  topologicalSort()  →  layers[][]
   └── for each layer (sequential):
         for each file in layer (parallel):
           POST /api/generate  { agent: "engineer", targetFile, scaffold, ... }
@@ -114,7 +114,9 @@ Versions are **immutable INSERT-only**. New versions store `files: Record<string
 | `lib/types.ts` | All shared types: `AgentRole`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput` |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
 | `lib/model-registry.ts` | `MODEL_REGISTRY`, `getModelById`, `getAvailableModels`, `isValidModelId` |
-| `lib/extract-json.ts` | `extractPmOutput`, `extractScaffold`, `extractArchOutput` — JSON parsing for structured agent output |
+| `lib/extract-json.ts` | `extractPmOutput`, `extractScaffold`, `extractScaffoldFromTwoPhase` — JSON parsing; two-phase extracts from `<output>` block with fallback |
+| `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` (Snip compression) + `getMultiFileEngineerPrompt()` |
+| `lib/engineer-circuit.ts` | `retryWithBackoff<T>` + `runLayerWithFallback()` — full-layer retry → per-file fallback → circuit breaker |
 | `lib/topo-sort.ts` | `topologicalSort` — groups scaffold files into dependency layers for parallel generation |
 | `lib/version-files.ts` | `getVersionFiles` — backward-compatible reader for `code` / `files` version fields |
 | `components/workspace/chat-area.tsx` | Core orchestration — PM → Architect → layered Engineer, abort, progress state |
