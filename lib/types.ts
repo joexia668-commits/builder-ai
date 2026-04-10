@@ -159,3 +159,14 @@ export interface CodeRenderer {
   getMode(): "html" | "sandpack";
   destroy(): void;
 }
+
+export interface Deployment {
+  id: string;
+  projectId: string;
+  versionId: string;
+  vercelProjectId: string;
+  vercelDeployId: string;
+  url: string;
+  status: 'building' | 'ready' | 'error';
+  createdAt: Date;
+}

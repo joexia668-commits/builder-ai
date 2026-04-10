@@ -1,4 +1,4 @@
-import { getSystemPrompt, getMultiFileEngineerPrompt } from "@/lib/generate-prompts";
+import { getSystemPrompt, getMultiFileEngineerPrompt, snipCompletedFiles } from "@/lib/generate-prompts";
 import type { AgentRole, ScaffoldFile } from "@/lib/types";
 
 describe("getSystemPrompt", () => {
@@ -231,5 +231,84 @@ describe("getMultiFileEngineerPrompt", () => {
   it("GP-MFE-06: 包含 projectId 用于 supabase appId", () => {
     const prompt = getMultiFileEngineerPrompt(input);
     expect(prompt).toContain("proj-456");
+  });
+});
+
+describe("snipCompletedFiles", () => {
+  const FILE_A: ScaffoldFile = {
+    path: "/A.js", description: "A", exports: ["ComponentA"], deps: [], hints: "",
+  };
+  const FILE_B: ScaffoldFile = {
+    path: "/B.js", description: "B", exports: ["ComponentB"], deps: ["/A.js"], hints: "",
+  };
+
+  const completedFiles = {
+    "/A.js": "export function ComponentA() { return null; }\nconst x = 1;",
+    "/util.js": "export const add = (a, b) => a + b;\nexport default function noop() {}",
+  };
+
+  // GP-SC-01: direct dep gets full code
+  it("GP-SC-01: 直接依赖文件保留完整代码", () => {
+    const result = snipCompletedFiles(completedFiles, [FILE_B]);
+    expect(result["/A.js"]).toBe(completedFiles["/A.js"]);
+  });
+
+  // GP-SC-02: non-dep gets export lines only (no header — header is added in getMultiFileEngineerPrompt)
+  it("GP-SC-02: 非依赖文件被压缩为 exports only", () => {
+    const result = snipCompletedFiles(completedFiles, [FILE_A]);
+    expect(result["/util.js"]).not.toContain("snipped — exports only");
+    expect(result["/util.js"]).toContain("export const add");
+    expect(result["/util.js"]).toContain("export default function noop");
+    expect(result["/util.js"]).not.toContain("const x = 1");
+  });
+
+  // GP-SC-03: file with no exports gets placeholder comment (header added in prompt, not here)
+  it("GP-SC-03: 无导出的文件包含 placeholder 注释", () => {
+    const noExports = { "/styles.js": "const x = 1;" };
+    const result = snipCompletedFiles(noExports, [FILE_A]);
+    expect(result["/styles.js"]).not.toContain("snipped — exports only");
+    expect(result["/styles.js"]).toContain("(no exports found)");
+  });
+
+  // GP-SC-04: non-dep file prompt includes snipped header; full dep prompt does not
+  it("GP-SC-04: 非依赖文件在 prompt 中包含 snipped 标注", () => {
+    const bigCode = "export function Big() {}\nconst internal = 1;\n".repeat(50);
+    const completed = { "/A.js": bigCode };
+
+    const targetNoDep: ScaffoldFile = {
+      path: "/C.js", description: "C", exports: ["C"], deps: [], hints: "",
+    };
+    const targetWithDep: ScaffoldFile = {
+      path: "/C.js", description: "C", exports: ["C"], deps: ["/A.js"], hints: "",
+    };
+
+    const promptSnipped = getMultiFileEngineerPrompt({
+      projectId: "p1", targetFiles: [targetNoDep],
+      sharedTypes: "", completedFiles: completed, designNotes: "",
+    });
+    const promptFull = getMultiFileEngineerPrompt({
+      projectId: "p1", targetFiles: [targetWithDep],
+      sharedTypes: "", completedFiles: completed, designNotes: "",
+    });
+
+    expect(promptSnipped).toContain("snipped — exports only");
+    expect(promptFull).not.toContain("snipped — exports only");
+    expect(promptSnipped.length).toBeLessThan(promptFull.length);
+  });
+});
+
+describe("architect two-phase prompt", () => {
+  // GP-TP-01: architect prompt instructs <thinking> + <output> structure
+  it("GP-TP-01: architect 提示词包含双阶段 <thinking>/<output> 结构指令", () => {
+    const prompt = getSystemPrompt("architect", "proj-1");
+    expect(prompt).toContain("<thinking>");
+    expect(prompt).toContain("<output>");
+    expect(prompt).toContain("</output>");
+  });
+
+  // GP-TP-02: <output> block must contain only JSON per prompt
+  it("GP-TP-02: architect 提示词指示 <output> 块内只输出 JSON", () => {
+    const prompt = getSystemPrompt("architect", "proj-1");
+    expect(prompt).toMatch(/<output>[\s\S]*?JSON[\s\S]*?<\/output>/);
   });
 });

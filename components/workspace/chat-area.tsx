@@ -7,7 +7,8 @@ import { ChatInput } from "@/components/workspace/chat-input";
 import { fetchAPI } from "@/lib/api-client";
 import { DEFAULT_MODEL_ID, getAvailableModels } from "@/lib/model-registry";
 import { topologicalSort } from "@/lib/topo-sort";
-import { extractPmOutput, extractScaffold } from "@/lib/extract-json";
+import { extractPmOutput, extractScaffoldFromTwoPhase } from "@/lib/extract-json";
+import { runLayerWithFallback } from "@/lib/engineer-circuit";
 import { getMultiFileEngineerPrompt } from "@/lib/generate-prompts";
 import {
   buildEngineerContext,
@@ -125,6 +126,55 @@ export function ChatArea({
     abortControllerRef.current?.abort();
   }
 
+  async function readEngineerSSE(
+    body: ReadableStream<Uint8Array>
+  ): Promise<Record<string, string>> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuffer = "";
+    let layerResult: Record<string, string> | null = null;
+
+    const processLines = (lines: string[]) => {
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6).trim();
+        if (!data || data === "[DONE]") continue;
+        try {
+          const event = JSON.parse(data) as {
+            type: string;
+            content?: string;
+            code?: string;
+            files?: Record<string, string>;
+            error?: string;
+          };
+          if (event.type === "files_complete" && event.files) {
+            layerResult = event.files;
+          } else if (event.type === "code_complete" && event.code) {
+            layerResult = { "/App.js": event.code };
+          } else if (event.type === "error") {
+            throw new Error(event.error ?? "Stream error");
+          }
+        } catch (parseErr) {
+          if (parseErr instanceof SyntaxError) continue;
+          throw parseErr;
+        }
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      sseBuffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      const lines = sseBuffer.split("\n");
+      sseBuffer = done ? "" : (lines.pop() ?? "");
+      processLines(lines);
+      if (done) break;
+    }
+    if (sseBuffer.trim()) processLines([sseBuffer]);
+
+    if (!layerResult) throw new Error("No files received from engineer");
+    return layerResult;
+  }
+
   async function handleSubmit(prompt: string) {
     if (isGenerating) return;
     setGenerationError(null);
@@ -160,7 +210,7 @@ export function ChatArea({
       for (const agentRole of AGENT_ORDER) {
         // Engineer: attempt multi-file path after architect completes
         if (agentRole === "engineer") {
-          const scaffold = extractScaffold(outputs.architect);
+          const scaffold = extractScaffoldFromTwoPhase(outputs.architect);
 
           if (scaffold && scaffold.files.length > 1) {
             // === MULTI-FILE PATH ===
@@ -201,97 +251,57 @@ export function ChatArea({
                 output: `正在生成第 ${layerIdx + 1}/${layers.length} 层: ${layerPaths.map((p) => p.split("/").pop()).join(", ")}`,
               });
 
-              const engineerPrompt = getMultiFileEngineerPrompt({
-                projectId: project.id,
-                targetFiles: layerFiles,
-                sharedTypes: scaffold.sharedTypes,
-                completedFiles: allCompletedFiles,
-                designNotes: scaffold.designNotes,
-              });
+              const layerResult = await runLayerWithFallback(
+                layerFiles,
+                async (files) => {
+                  const engineerPrompt = getMultiFileEngineerPrompt({
+                    projectId: project.id,
+                    targetFiles: files,
+                    sharedTypes: scaffold.sharedTypes,
+                    completedFiles: allCompletedFiles,
+                    designNotes: scaffold.designNotes,
+                  });
 
-              const response = await fetch("/api/generate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  projectId: project.id,
-                  prompt,
-                  agent: "engineer",
-                  context: engineerPrompt,
-                  modelId: selectedModel,
-                  targetFiles: layerFiles,
-                  completedFiles: allCompletedFiles,
-                  scaffold: { sharedTypes: scaffold.sharedTypes, designNotes: scaffold.designNotes },
-                }),
-                signal: abortController.signal,
-              });
+                  const response = await fetch("/api/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      projectId: project.id,
+                      prompt,
+                      agent: "engineer",
+                      context: engineerPrompt,
+                      modelId: selectedModel,
+                      targetFiles: files,
+                      completedFiles: allCompletedFiles,
+                      scaffold: { sharedTypes: scaffold.sharedTypes, designNotes: scaffold.designNotes },
+                    }),
+                    signal: abortController.signal,
+                  });
 
-              if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 200)}`);
-              }
-              if (!response.body) throw new Error("No response body");
-
-              setTransitionText(null);
-
-              const reader = response.body.getReader();
-              const decoder = new TextDecoder();
-              let sseBuffer = "";
-              let layerResult: Record<string, string> | null = null;
-
-              const processSSELines = (lines: string[]) => {
-                for (const line of lines) {
-                  if (!line.startsWith("data: ")) continue;
-                  const data = line.slice(6).trim();
-                  if (!data || data === "[DONE]") continue;
-                  try {
-                    const event = JSON.parse(data) as {
-                      type: string;
-                      content?: string;
-                      code?: string;
-                      files?: Record<string, string>;
-                      error?: string;
-                    };
-                    if (event.type === "files_complete") {
-                      if (event.files) layerResult = event.files;
-                    } else if (event.type === "code_complete") {
-                      if (event.code) layerResult = { "/App.js": event.code };
-                    } else if (event.type === "error") {
-                      throw new Error(event.error ?? "Stream error");
-                    }
-                  } catch (parseErr) {
-                    if (parseErr instanceof SyntaxError) continue;
-                    throw parseErr;
+                  if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 200)}`);
                   }
-                }
-              };
+                  if (!response.body) throw new Error("No response body");
+                  setTransitionText(null);
+                  return readEngineerSSE(response.body);
+                },
+                abortController.signal
+              );
 
-              while (true) {
-                const { done, value } = await reader.read();
-                sseBuffer += done
-                  ? decoder.decode()
-                  : decoder.decode(value, { stream: true });
-                const lines = sseBuffer.split("\n");
-                sseBuffer = done ? "" : (lines.pop() ?? "");
-                processSSELines(lines);
-                if (done) break;
+              Object.assign(allCompletedFiles, layerResult.files);
+              if (layerResult.failed.length > 0) {
+                allFailedFiles.push(...layerResult.failed);
               }
-              if (sseBuffer.trim()) processSSELines([sseBuffer]);
-
-              if (layerResult) {
-                Object.assign(allCompletedFiles, layerResult);
-                setEngineerProgress((prev) =>
-                  prev
-                    ? { ...prev, completedFiles: Object.keys(allCompletedFiles) }
-                    : prev
-                );
-              } else {
-                allFailedFiles.push(...layerPaths);
-                setEngineerProgress((prev) =>
-                  prev
-                    ? { ...prev, failedFiles: [...prev.failedFiles, ...layerPaths] }
-                    : prev
-                );
-              }
+              setEngineerProgress((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      completedFiles: Object.keys(allCompletedFiles),
+                      failedFiles: [...prev.failedFiles, ...layerResult.failed],
+                    }
+                  : prev
+              );
             }
 
             const completedList = Object.keys(allCompletedFiles).join(", ");
