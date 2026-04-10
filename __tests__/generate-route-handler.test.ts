@@ -80,3 +80,66 @@ describe("Generate Route Handler — auth and validation", () => {
     expect(body.error).toContain("nonexistent-model-xyz");
   });
 });
+
+// ── Normal generation ────────────────────────────────────────────────────────
+
+describe("Generate Route Handler — normal generation", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (getToken as jest.Mock).mockResolvedValue({ sub: "user-1" });
+  });
+
+  it("test 1: PM agent streams chunks and sends done", async () => {
+    const provider = makeSuccessProvider(["feature1", " feature2"]);
+    const handler = createHandler({ createProvider: jest.fn().mockReturnValue(provider) });
+
+    const res = await handler(makeReq({ agent: "pm", prompt: "build a todo app", projectId: "p1" }));
+    const events = await collectSSE(res);
+
+    const types = events.map((e) => e.type);
+    expect(types).toContain("chunk");
+    expect(types).toContain("done");
+    const chunks = events.filter((e) => e.type === "chunk");
+    expect(chunks.map((e) => e.content).join("")).toBe("feature1 feature2");
+  });
+
+  it("test 2: Architect agent streams chunks and sends done", async () => {
+    const provider = makeSuccessProvider(["arch output"]);
+    const handler = createHandler({ createProvider: jest.fn().mockReturnValue(provider) });
+
+    const res = await handler(makeReq({ agent: "architect", prompt: "design system", projectId: "p1", context: "pm output" }));
+    const events = await collectSSE(res);
+
+    const types = events.map((e) => e.type);
+    expect(types).toContain("chunk");
+    expect(types).toContain("done");
+  });
+
+  it("test 3: Engineer single-file sends code_complete", async () => {
+    const provider = makeSuccessProvider(["function App() { return <div /> }"]);
+    const handler = createHandler({ createProvider: jest.fn().mockReturnValue(provider) });
+    (extractReactCode as jest.Mock).mockReturnValue("function App() { return <div /> }");
+
+    const res = await handler(makeReq({ agent: "engineer", prompt: "build", projectId: "p1", context: "ctx" }));
+    const events = await collectSSE(res);
+
+    const codeEvent = events.find((e) => e.type === "code_complete");
+    expect(codeEvent).toBeDefined();
+    expect(typeof codeEvent?.code).toBe("string");
+    expect((codeEvent?.code as string).length).toBeGreaterThan(0);
+  });
+
+  it("test 4: Engineer multi-file sends files_complete", async () => {
+    const provider = makeSuccessProvider(["// FILE: /App.js\nfunction App(){}"]);
+    const handler = createHandler({ createProvider: jest.fn().mockReturnValue(provider) });
+    (extractMultiFileCode as jest.Mock).mockReturnValue({ "/App.js": "function App(){}" });
+
+    const targetFiles = [{ path: "/App.js", description: "main", exports: ["App"], deps: [], hints: "" }];
+    const res = await handler(makeReq({ agent: "engineer", prompt: "build", projectId: "p1", context: "ctx", targetFiles }));
+    const events = await collectSSE(res);
+
+    const filesEvent = events.find((e) => e.type === "files_complete");
+    expect(filesEvent).toBeDefined();
+    expect((filesEvent?.files as Record<string, string>)["/App.js"]).toBeDefined();
+  });
+});
