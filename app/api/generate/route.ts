@@ -4,7 +4,8 @@ import { extractReactCode } from "@/lib/extract-code";
 import { getSystemPrompt } from "@/lib/generate-prompts";
 import { createProvider, resolveModelId, isRateLimitError } from "@/lib/ai-providers";
 import { isValidModelId } from "@/lib/model-registry";
-import type { AgentRole, CompletionOptions } from "@/lib/types";
+import { inferErrorCode } from "@/lib/error-codes";
+import type { AgentRole, CompletionOptions, ErrorCode } from "@/lib/types";
 
 export const runtime = "edge";
 export const maxDuration = 300;
@@ -115,14 +116,14 @@ export async function POST(req: NextRequest) {
             const expectedPaths = targetFiles.map((f) => f.path);
             const filesResult = extractMultiFileCode(fullContent, expectedPaths);
             if (filesResult === null) {
-              send(controller, { type: "error", error: "生成的代码不完整，请重试" });
+              send(controller, { type: "error", error: "生成的代码不完整，请重试", errorCode: "parse_failed" satisfies ErrorCode });
             } else {
               send(controller, { type: "files_complete", files: filesResult });
             }
           } else {
             const finalCode = extractReactCode(fullContent);
             if (finalCode === null) {
-              send(controller, { type: "error", error: "生成的代码不完整，请重试" });
+              send(controller, { type: "error", error: "生成的代码不完整，请重试", errorCode: "parse_failed" satisfies ErrorCode });
             } else {
               send(controller, { type: "code_complete", code: finalCode });
             }
@@ -132,9 +133,11 @@ export async function POST(req: NextRequest) {
         send(controller, { type: "done" });
       } catch (err) {
         console.error(`[generate] agent=${agent} model=${resolvedModelId} error:`, err);
+        const errorCode = inferErrorCode(err);
         send(controller, {
           type: "error",
           error: err instanceof Error ? err.message : "Generation failed",
+          errorCode,
         });
       } finally {
         controller.close();
