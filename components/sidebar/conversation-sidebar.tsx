@@ -66,9 +66,9 @@ export function ConversationSidebar({
   }
 
   return (
-    <aside className="w-12 lg:w-60 border-r bg-gray-50 flex flex-col shrink-0 overflow-hidden">
+    <aside className="w-12 lg:w-[220px] border-r bg-white flex flex-col shrink-0 overflow-hidden">
       {/* New project button */}
-      <div className="p-2 lg:p-3 border-b flex justify-center lg:block">
+      <div className="p-[10px] border-b flex justify-center lg:block">
         <Button
           size="sm"
           className="w-8 lg:w-full px-0 lg:px-3"
@@ -80,7 +80,10 @@ export function ConversationSidebar({
         </Button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-2">
+      <nav className="flex-1 overflow-y-auto py-1">
+        <div className="hidden lg:block text-[10px] font-semibold text-[#9ca3af] uppercase tracking-[0.07em] px-2 pt-2 pb-1">
+          最近项目
+        </div>
         {projects.map((project) => (
           <ProjectItem
             key={project.id}
