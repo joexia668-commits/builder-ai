@@ -97,6 +97,38 @@ HTTP 请求只使用原生 fetch API。
   return prompts[agent];
 }
 
+function extractExportSignatures(code: string): string {
+  const exportLines = code
+    .split("\n")
+    .filter((line) => /^export\s/.test(line))
+    .map((line) => line.replace(/\s*\{[^}]*\}.*$/, "").replace(/\s*=.*$/, "").trimEnd());
+  return exportLines.length > 0 ? exportLines.join("\n") : "// (no exports found)";
+}
+
+export function snipCompletedFiles(
+  completedFiles: Record<string, string>,
+  targetFiles: readonly ScaffoldFile[]
+): Record<string, string> {
+  const directDeps = new Set<string>();
+  for (const f of targetFiles) {
+    for (const dep of f.deps) {
+      directDeps.add(dep);
+    }
+  }
+
+  const result: Record<string, string> = {};
+  for (const [path, code] of Object.entries(completedFiles)) {
+    if (directDeps.has(path)) {
+      result[path] = code;
+    } else {
+      result[path] =
+        `// === FILE: ${path} (snipped — exports only) ===\n` +
+        extractExportSignatures(code);
+    }
+  }
+  return result;
+}
+
 interface MultiFileEngineerPromptInput {
   readonly projectId: string;
   readonly targetFiles: readonly ScaffoldFile[];
@@ -115,7 +147,8 @@ export function getMultiFileEngineerPrompt(input: MultiFileEngineerPromptInput):
     )
     .join("\n");
 
-  const completedFileEntries = Object.entries(completedFiles);
+  const snipped = snipCompletedFiles(completedFiles, targetFiles);
+  const completedFileEntries = Object.entries(snipped);
   const completedSection =
     completedFileEntries.length > 0
       ? `已完成的依赖文件代码（直接引用，不要重复实现）：\n${completedFileEntries.map(([path, code]) => `// === FILE: ${path} ===\n${code}`).join("\n\n")}`

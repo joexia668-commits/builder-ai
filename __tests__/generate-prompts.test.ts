@@ -1,4 +1,4 @@
-import { getSystemPrompt, getMultiFileEngineerPrompt } from "@/lib/generate-prompts";
+import { getSystemPrompt, getMultiFileEngineerPrompt, snipCompletedFiles } from "@/lib/generate-prompts";
 import type { AgentRole, ScaffoldFile } from "@/lib/types";
 
 describe("getSystemPrompt", () => {
@@ -231,5 +231,66 @@ describe("getMultiFileEngineerPrompt", () => {
   it("GP-MFE-06: 包含 projectId 用于 supabase appId", () => {
     const prompt = getMultiFileEngineerPrompt(input);
     expect(prompt).toContain("proj-456");
+  });
+});
+
+describe("snipCompletedFiles", () => {
+  const FILE_A: ScaffoldFile = {
+    path: "/A.js", description: "A", exports: ["ComponentA"], deps: [], hints: "",
+  };
+  const FILE_B: ScaffoldFile = {
+    path: "/B.js", description: "B", exports: ["ComponentB"], deps: ["/A.js"], hints: "",
+  };
+
+  const completedFiles = {
+    "/A.js": "export function ComponentA() { return null; }\nconst x = 1;",
+    "/util.js": "export const add = (a, b) => a + b;\nexport default function noop() {}",
+  };
+
+  // GP-SC-01: direct dep gets full code
+  it("GP-SC-01: 直接依赖文件保留完整代码", () => {
+    const result = snipCompletedFiles(completedFiles, [FILE_B]);
+    expect(result["/A.js"]).toBe(completedFiles["/A.js"]);
+  });
+
+  // GP-SC-02: non-dep gets snipped header + export lines only
+  it("GP-SC-02: 非依赖文件被压缩为 exports only", () => {
+    const result = snipCompletedFiles(completedFiles, [FILE_A]);
+    expect(result["/util.js"]).toContain("snipped — exports only");
+    expect(result["/util.js"]).toContain("export const add");
+    expect(result["/util.js"]).toContain("export default function noop");
+    expect(result["/util.js"]).not.toContain("const x = 1");
+  });
+
+  // GP-SC-03: file with no exports gets placeholder comment
+  it("GP-SC-03: 无导出的文件包含 placeholder 注释", () => {
+    const noExports = { "/styles.js": "const x = 1;" };
+    const result = snipCompletedFiles(noExports, [FILE_A]);
+    expect(result["/styles.js"]).toContain("snipped — exports only");
+    expect(result["/styles.js"]).toContain("(no exports found)");
+  });
+
+  // GP-SC-04: non-dep file gets snipped (shorter) vs when it IS a dep (full code)
+  it("GP-SC-04: 非依赖文件被 snip 后 prompt 比完整注入时更短", () => {
+    const bigCode = "export function Big() {}\n".repeat(50);
+    const completed = { "/A.js": bigCode };
+
+    const targetNoDep: ScaffoldFile = {
+      path: "/C.js", description: "C", exports: ["C"], deps: [], hints: "",
+    };
+    const targetWithDep: ScaffoldFile = {
+      path: "/C.js", description: "C", exports: ["C"], deps: ["/A.js"], hints: "",
+    };
+
+    const promptSnipped = getMultiFileEngineerPrompt({
+      projectId: "p1", targetFiles: [targetNoDep],
+      sharedTypes: "", completedFiles: completed, designNotes: "",
+    });
+    const promptFull = getMultiFileEngineerPrompt({
+      projectId: "p1", targetFiles: [targetWithDep],
+      sharedTypes: "", completedFiles: completed, designNotes: "",
+    });
+
+    expect(promptSnipped.length).toBeLessThan(promptFull.length);
   });
 });
