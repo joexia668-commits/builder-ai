@@ -18,6 +18,7 @@ import {
   buildPmIterationContext,
 } from "@/lib/agent-context";
 import { classifyIntent } from "@/lib/intent-classifier";
+import { findMissingLocalImports } from "@/lib/extract-code";
 import { ERROR_DISPLAY } from "@/lib/error-codes";
 import type { ErrorCode } from "@/lib/types";
 import type {
@@ -493,6 +494,13 @@ export function ChatArea({
             });
 
             if (Object.keys(allCompletedFiles).length > 0) {
+              const missingImports = findMissingLocalImports(allCompletedFiles);
+              if (missingImports.length > 0) {
+                setGenerationError({
+                  code: "parse_failed",
+                  raw: `AI 生成的代码引用了未创建的文件：${missingImports.join("、")}。请重新生成。`,
+                });
+              }
               const res = await fetchAPI("/api/versions", {
                 method: "POST",
                 body: JSON.stringify({
