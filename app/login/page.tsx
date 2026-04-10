@@ -4,6 +4,12 @@ import { authOptions } from "@/lib/auth";
 import { LoginButton } from "@/components/layout/login-button";
 import { GuestLoginButtons } from "@/components/layout/guest-login-buttons";
 
+const LOGIN_AGENT_CARDS = [
+  { icon: "📋", role: "PM", label: "需求分析" },
+  { icon: "🏗️", role: "Architect", label: "方案设计" },
+  { icon: "👨‍💻", role: "Engineer", label: "代码生成" },
+] as const;
+
 export default async function LoginPage() {
   const session = await getServerSession(authOptions);
 
@@ -27,18 +33,14 @@ export default async function LoginPage() {
 
         {/* Agent cards */}
         <div className="flex gap-2 mb-6">
-          {[
-            { icon: "📋", role: "PM", label: "需求分析" },
-            { icon: "🏗️", role: "Architect", label: "方案设计" },
-            { icon: "👨‍💻", role: "Engineer", label: "代码生成" },
-          ].map((agent) => (
+          {LOGIN_AGENT_CARDS.map((agent) => (
             <div
               key={agent.role}
               className="flex-1 bg-[#f5f3ff] border border-[#ede9fe] rounded-[12px] py-3 px-2 text-center"
             >
               <div className="text-xl mb-1">{agent.icon}</div>
-              <div className="text-[9px] font-bold text-indigo-600">{agent.role}</div>
-              <div className="text-[8px] text-[#9ca3af] mt-0.5">{agent.label}</div>
+              <div className="text-[10px] font-bold text-indigo-600">{agent.role}</div>
+              <div className="text-[10px] text-[#9ca3af] mt-0.5">{agent.label}</div>
             </div>
           ))}
         </div>
