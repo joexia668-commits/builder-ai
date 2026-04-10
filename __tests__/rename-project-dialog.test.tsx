@@ -73,4 +73,15 @@ describe("RenameProjectDialog", () => {
     render(<RenameProjectDialog {...defaultProps} isLoading={true} />);
     expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
   });
+
+  it("RPD-02b: confirm button disabled when name is empty", () => {
+    render(<RenameProjectDialog {...defaultProps} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "" } });
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+  });
+
+  it("RPD-09: container has role='dialog'", () => {
+    render(<RenameProjectDialog {...defaultProps} />);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
 });
