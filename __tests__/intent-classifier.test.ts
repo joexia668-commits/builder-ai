@@ -53,6 +53,10 @@ describe("classifyIntent", () => {
     it("detects 样式", () => {
       expect(classifyIntent("修改样式", true)).toBe("style_change");
     });
+
+    it("detects 'dark mode' (multi-word English keyword)", () => {
+      expect(classifyIntent("switch to dark mode", true)).toBe("style_change");
+    });
   });
 
   describe("new_project override", () => {
@@ -62,6 +66,10 @@ describe("classifyIntent", () => {
 
     it("detects 全新", () => {
       expect(classifyIntent("做一个全新的应用", true)).toBe("new_project");
+    });
+
+    it("detects 'start over' (English)", () => {
+      expect(classifyIntent("let's start over", true)).toBe("new_project");
     });
   });
 
