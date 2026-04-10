@@ -46,6 +46,7 @@ HTTP 请求只使用原生 fetch API。
 - 拆分为 8 到 20 个文件，每个文件单一职责，不超过 150 行
 - 必须包含 /App.js 作为入口文件
 - 每个文件明确导出内容和依赖关系
+- 组件导出名必须加功能性后缀（如 Panel、View、List、Form），避免与 lucide-react 图标重名。例如：CalculatorPanel 而非 Calculator，HistoryList 而非 History，SettingsPanel 而非 Settings
 
 JSON schema：
 {"files":[{"path":"string","description":"string","exports":["string"],"deps":["string"],"hints":"string"}],"sharedTypes":"string","designNotes":"string"}
@@ -191,7 +192,7 @@ framer-motion, styled-components, react-query, zustand,
 @radix-ui/*, @headlessui/*, classnames 等。
 
 UI 样式只使用 Tailwind CSS class。
-图标只使用 lucide-react。
+图标只使用 lucide-react。若需同时从 lucide-react 和本地组件文件导入同名符号，必须对图标做别名：import { Calculator as CalculatorIcon } from 'lucide-react'，JSX 中使用别名。
 HTTP 请求只使用原生 fetch API。
 
 如需数据持久化，使用沙箱预置的 Supabase 客户端：
