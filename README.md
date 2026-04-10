@@ -1,320 +1,41 @@
 # BuilderAI
 
-AI Agent 驱动的代码生成平台 — 输入一句需求，三个 Agent 协作为你生成完整 Web 应用。
-
-## Demo
+AI Agent 驱动的代码生成平台 — 输入一句需求，三个 Agent 协作为你生成完整的多文件 Web 应用。
 
 **线上体验：** [https://builder-ai-v2.vercel.app](https://builder-ai-v2.vercel.app)
 
+---
+
 ## Features
 
-- **多 Agent 协作可视化** — PM → Architect → Engineer 顺序流转，每个 Agent 的思考过程实时可见
-- **多文件分层生成** — Architect 输出 JSON Scaffold，Engineer 按拓扑排序分层并行生成各文件，AgentStatusBar 实时显示层进度
-- **意图识别 + 智能路由** — 关键词分类器自动识别用户意图（bug_fix / style_change / feature_add / new_project），修 bug 和调样式直接触达 Engineer，跳过 PM + Architect，响应速度提升 2–3 倍
-- **迭代上下文记忆** — 新增功能时，Engineer 自动收到 V1 完整代码作为上下文；PM 收到上一版本的功能摘要，输出增量 PRD 而非重建，生成结果保留已有功能
+- **多 Agent 协作** — PM → Architect → Engineer 顺序流转，每个 Agent 的思考过程实时可见
+- **意图识别路由** — 关键词分类器自动识别意图（bug_fix / style_change / feature_add / new_project），修 bug 和调样式直接触达 Engineer，响应速度提升 2–3 倍
+- **多文件分层并行生成** — Architect 输出 JSON Scaffold，Engineer 按拓扑排序分层并行生成各文件
+- **迭代上下文记忆** — 新增功能时 Engineer 自动收到 V1 代码；PM 收到上一版功能摘要，输出增量 PRD
 - **Sandpack 沙箱实时预览** — 生成的多文件 React 应用在浏览器内编译运行，零服务器开销
 - **BaaS 伪全栈** — 生成的应用通过 Supabase Anon Key 直连数据库，实现真实数据持久化
-- **版本时间线 + 一键回滚** — 每次生成自动保存多文件版本快照，可浏览历史并一键还原
-- **多 AI 模型支持** — Gemini 2.0 Flash / Gemini 1.5 Pro / DeepSeek V3 / Groq Llama 3.3 70B，工厂模式统一抽象，工作区内可随时切换
-- **用户偏好持久化** — 全局模型偏好写入 DB 跨会话保留，项目级模型设置可覆盖全局偏好
-- **对话持久化** — 消息记录存入 DB，刷新页面后完整还原，无数据丢失
-- **侧边栏项目管理** — 左侧边栏显示所有项目，点击切换，支持新建与删除（AlertDialog 二次确认）
-- **多文件代码编辑器** — Monaco Editor 内嵌文件 tab 栏，可直接编辑各文件并实时刷新预览
-- **设备预览切换** — Desktop / Tablet / Mobile 三档宽度切换，验证响应式布局
-- **生成锁** — 生成过程中输入框置灰、Stop 按钮可见，AbortController 立即取消所有 SSE 请求
-- **GitHub OAuth + Guest 匿名登录** — 支持两种登录方式，Guest 模式无需注册即可体验
+- **版本时间线 + 一键回滚** — 每次生成自动保存多文件版本快照，可浏览历史并还原
+- **多 AI 模型支持** — Gemini 2.0 Flash / DeepSeek V3 / Groq Llama 3.3 70B，工作区内随时切换
+- **GitHub OAuth + Guest 匿名登录** — 支持两种登录方式，无需注册即可体验
+
+---
 
 ## Tech Stack
 
 | 层 | 技术 |
 |---|---|
 | Frontend | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS |
-| UI Components | shadcn/ui, Sonner (toast) |
-| Code Preview | Sandpack (CodesandBox), Monaco Editor (multi-file tab bar) |
-| AI Provider | Gemini 2.0 Flash / Gemini 1.5 Pro / DeepSeek V3 / Groq Llama 3.3 70B |
-| AI SDK | @anthropic-ai/sdk (预留), zod v4 (schema 校验) |
+| UI Components | shadcn/ui |
+| Code Preview | Sandpack (CodeSandbox), Monaco Editor |
+| AI Providers | Gemini 2.0 Flash / DeepSeek V3 / Groq Llama 3.3 70B |
 | Auth | NextAuth.js v4 (GitHub OAuth + Guest session) |
-| Database | Supabase (PostgreSQL) via Prisma ORM + PrismaPg Driver Adapter |
-| Deployment | Vercel (Hobby) |
-| Testing | Jest + React Testing Library (unit/integration), Playwright (E2E) |
+| Database | Supabase (PostgreSQL) via Prisma ORM |
+| Deployment | Vercel |
+| Testing | Jest + React Testing Library, Playwright (E2E) |
 
-## Architecture
+---
 
-### 生成流
-
-```
-User Input
-    │
-    ▼
-classifyIntent(prompt, hasExistingCode)
-    │
-    ├── bug_fix / style_change ──────────────────────────────────┐
-    │                                                             │
-    │                                              DIRECT PATH   │
-    │   单文件 V1: buildDirectEngineerContext()                   │
-    │   多文件 V1: buildDirectMultiFileEngineerContext()          │
-    │              + targetFiles = v1Paths                        │
-    │                                                             ▼
-    │                                         /api/generate (Engineer only)
-    │                                              │ code_complete / files_complete
-    │                                              ▼
-    │                                         merge with V1 → PreviewPanel
-    │                                              │
-    │                                         /api/versions (DB snapshot)
-    │
-    └── new_project / feature_add ────────────────────────────────┐
-                                                                   │
-                                               FULL PIPELINE       │
-    PM context: buildPmIterationContext(lastPmOutput) if feature_add
-                                                                   ▼
-                                          /api/generate (PM Agent)
-                                              │ JSON PmOutput
-                                              │ → onPmOutputGenerated(parsedPm)
-                                              ▼
-                                          /api/generate (Architect)
-                                              │ <thinking>推理</thinking><output>JSON ScaffoldData</output>
-                                              │ extractScaffoldFromTwoPhase()
-                                              │ topologicalSort() → layers[][]
-                                              │
-                                         for each layer (sequential):
-                                           for each file in layer (parallel):
-                                              │ existingFiles = currentFiles (feature_add)
-                                              ▼
-                                         /api/generate (Engineer × N)
-                                              │ files_complete / code_complete
-                                              ▼
-                                         PreviewPanel (Sandpack multi-file)
-                                              │
-                                         /api/versions { code, files } (DB snapshot)
-```
-
-AIProvider Factory:
-- GeminiProvider   → Gemini API
-- DeepSeekProvider → DeepSeek API
-- GroqProvider     → Groq API
-
-### 持久化流
-
-```
-User Message ──► /api/messages  ──► Message Table
-AI Response  ──► /api/messages  ──► Message Table
-
-Files Output ──► /api/versions  { code: "/App.js", files: Record<string,string> }
-                      ──► Version Table (immutable INSERT only)
-                      │
-         /api/versions/[id]/restore
-                      │
-                      └── getVersionFiles(version) → INSERT 新版本记录（零数据丢失）
-```
-
-### 模型偏好 & 认证流
-
-```
-Login (GitHub OAuth / Guest) ──► NextAuth ──► User Table
-
-Header Dialog ──► PATCH /api/user/preferences ──► User.preferredModel
-ChatInput Selector ──► PATCH /api/projects/[id] ──► Project.preferredModel
-
-resolveModelId 优先级链：
-  request → project → user → AI_PROVIDER env → DEFAULT_MODEL_ID
-```
-
-**完整数据流：**
-1. 用户输入需求 → ChatArea 发起串行 SSE 请求（PM → Architect）
-2. PM 以 JSON 格式输出 `PmOutput`（intent、features、persistence、modules）
-3. Architect 以 JSON 格式输出 `ScaffoldData`（files[]、sharedTypes、designNotes）
-4. Architect 以两阶段格式输出（`<thinking>` 推理 + `<output>` JSON），`extractScaffoldFromTwoPhase()` 提取 `ScaffoldData` → `topologicalSort()` 按依赖关系分层
-5. ChatArea 按层顺序、层内并行调用 Engineer，`runLayerWithFallback()` 自动重试（全层失败则逐文件回退），每文件独立一次 SSE 请求
-6. 所有文件汇聚为 `Record<string, string>` → 注入 Sandpack 渲染，INSERT 到 versions 表（含 `files` 字段）
-7. 生成的应用通过 Supabase JS Client 直接读写 `dynamic_app_data` 表
-
-## API Routes
-
-| Method | Path | 说明 |
-|--------|------|------|
-| `GET` `POST` | `/api/projects` | 项目列表 / 创建项目 |
-| `GET` `PATCH` `DELETE` | `/api/projects/[id]` | 项目详情 / 更新（名称、代码、preferredModel）/ 删除 |
-| `POST` | `/api/generate` | SSE 流式 AI 生成，Edge Runtime，maxDuration=300s |
-| `GET` `POST` | `/api/messages` | 消息列表（按项目）/ 保存消息 |
-| `GET` `POST` | `/api/versions` | 版本列表（按项目）/ 创建版本快照 |
-| `POST` | `/api/versions/[id]/restore` | 回滚到指定版本（INSERT 新版本记录） |
-| `GET` `PATCH` | `/api/user/preferences` | 用户全局模型偏好读写 |
-| `*` | `/api/auth/[...nextauth]` | NextAuth GitHub OAuth 路由 |
-| `POST` | `/api/auth/guest` | Guest 匿名登录（创建持久化 User 记录） |
-| `GET` | `/api/export` | 导出项目为 Next.js ZIP 包（含模板文件拼装） |
-| `POST` | `/api/deploy` | 触发 Vercel 部署（返回 deploymentId） |
-| `GET` | `/api/deploy/[id]` | 轮询部署状态 |
-
-## Database Schema
-
-```
-User
-  ├── id, name, email, image
-  ├── isGuest         Boolean   ← Guest 匿名账户标记
-  ├── preferredModel  String?   ← 全局模型偏好
-  ├── createdAt, updatedAt
-  ├── Account[]                 ← NextAuth OAuth
-  ├── Session[]                 ← NextAuth Session
-  └── Project[]
-
-Project
-  ├── id, name, description
-  ├── preferredModel  String?   ← 项目级模型覆盖（优先于用户全局偏好）
-  ├── userId          ─────────► User
-  ├── createdAt, updatedAt
-  ├── Version[]
-  └── Message[]
-
-Version                         ← 不可变，只 INSERT，不 UPDATE/DELETE
-  ├── id, code
-  ├── files           Json?     ← 多文件 Record<string,string>（新版本写入此字段）
-  ├── versionNumber   Int       ← 项目内自增，unique([projectId, versionNumber])
-  ├── description     String?   ← 生成时 prompt 的前 80 字符
-  ├── agentMessages   Json?     ← 保留字段，供未来使用
-  ├── createdAt
-  └── projectId       ─────────► Project
-
-Message
-  ├── id, role, content
-  ├── metadata        JSONB     ← { agentName?, agentColor?, thinkingDuration? }
-  ├── createdAt
-  └── projectId       ─────────► Project
-
-DynamicAppData                  ← 生成应用的运行时数据
-  ├── id (uuid), appId (= projectId), key
-  ├── data            JSONB
-  ├── createdAt, updatedAt
-  └── unique([appId, key])
-```
-
-## Project Structure
-
-```
-builder-ai/
-├── app/
-│   ├── page.tsx                        # 首页：项目列表（已登录）/ Landing（未登录）
-│   ├── layout.tsx                      # 根布局（providers、字体、metadata）
-│   ├── api/
-│   │   ├── auth/[...nextauth]/         # NextAuth handler
-│   │   ├── auth/guest/                 # Guest 登录
-│   │   ├── generate/                   # SSE AI 生成（Edge Runtime）
-│   │   ├── messages/                   # 消息 CRUD
-│   │   ├── projects/                   # 项目 CRUD
-│   │   ├── versions/                   # 版本快照 + 回滚
-│   │   └── user/preferences/           # 用户偏好
-│   └── project/[id]/page.tsx           # 工作区页面
-│
-├── components/
-│   ├── agent/                          # AgentStatusBar（层进度）、AgentCard、AgentMessage、ThinkingIndicator
-│   ├── home/                           # 项目卡片、项目列表
-│   ├── layout/                         # Header、登录按钮、Session Provider
-│   ├── preview/                        # PreviewPanel、PreviewFrame、MultiFileEditor（tab 栏）、设备选择
-│   ├── sidebar/                        # 对话侧边栏、项目列表项
-│   ├── timeline/                       # 版本时间线
-│   ├── ui/                             # shadcn/ui 组件（勿手动编辑）
-│   └── workspace/                      # ChatArea（多层并行 Engineer 编排）、ChatInput、ModelSelector、Workspace
-│
-├── hooks/
-│   ├── use-agent-stream.ts             # SSE 流式请求 + Agent 编排
-│   ├── use-versions.ts                 # 版本 CRUD + 时间线状态
-│   └── use-project.ts                  # 项目数据拉取
-│
-├── lib/
-│   ├── ai-providers.ts                 # AIProvider 接口 + Gemini/DeepSeek/Groq 实现 + resolveModelId
-│   ├── model-registry.ts              # 模型注册表（4 个模型定义）
-│   ├── intent-classifier.ts           # classifyIntent()：关键词路由 bug_fix/style_change/feature_add/new_project
-│   ├── agent-context.ts               # 上下文拼装：buildDirectEngineerContext / buildDirectMultiFileEngineerContext / buildPmIterationContext 等
-│   ├── generate-prompts.ts            # PM / Architect / Engineer 系统提示词（含多文件模板）
-│   ├── extract-code.ts                # 多层代码提取策略（代码围栏 → import/export → 尾部截断）
-│   ├── extract-json.ts                # JSON 解析：extractPmOutput / extractScaffold / extractScaffoldFromTwoPhase
-│   ├── engineer-circuit.ts            # 工程层熔断：retryWithBackoff + runLayerWithFallback（指数退避 + 逐文件回退）
-│   ├── topo-sort.ts                   # 拓扑排序：按依赖分层，同层文件可并行生成
-│   ├── version-files.ts               # getVersionFiles()：向后兼容读取 code/files 字段
-│   ├── sandpack-config.ts             # Sandpack 沙箱配置（支持 string | Record<string,string> 输入）
-│   ├── project-assembler.ts           # 导出/部署拼装：模板 + AI 生成文件 merge 为 Next.js 项目
-│   ├── zip-exporter.ts                # ZIP 打包：assembled files → Buffer
-│   ├── vercel-deploy.ts               # Vercel Deploy API 封装：触发部署 + 轮询状态
-│   ├── api-client.ts                  # fetchAPI / fetchSSE 统一抽象
-│   ├── auth.ts                        # NextAuth 配置
-│   ├── prisma.ts                      # Prisma Client 单例
-│   └── types.ts                       # 共享类型：ScaffoldData, ScaffoldFile, EngineerProgress, PmOutput, ArchOutput
-│
-├── e2e/                               # Playwright E2E 测试
-├── __tests__/                         # Jest 单元 + 集成测试
-└── prisma/schema.prisma               # 数据库 Schema
-```
-
-## 关键工程决策
-
-### 1. 为什么选 Sandpack 而非 WebContainer
-WebContainer 需要 COOP/COEP 响应头，Vercel Hobby 计划不支持自定义响应头配置，导致部署后预览必然失败。Sandpack 在普通 iframe 中运行，零部署风险，100% 可演示。
-
-### 2. Hybrid Stable 渲染策略
-放弃流式沙箱更新（每 chunk 刷新 Sandpack），改为等 `code_complete` 事件后一次性渲染。原因：Sandpack 频繁 remount 在流式场景下会产生闪烁和性能问题，稳定性 > 视觉花哨。
-
-### 3. BaaS 伪全栈
-生成的应用通过 `NEXT_PUBLIC_SUPABASE_ANON_KEY` 直连 Supabase。Demo 阶段开启 `dynamic_app_data` 表的 anon key 读写权限。生产级方案应通过 Next.js API 路由用 service role key 代理写入。
-
-### 4. 不可变版本设计
-版本表只 INSERT 不 UPDATE/DELETE。回滚操作 = 读取旧版本 code → 创建新版本记录。以最低工程代价实现完整时间线，零数据丢失风险。
-
-### 5. 多 Provider 工厂模式
-`lib/ai-providers.ts` 实现统一的 `AIProvider` 接口，`lib/model-registry.ts` 维护模型注册表。模型选择优先级链：请求级 → 项目级 → 用户级 → 环境变量 → 默认值，无需修改代码即可切换 Provider。
-
-### 6. Prisma Driver Adapter
-使用 `PrismaPg` 适配器替代内置连接器，适配 Supabase Transaction Mode（端口 6543）的连接池限制（max=3）。生产环境配合 Vercel Serverless 函数的无状态特性，避免连接泄漏。
-
-### 7. 生成锁 + AbortController
-每次生成持有唯一 `AbortController` ref，Stop 按钮调用 `.abort()` 后 SSE 连接立即中止，UI 状态同步重置。生成进行中 ChatInput 整体 disabled，防止并发重复提交。
-
-### 8. Guest 匿名账户设计
-Guest 登录在 DB 中创建真实 `User` 记录（非 session-only），保证刷新后项目、消息、版本数据均可持久化。通过固定 guest email 格式防止重复创建，同一浏览器多次访问复用同一账户。
-
-### 9. 代码提取多层策略
-`extract-code.ts` 按优先级依次尝试：① Markdown 代码围栏提取 → ② `import`/`export default` 关键字定位 → ③ 尾部截断兜底。确保 Gemini / DeepSeek / Groq 各类输出格式均可提取出可运行的 React 代码。
-
-### 10. 多文件分层并行生成
-Architect 以 JSON `ScaffoldData` 输出完整文件图，`topologicalSort()` 将文件按依赖关系分层。同层文件没有互相依赖，可并发调用 Engineer；层间严格顺序执行，确保后续文件能 import 前置文件的导出。每个文件独立一次 `/api/generate` SSE 请求，绕过单次请求的 token 上限瓶颈。
-
-### 11. 向后兼容的版本读取
-`getVersionFiles()` 统一封装版本读取：新版本从 `files` 字段返回 `Record<string,string>`，老版本（只有 `code` 字段）包装为 `{ "/App.js": code }`。UI 层无感知历史数据格式差异。
-
-### 12. Snip 压缩（上下文智能裁剪）
-`snipCompletedFiles()` 在 `getMultiFileEngineerPrompt` 中对已完成文件进行差异化注入：直接依赖文件注入完整代码，非直接依赖文件仅注入 `export` 签名行（正则提取）。10 文件项目最后一层的 completedFiles section 从 ~7500 tokens 压缩到 ~500 tokens，零 LLM 调用开销。
-
-### 13. Engineer 层级容错重试
-`runLayerWithFallback()` 实现三级容错：① 全层请求失败后指数退避重试 3 次 → ② 全层失败则逐文件单独请求（各自最多重试 3 次）→ ③ 连续 3 次单文件失败触发熔断，剩余文件标记为 failed 而非崩溃。生成始终完成并汇报部分失败，不再全量抛错。
-
-### 14. Architect 两阶段输出
-Architect 系统提示改为 `<thinking>` + `<output>` 两阶段格式：模型在 `<thinking>` 中推理依赖关系（不进入最终上下文），`<output>` 中输出纯 JSON。`extractScaffoldFromTwoPhase()` 优先从 `<output>` 块提取，失败时回退到原始 `extractScaffold()` 逻辑，保持向后兼容。同时关闭 API 层 `jsonMode`（会阻断非 JSON 输出）。
-
-### 15. 意图识别 + 短路路由
-`classifyIntent()` 采用关键词匹配（不调用 LLM），优先级为 bug_fix > style_change > new_project > feature_add（默认）。bug_fix / style_change 直接跳过 PM + Architect，仅触发一次 Engineer 请求，将三次串行 SSE 变为一次，响应时间从 ~60s 降低到 ~20s。关键词列表维护在 `lib/intent-classifier.ts` 的三个 `as const` 数组中，易于扩展。
-
-### 16. 迭代上下文记忆（Agent Memory）
-解决 Engineer 在每次迭代时完全遗忘 V1 代码的根本问题。三层注入机制：  
-① **PM 功能摘要**：`buildPmIterationContext(lastPmOutput)` 将上一版本的 `intent / features / persistence / modules` 结构化摘要注入 PM，使其生成增量 PRD 而非推倒重来。  
-② **Engineer V1 代码**：`feature_add` 路径在 `getMultiFileEngineerPrompt` 中注入 `existingFiles` 字段，Engineer 看到完整 V1 代码并被要求保留已有逻辑。  
-③ **直接路径 V1 代码**：bug_fix / style_change 路径通过 `buildDirectEngineerContext` / `buildDirectMultiFileEngineerContext` 注入 V1 代码。  
-状态由 `Workspace` 持有（`currentFiles` + `lastPmOutput`），跨多次生成持续累积，无需全局 store。
-
-### 17. 多文件直接路径的输入格式设计
-直接路径（bug_fix/style_change）的多文件上下文使用 `<source file="/path">` XML 标签展示 V1 代码，而非 `// === FILE: /path ===` 格式。原因：后者与 Engineer 的输出格式标记几乎完全相同，LLM 会模式匹配并输出多文件格式，导致单文件 `extractReactCode` 失败。XML 标签在语义上明确区分"输入参考"与"输出格式"，避免歧义。多文件 V1 则直接传 `targetFiles` 给服务端，触发 `extractMultiFileCode` 路径，LLM 输出所有文件（含未修改文件），客户端 merge 后保存版本。
-
-## Testing
-
-| 层级 | 框架 | 覆盖范围 |
-|------|------|---------|
-| Unit | Jest + React Testing Library | lib 函数、React 组件、Hook 行为 |
-| Integration | Jest | API Route handlers（mock DB + mock Auth）|
-| E2E | Playwright | 多 Agent 流程、版本时间线、持久化、模型选择、项目删除 |
-
-```bash
-npm test              # Unit + Integration tests (Jest)
-npm run test:e2e      # E2E tests (Playwright)
-```
-
-## Local Development
+## Quick Start
 
 ### 前置条件
 
@@ -346,35 +67,279 @@ GITHUB_SECRET="your-github-oauth-app-secret"
 NEXTAUTH_SECRET="random-32-char-string"
 NEXTAUTH_URL="http://localhost:3000"
 
-# AI (至少配置一个，优先使用 GOOGLE_GENERATIVE_AI_API_KEY)
-GOOGLE_GENERATIVE_AI_API_KEY="AIza..."  # Gemini 2.0 Flash / 1.5 Pro
+# AI（至少配置一个，优先使用 GOOGLE_GENERATIVE_AI_API_KEY）
+GOOGLE_GENERATIVE_AI_API_KEY="AIza..."  # Gemini 2.0 Flash
 DEEPSEEK_API_KEY="sk-..."               # DeepSeek V3（可选）
 GROQ_API_KEY="gsk_..."                  # Groq Llama 3.3 70B（可选）
-AI_PROVIDER="gemini"                    # 默认 Provider：gemini | deepseek | groq（可选）
 
-# Supabase (public — safe to expose)
+# Supabase（public — 前端可见）
 NEXT_PUBLIC_SUPABASE_URL="https://xxx.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJ..."
 ```
 
-### 数据库初始化
+### 启动
 
 ```bash
-npx prisma db push
+npx prisma db push   # 初始化数据库 schema
+npm run dev          # 启动开发服务器 → http://localhost:3000
 ```
 
-### 启动开发服务器
+> 修改 `lib/` 下的配置文件后，使用 `npm run dev:clean` 清除 webpack 缓存重启。
+
+---
+
+## Architecture
+
+### 生成流
+
+```
+User Input
+    │
+    ▼
+classifyIntent(prompt, hasExistingCode)
+    │
+    ├── bug_fix / style_change ──────────────────────── DIRECT PATH
+    │                                                        │
+    │   单文件 V1: buildDirectEngineerContext()              │
+    │   多文件 V1: buildDirectMultiFileEngineerContext()     │
+    │                                                        ▼
+    │                                          /api/generate (Engineer only)
+    │                                               │ code_complete / files_complete
+    │                                               ▼
+    │                                          merge with V1 → Sandpack + /api/versions
+    │
+    └── new_project / feature_add ──────────── FULL PIPELINE
+                                                        │
+        PM context: buildPmIterationContext()           │
+                                                        ▼
+                                           /api/generate (PM → JSON PmOutput)
+                                                        ▼
+                                           /api/generate (Architect → ScaffoldData)
+                                           topologicalSort() → layers[][]
+                                                        │
+                                           for each layer (sequential):
+                                             for each file in layer (parallel):
+                                                        ▼
+                                           /api/generate (Engineer × N)
+                                                        ▼
+                                           findMissingLocalImports() → stub 注入
+                                           Sandpack + /api/versions
+```
+
+### 关键模块
+
+| 模块 | 职责 |
+|------|------|
+| `lib/intent-classifier.ts` | 关键词路由，无 LLM 调用，优先级：bug_fix > style_change > new_project > feature_add |
+| `lib/agent-context.ts` | 各路径的上下文拼装（V1 代码注入、PM 功能摘要、多文件 Engineer prompt） |
+| `lib/generate-prompts.ts` | PM / Architect / Engineer 系统提示词；`snipCompletedFiles()` 上下文压缩 |
+| `lib/topo-sort.ts` | 按文件依赖关系分层，同层可并行，层间严格有序 |
+| `lib/engineer-circuit.ts` | 三级容错：全层重试 → 逐文件回退 → 熔断 |
+| `lib/extract-code.ts` | 多层代码提取（代码围栏 → import 定位 → 尾部截断）；`findMissingLocalImports()` 检测幻觉导入 |
+| `lib/sandpack-config.ts` | 构建 Sandpack 配置；自动注入缺失模块的 Proxy stub，防止预览白屏 |
+| `lib/error-codes.ts` | ErrorCode 枚举与用户可见的错误展示文案 |
+
+### SSE 事件协议
+
+`/api/generate` 发送换行分隔的 JSON 流：
+
+```
+data: {"type":"thinking","content":"pm 正在分析..."}
+data: {"type":"chunk","content":"..."}
+data: {"type":"code_complete","code":"..."}       // Engineer 单文件
+data: {"type":"files_complete","files":{...}}     // Engineer 多文件
+data: {"type":"reset"}                            // 触发限速回退时重置
+data: {"type":"done"}
+data: {"type":"error","error":"...","errorCode":"rate_limited|parse_failed|missing_imports|..."}
+```
+
+### 模型选择优先级链
+
+```
+request-level → project.preferredModel → user.preferredModel → AI_PROVIDER env → DEFAULT_MODEL_ID
+```
+
+`DEFAULT_MODEL_ID = "gemini-2.0-flash"`
+
+---
+
+## API Routes
+
+| Method | Path | 说明 |
+|--------|------|------|
+| `GET` `POST` | `/api/projects` | 项目列表 / 创建项目 |
+| `GET` `PATCH` `DELETE` | `/api/projects/[id]` | 项目详情 / 更新 / 删除 |
+| `POST` | `/api/generate` | SSE 流式 AI 生成，Edge Runtime，maxDuration=300s |
+| `GET` `POST` | `/api/messages` | 消息列表（按项目）/ 保存消息 |
+| `GET` `POST` | `/api/versions` | 版本列表（按项目）/ 创建版本快照 |
+| `POST` | `/api/versions/[id]/restore` | 回滚到指定版本（INSERT 新版本记录） |
+| `GET` `PATCH` | `/api/user/preferences` | 用户全局模型偏好读写 |
+| `*` | `/api/auth/[...nextauth]` | NextAuth GitHub OAuth 路由 |
+| `POST` | `/api/auth/guest` | Guest 匿名登录 |
+| `GET` | `/api/export` | 导出项目为 Next.js ZIP 包 |
+| `POST` | `/api/deploy` | 触发 Vercel 部署 |
+| `GET` | `/api/deploy/[id]` | 轮询部署状态 |
+
+---
+
+## Database Schema
+
+```
+User
+  ├── id, name, email, image
+  ├── isGuest         Boolean   ← Guest 匿名账户标记
+  ├── preferredModel  String?   ← 全局模型偏好
+  └── Project[]
+
+Project
+  ├── id, name, description
+  ├── preferredModel  String?   ← 项目级覆盖（优先于用户全局偏好）
+  ├── userId          ──► User
+  ├── Version[]
+  └── Message[]
+
+Version                         ← 不可变，只 INSERT
+  ├── id, code
+  ├── files           Json?     ← 多文件 Record<string,string>
+  ├── versionNumber   Int       ← 项目内自增
+  ├── description     String?   ← prompt 前 80 字符
+  └── projectId       ──► Project
+
+Message
+  ├── id, role, content
+  ├── metadata        JSONB     ← { agentName?, agentColor? }
+  └── projectId       ──► Project
+
+DynamicAppData                  ← 生成应用的运行时数据
+  ├── id, appId (= projectId), key
+  ├── data            JSONB
+  └── unique([appId, key])
+```
+
+---
+
+## Project Structure
+
+```
+builder-ai/
+├── app/
+│   ├── page.tsx                      # 首页：项目列表 / Landing
+│   ├── layout.tsx                    # 根布局
+│   ├── api/
+│   │   ├── auth/                     # NextAuth + Guest 登录
+│   │   ├── generate/                 # SSE AI 生成（Edge Runtime）
+│   │   ├── messages/                 # 消息 CRUD
+│   │   ├── projects/                 # 项目 CRUD
+│   │   ├── versions/                 # 版本快照 + 回滚
+│   │   ├── user/preferences/         # 用户偏好
+│   │   ├── export/                   # ZIP 导出
+│   │   └── deploy/                   # Vercel 部署
+│   └── project/[id]/page.tsx         # 工作区页面
+│
+├── components/
+│   ├── agent/                        # AgentStatusBar、AgentCard、AgentMessage
+│   ├── home/                         # 项目卡片、项目列表
+│   ├── layout/                       # Header、登录按钮
+│   ├── preview/                      # PreviewPanel、MultiFileEditor、设备选择
+│   ├── sidebar/                      # 侧边栏、项目列表项
+│   ├── timeline/                     # 版本时间线
+│   ├── ui/                           # shadcn/ui（勿手动编辑）
+│   └── workspace/                    # ChatArea（核心编排）、ChatInput、Workspace
+│
+├── hooks/
+│   ├── use-versions.ts               # 版本 CRUD + 时间线状态
+│   └── use-project.ts                # 项目数据拉取
+│
+├── lib/
+│   ├── types.ts                      # 共享类型（ScaffoldData、PmOutput、ErrorCode 等）
+│   ├── intent-classifier.ts          # classifyIntent()：关键词路由
+│   ├── agent-context.ts              # 各路径上下文拼装函数
+│   ├── generate-prompts.ts           # Agent 系统提示词 + Snip 压缩
+│   ├── extract-code.ts               # 代码提取策略 + findMissingLocalImports()
+│   ├── extract-json.ts               # JSON 解析：PM / Scaffold 输出
+│   ├── engineer-circuit.ts           # 层级容错重试（retryWithBackoff + runLayerWithFallback）
+│   ├── topo-sort.ts                  # 拓扑排序分层
+│   ├── sandpack-config.ts            # Sandpack 配置 + 缺失模块 stub 注入
+│   ├── error-codes.ts                # ErrorCode 枚举与用户可见文案
+│   ├── version-files.ts              # getVersionFiles()：向后兼容读取 code/files
+│   ├── ai-providers.ts               # AIProvider 接口 + Gemini/DeepSeek/Groq 实现
+│   ├── model-registry.ts             # 模型注册表
+│   ├── api-client.ts                 # fetchAPI / fetchSSE 统一抽象
+│   ├── auth.ts                       # NextAuth 配置
+│   ├── prisma.ts                     # Prisma Client 单例
+│   ├── project-assembler.ts          # 导出/部署拼装
+│   ├── zip-exporter.ts               # ZIP 打包
+│   └── vercel-deploy.ts              # Vercel Deploy API 封装
+│
+├── e2e/                              # Playwright E2E 测试
+├── __tests__/                        # Jest 单元 + 集成测试
+└── prisma/schema.prisma              # 数据库 Schema
+```
+
+---
+
+## Key Engineering Decisions
+
+### 1. Sandpack 而非 WebContainer
+WebContainer 需要 COOP/COEP 响应头，Vercel Hobby 计划不支持自定义响应头，部署后预览必然失败。Sandpack 在普通 iframe 中运行，零部署风险。
+
+### 2. Hybrid Stable 渲染
+等 `code_complete` / `files_complete` 事件后一次性渲染，而非流式更新 Sandpack。频繁 remount 在流式场景下产生闪烁和性能问题。
+
+### 3. 不可变版本设计
+版本表只 INSERT 不 UPDATE/DELETE。回滚 = 读取旧版本文件 → INSERT 新版本记录，以最低工程代价实现完整时间线。
+
+### 4. 多 Provider 工厂模式
+`AIProvider` 接口统一抽象三个 Provider，模型选择优先级链无需改代码即可切换。Gemini 限速时自动 fallback 到 Groq。
+
+### 5. 拓扑排序分层并行
+Architect 输出完整文件依赖图，`topologicalSort()` 按层分组：同层文件无依赖可并行生成，层间严格顺序，绕过单次请求 token 上限。
+
+### 6. Snip 上下文压缩
+`snipCompletedFiles()` 对已完成文件差异化处理：直接依赖注入完整代码，非直接依赖只注入 export 签名。10 文件项目最后一层 prompt 从 ~7500 tokens 压缩到 ~500 tokens。
+
+### 7. 三级 Engineer 容错
+`runLayerWithFallback()`：全层失败后指数退避重试 → 逐文件单独请求 → 连续 3 次失败触发熔断，标记 failed 而非崩溃。
+
+### 8. Architect 两阶段输出
+`<thinking>` 推理 + `<output>` JSON 分离：模型在 thinking 中自由推理，output 中输出纯 JSON，避免 jsonMode 阻断思考链。
+
+### 9. 缺失模块三层防御
+AI 偶尔会 import 从未创建的本地文件路径（幻觉），导致 Sandpack 白屏：
+- **提示词**：`getMultiFileEngineerPrompt` 明确禁止 import deps 列表外的本地路径
+- **检测**：`findMissingLocalImports()` 在生成完成后扫描所有文件，发现缺失时向用户展示 `missing_imports` 错误
+- **兜底**：`buildSandpackConfig()` 自动注入 Proxy stub，预览降级渲染而非白屏
+
+### 10. Guest 匿名账户
+Guest 在 DB 中创建真实 `User` 记录（非 session-only），保证刷新后项目和历史数据均可持久化。固定 guest email 格式防止重复创建。
+
+### 11. 向后兼容版本读取
+`getVersionFiles()` 统一封装：新版本从 `files` 字段返回，老版本只有 `code` 字段则包装为 `{ "/App.js": code }`，UI 层无感知。
+
+### 12. 意图识别短路路由
+`classifyIntent()` 纯关键词匹配，无 LLM 调用。bug_fix / style_change 跳过 PM + Architect，三次串行 SSE 缩减为一次，响应时间从 ~60s 降到 ~20s。
+
+---
+
+## Testing
+
+| 层级 | 框架 | 覆盖范围 |
+|------|------|---------|
+| Unit | Jest + React Testing Library | lib 函数、React 组件 |
+| Integration | Jest | API Route handlers（mock DB + Auth）|
+| E2E | Playwright | 多 Agent 流程、版本时间线、持久化 |
 
 ```bash
-npm run dev
+npm test              # Unit + Integration (Jest)
+npm run test:e2e      # E2E (Playwright，自动启动 dev server)
 ```
 
-访问 [http://localhost:3000](http://localhost:3000)
+---
 
 ## Deployment (Vercel)
 
-1. Fork 本仓库，在 Vercel 中导入项目
+1. Fork 仓库，在 Vercel 导入项目
 2. 配置上述所有环境变量
-3. 将 GitHub OAuth App 的 callback URL 更新为 `https://<your-app>.vercel.app/api/auth/callback/github`
-4. 运行 `npx prisma db push` 同步生产数据库 schema
+3. 将 GitHub OAuth App 的 callback URL 改为 `https://<your-app>.vercel.app/api/auth/callback/github`
+4. 执行 `npx prisma db push` 同步生产数据库 schema
 5. Deploy ✅
