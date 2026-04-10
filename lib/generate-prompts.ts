@@ -47,15 +47,23 @@ HTTP 请求只使用原生 fetch API。
 - 必须包含 /App.js 作为入口文件
 - 每个文件明确导出内容和依赖关系
 
-输出格式：严格输出单个 JSON 对象，不得包含任何 Markdown 代码围栏、解释性文字或其他内容。
-
 JSON schema：
 {"files":[{"path":"string","description":"string","exports":["string"],"deps":["string"],"hints":"string"}],"sharedTypes":"string","designNotes":"string"}
 
 字段说明：
 - files: 文件列表，每项包含 path（文件路径）、description（职责描述）、exports（导出列表）、deps（依赖的其他文件路径）、hints（实现提示）
 - sharedTypes: 所有文件共享的 TypeScript/JSDoc 类型定义
-- designNotes: 整体设计说明和风格指南`,
+- designNotes: 整体设计说明和风格指南
+
+输出格式（严格遵守两个阶段）：
+
+<thinking>
+在此分析文件拆分合理性、依赖关系、模块边界。内容不限，不出现在最终结果中。
+</thinking>
+
+<output>
+{"files":[...],"sharedTypes":"...","designNotes":"..."} （仅 JSON，不含任何其他内容）
+</output>`,
 
     engineer: `你是一位全栈工程师。你会收到用户需求、PM 的 PRD 和架构师的技术方案，需要生成完整可运行的 React 应用代码。
 

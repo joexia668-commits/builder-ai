@@ -296,3 +296,19 @@ describe("snipCompletedFiles", () => {
     expect(promptSnipped.length).toBeLessThan(promptFull.length);
   });
 });
+
+describe("architect two-phase prompt", () => {
+  // GP-TP-01: architect prompt instructs <thinking> + <output> structure
+  it("GP-TP-01: architect 提示词包含双阶段 <thinking>/<output> 结构指令", () => {
+    const prompt = getSystemPrompt("architect", "proj-1");
+    expect(prompt).toContain("<thinking>");
+    expect(prompt).toContain("<output>");
+    expect(prompt).toContain("</output>");
+  });
+
+  // GP-TP-02: <output> block must contain only JSON per prompt
+  it("GP-TP-02: architect 提示词指示 <output> 块内只输出 JSON", () => {
+    const prompt = getSystemPrompt("architect", "proj-1");
+    expect(prompt).toMatch(/<output>[\s\S]*?JSON[\s\S]*?<\/output>/);
+  });
+});
