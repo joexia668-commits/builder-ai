@@ -4,18 +4,18 @@ const BUG_KEYWORDS = [
   "bug", "错误", "不工作", "修复", "报错", "没有反应",
   "失效", "崩溃", "出错", "fix", "broken", "doesn't work",
   "不能用", "失败", "exception", "异常",
-];
+] as const;
 
 const STYLE_KEYWORDS = [
   "颜色", "字体", "样式", "布局", "ui", "美化", "主题",
   "color", "font", "style", "layout", "theme", "dark mode", "深色",
   "background", "背景", "间距", "padding", "margin", "设计",
-];
+] as const;
 
 const NEW_PROJECT_KEYWORDS = [
   "重新做", "重新设计", "全新", "new project", "start over",
   "重做", "从头", "推倒重来",
-];
+] as const;
 
 /**
  * Classifies the intent of a user prompt based on keywords and context.

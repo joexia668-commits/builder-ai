@@ -68,19 +68,23 @@ export function buildEngineerContextFromStructured(
 /**
  * Builds Engineer context for the direct bug-fix / style-change path.
  * Skips PM and Architect — sends V1 code directly with user feedback.
+ *
+ * Uses XML-style <source> tags intentionally: they look nothing like the
+ * multi-file output marker "// === FILE: /path ===" so the LLM won't
+ * pattern-match and emit multi-file output when we need single-file.
  */
 export function buildDirectEngineerContext(
   userPrompt: string,
   currentFiles: Record<string, string>
 ): string {
   const filesSection = Object.entries(currentFiles)
-    .map(([path, code]) => `// === EXISTING FILE: ${path} ===\n${code}`)
+    .map(([path, code]) => `<source file="${path}">\n${code}\n</source>`)
     .join("\n\n");
 
   return [
     `用户反馈：${userPrompt}`,
-    `当前版本代码（请定向修复/调整，最小化改动范围，保留其余功能不变）：\n${filesSection}`,
-    `输出要求（严格遵守）：输出单个完整可运行的 React 组件，使用 export default function App() {}，将所有组件内联合并到一个文件，不得输出多文件格式，不得使用 \`\`\` 代码围栏。`,
+    `当前版本代码（参考，请在此基础上定向修复/调整，最小化改动范围）：\n${filesSection}`,
+    `输出要求（严格遵守）：将所有组件内联合并为单个文件，输出完整可运行的 export default function App() {}，不得使用多文件格式（禁止输出 // === FILE: 分隔符），不得使用 \`\`\` 代码围栏，代码即全部内容。`,
   ].join("\n\n");
 }
 
