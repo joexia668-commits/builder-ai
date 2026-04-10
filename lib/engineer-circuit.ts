@@ -1,5 +1,3 @@
-import type { ScaffoldFile } from "@/lib/types";
-
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   maxAttempts: number = 3,
