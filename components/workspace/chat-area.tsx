@@ -375,6 +375,7 @@ export function ChatArea({
                     sharedTypes: scaffold.sharedTypes,
                     completedFiles: allCompletedFiles,
                     designNotes: scaffold.designNotes,
+                    existingFiles: hasExistingCode ? currentFiles : undefined,
                   });
 
                   const response = await fetch("/api/generate", {
