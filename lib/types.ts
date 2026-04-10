@@ -103,6 +103,7 @@ export type ErrorCode =
   | "provider_unavailable"
   | "generation_timeout"
   | "parse_failed"
+  | "missing_imports"
   | "unknown";
 
 export interface SSEEvent {

@@ -34,6 +34,11 @@ export const ERROR_DISPLAY: Record<ErrorCode, ErrorDisplay> = {
     title: "结果解析失败",
     description: "AI 输出格式异常，已自动重试仍失败，请重新描述需求",
   },
+  missing_imports: {
+    icon: "⚠️",
+    title: "部分模块未生成",
+    description: "AI 生成的代码引用了未创建的文件，预览已用占位符替代，建议重新生成",
+  },
   unknown: {
     icon: "❌",
     title: "生成失败",

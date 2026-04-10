@@ -497,9 +497,11 @@ export function ChatArea({
               const missingImports = findMissingLocalImports(allCompletedFiles);
               if (missingImports.length > 0) {
                 setGenerationError({
-                  code: "parse_failed",
-                  raw: `AI 生成的代码引用了未创建的文件：${missingImports.join("、")}。请重新生成。`,
+                  code: "missing_imports",
+                  raw: `AI 生成的代码引用了未创建的文件：${missingImports.join("、")}`,
                 });
+                // Intentionally do NOT return here — stubs were injected by buildSandpackConfig
+                // so the preview renders with partial functionality instead of a blank screen.
               }
               const res = await fetchAPI("/api/versions", {
                 method: "POST",
