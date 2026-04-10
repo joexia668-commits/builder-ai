@@ -26,6 +26,7 @@ export async function POST(
     data: {
       projectId: sourceVersion.projectId,
       code: sourceVersion.code,
+      ...(sourceVersion.files ? { files: sourceVersion.files as Record<string, string> } : {}),
       description: `从 v${sourceVersion.versionNumber} 恢复`,
       versionNumber,
     },
