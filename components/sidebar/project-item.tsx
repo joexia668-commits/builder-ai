@@ -19,6 +19,16 @@ interface ProjectItemProps {
   readonly isDeleting?: boolean;
 }
 
+function relativeTime(date: Date): string {
+  const now = new Date();
+  const diff = now.getTime() - new Date(date).getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days === 0) return "今天";
+  if (days === 1) return "昨天";
+  const d = new Date(date);
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
 export function ProjectItem({
   project,
   isActive,
@@ -54,16 +64,21 @@ export function ProjectItem({
           href={`/project/${project.id}`}
           title={project.name}
           className={cn(
-            "flex flex-col items-center lg:items-start px-2 lg:px-3 py-2.5 hover:bg-gray-100 transition-colors border-l-2 rounded-r pr-8",
+            "relative flex flex-col items-center lg:flex-row lg:items-center gap-2 px-2 lg:px-2 py-2.5 lg:py-[7px] rounded-lg transition-all duration-150 pr-8",
             isActive
-              ? "border-indigo-500 bg-indigo-50 hover:bg-indigo-50"
-              : "border-transparent"
+              ? "bg-[#eef2ff] hover:bg-[#eef2ff]"
+              : "hover:bg-[#f9fafb]"
           )}
         >
-          {/* Tablet: first letter icon */}
+          {/* Left-bar active indicator (desktop only) */}
+          {isActive && (
+            <span className="hidden lg:block absolute left-0 top-1 bottom-1 w-[3px] bg-[#4f46e5] rounded-r-sm" />
+          )}
+
+          {/* Tablet: first letter circle */}
           <span
             className={cn(
-              "lg:hidden w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold",
+              "lg:hidden w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0",
               isActive
                 ? "bg-indigo-200 text-indigo-700"
                 : "bg-gray-200 text-gray-600"
@@ -71,21 +86,27 @@ export function ProjectItem({
           >
             {project.name.charAt(0).toUpperCase()}
           </span>
-          {/* Desktop: full text */}
+
+          {/* Desktop: dot + name + time */}
           <span
             className={cn(
-              "hidden lg:block text-sm font-medium truncate w-full",
-              isActive ? "text-indigo-700" : "text-gray-700"
+              "hidden lg:block w-1.5 h-1.5 rounded-full flex-shrink-0",
+              isActive ? "bg-[#4f46e5]" : "bg-[#d1d5db]"
             )}
-          >
-            {project.name}
-          </span>
-          <span className="hidden lg:block text-xs text-gray-400 mt-0.5">
-            {new Date(project.updatedAt).toLocaleDateString("zh-CN", {
-              month: "short",
-              day: "numeric",
-            })}
-          </span>
+          />
+          <div className="hidden lg:block flex-1 min-w-0">
+            <span
+              className={cn(
+                "block text-[13px] font-medium truncate",
+                isActive ? "text-[#3730a3] font-semibold" : "text-[#374151]"
+              )}
+            >
+              {project.name}
+            </span>
+            <span className="block text-[11px] text-[#9ca3af] mt-0.5">
+              {relativeTime(project.updatedAt)}
+            </span>
+          </div>
         </Link>
 
         <button
