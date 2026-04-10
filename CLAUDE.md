@@ -36,25 +36,58 @@ npx playwright test e2e/<spec>.spec.ts            # Single E2E file
 
 ### Request flow for AI generation
 
-Every user prompt triggers a **multi-phase SSE sequence** orchestrated by `ChatArea`:
+Every user prompt first runs intent classification, then takes one of two paths:
 
 ```
 ChatArea
-  └── POST /api/generate  { agent: "pm", prompt, projectId, modelId? }
-        └── JSON PmOutput  →  extractPmOutput()
-  └── POST /api/generate  { agent: "architect", context: pmOutput }
-        └── <thinking>推理</thinking><output>JSON ScaffoldData</output>  →  extractScaffoldFromTwoPhase()  →  topologicalSort()  →  layers[][]
-  └── for each layer (sequential):
-        for each file in layer (parallel):
-          POST /api/generate  { agent: "engineer", targetFile, scaffold, ... }
-                └── files_complete / code_complete event
-  └── allFiles merged  →  buildSandpackConfig(files, projectId)  →  Sandpack
-                       →  POST /api/versions  { code, files }  (immutable snapshot)
+  │
+  ├─ Phase 0: classifyIntent(prompt, hasExistingCode)
+  │     → "new_project" | "bug_fix" | "style_change" | "feature_add"
+  │
+  ├─ DIRECT PATH  (bug_fix | style_change — skips PM + Architect)
+  │   Single-file V1:
+  │     buildDirectEngineerContext()  → POST /api/generate { agent: "engineer" }
+  │           └── code_complete  →  onFilesGenerated({ "/App.js": code })
+  │   Multi-file V1:
+  │     buildDirectMultiFileEngineerContext()  → POST /api/generate { agent: "engineer", targetFiles: v1Paths }
+  │           └── files_complete  →  merge with V1  →  onFilesGenerated(mergedFiles)
+  │
+  └─ FULL PIPELINE  (new_project | feature_add)
+      └── POST /api/generate  { agent: "pm", prompt, context?: buildPmIterationContext(lastPmOutput) }
+            └── JSON PmOutput  →  extractPmOutput()  →  onPmOutputGenerated(parsedPm)
+      └── POST /api/generate  { agent: "architect", context: pmOutput }
+            └── <thinking>推理</thinking><output>JSON ScaffoldData</output>  →  extractScaffoldFromTwoPhase()  →  topologicalSort()  →  layers[][]
+      └── for each layer (sequential):
+            for each file in layer (parallel):
+              POST /api/generate  { agent: "engineer", targetFile, scaffold,
+                                    existingFiles?: currentFiles (feature_add only) }
+                    └── files_complete / code_complete event
+      └── allFiles merged  →  buildSandpackConfig(files, projectId)  →  Sandpack
+                           →  POST /api/versions  { code, files }  (immutable snapshot)
 ```
 
 `resolveModelId(modelId, project.preferredModel, user.preferredModel)` → `createProvider()` → `GeminiProvider | DeepSeekProvider | GroqProvider`
 
 The AbortController ref is replaced at the start of each generation; calling `abort()` cancels all in-flight SSE reads immediately.
+
+### Intent classification & context memory
+
+`classifyIntent(prompt, hasExistingCode)` in `lib/intent-classifier.ts` — keyword-based router:
+
+| Intent | Trigger | Pipeline |
+|--------|---------|----------|
+| `new_project` | no existing code, or "重新做/start over" keywords | Full PM → Architect → Engineer |
+| `feature_add` | default when code exists | Full pipeline + V1 code injected into Engineer, PM sees `lastPmOutput` summary |
+| `bug_fix` | "修复/bug/报错/没有反应…" keywords | Direct to Engineer only |
+| `style_change` | "颜色/样式/dark mode/UI…" keywords | Direct to Engineer only |
+
+Context injected per path:
+- **PM** (`feature_add`): `buildPmIterationContext(lastPmOutput)` — structured feature summary so PM writes a delta PRD instead of a full-rebuild PRD
+- **Engineer** (`feature_add`): `existingFiles: currentFiles` appended to `getMultiFileEngineerPrompt` as `// === EXISTING FILE: /path ===` blocks
+- **Engineer** (direct, single-file V1): `buildDirectEngineerContext` with `<source file="…">` XML tags
+- **Engineer** (direct, multi-file V1): `buildDirectMultiFileEngineerContext` with `targetFiles` = V1 paths → `extractMultiFileCode` on server
+
+`lastPmOutput` and `currentFiles` are held in `Workspace` state and passed down to `ChatArea` as props.
 
 ### Model selection priority chain
 
@@ -111,7 +144,9 @@ Versions are **immutable INSERT-only**. New versions store `files: Record<string
 
 | File | Why |
 |------|-----|
-| `lib/types.ts` | All shared types: `AgentRole`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput` |
+| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput` |
+| `lib/intent-classifier.ts` | `classifyIntent(prompt, hasExistingCode)` — keyword router that selects pipeline path |
+| `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildEngineerContextFromStructured`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildPmIterationContext` |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
 | `lib/model-registry.ts` | `MODEL_REGISTRY`, `getModelById`, `getAvailableModels`, `isValidModelId` |
 | `lib/extract-json.ts` | `extractPmOutput`, `extractScaffold`, `extractScaffoldFromTwoPhase` — JSON parsing; two-phase extracts from `<output>` block with fallback |
@@ -119,7 +154,7 @@ Versions are **immutable INSERT-only**. New versions store `files: Record<string
 | `lib/engineer-circuit.ts` | `retryWithBackoff<T>` + `runLayerWithFallback()` — full-layer retry → per-file fallback → circuit breaker |
 | `lib/topo-sort.ts` | `topologicalSort` — groups scaffold files into dependency layers for parallel generation |
 | `lib/version-files.ts` | `getVersionFiles` — backward-compatible reader for `code` / `files` version fields |
-| `components/workspace/chat-area.tsx` | Core orchestration — PM → Architect → layered Engineer, abort, progress state |
+| `components/workspace/chat-area.tsx` | Core orchestration — intent classification, direct path, PM → Architect → layered Engineer, abort, progress state |
 | `app/api/generate/route.ts` | The only Edge route — auth, model validation, provider selection, SSE stream |
-| `components/workspace/workspace.tsx` | Wires `currentFiles: Record<string,string>` to preview and editor |
+| `components/workspace/workspace.tsx` | Holds `currentFiles` + `lastPmOutput` state; wires to ChatArea and preview |
 | `lib/sandpack-config.ts` | `buildSandpackConfig(input: string \| Record<string,string>, projectId)` |

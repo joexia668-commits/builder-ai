@@ -13,7 +13,11 @@ import { getMultiFileEngineerPrompt } from "@/lib/generate-prompts";
 import {
   buildEngineerContext,
   buildEngineerContextFromStructured,
+  buildDirectEngineerContext,
+  buildDirectMultiFileEngineerContext,
+  buildPmIterationContext,
 } from "@/lib/agent-context";
+import { classifyIntent } from "@/lib/intent-classifier";
 import type {
   Project,
   ProjectMessage,
@@ -34,6 +38,9 @@ interface ChatAreaProps {
   onGeneratingChange?: (isGenerating: boolean) => void;
   isPreviewingHistory?: boolean;
   initialModel?: string;
+  currentFiles?: Record<string, string>;
+  lastPmOutput?: PmOutput | null;
+  onPmOutputGenerated?: (pm: PmOutput) => void;
 }
 
 const TRANSITION_MESSAGES: Partial<Record<AgentRole, string>> = {
@@ -53,6 +60,9 @@ export function ChatArea({
   onGeneratingChange,
   isPreviewingHistory = false,
   initialModel,
+  currentFiles = {},
+  lastPmOutput,
+  onPmOutputGenerated,
 }: ChatAreaProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -184,6 +194,10 @@ export function ChatArea({
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
+    // Phase 0: classify intent to route pipeline
+    const hasExistingCode = Object.keys(currentFiles).length > 0;
+    const intent = classifyIntent(prompt, hasExistingCode);
+
     setAgentStates({
       pm: { role: "pm", status: "idle", output: "" },
       architect: { role: "architect", status: "idle", output: "" },
@@ -207,6 +221,138 @@ export function ChatArea({
     let lastCode = "";
 
     try {
+      // Direct path: bug_fix / style_change skips PM + Architect
+      if (intent === "bug_fix" || intent === "style_change") {
+        updateAgentState("engineer", { status: "thinking", output: "" });
+
+        // Multi-file V1: use FILE separator format so the server can parse with
+        // extractMultiFileCode. Single-file V1: keep the merged single-file path.
+        const isMultiFileV1 = Object.keys(currentFiles).length > 1;
+        const v1Paths = Object.keys(currentFiles);
+        const directContext = isMultiFileV1
+          ? buildDirectMultiFileEngineerContext(prompt, currentFiles)
+          : buildDirectEngineerContext(prompt, currentFiles);
+
+        // For multi-file: tell the server which paths to expect so it routes to
+        // extractMultiFileCode instead of extractReactCode.
+        const targetFilesPayload = isMultiFileV1
+          ? v1Paths.map((p) => ({ path: p, description: "", exports: [], deps: [], hints: "" }))
+          : undefined;
+
+        const directResponse = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: project.id,
+            prompt,
+            agent: "engineer",
+            context: directContext,
+            modelId: selectedModel,
+            ...(targetFilesPayload ? { targetFiles: targetFilesPayload } : {}),
+          }),
+          signal: abortController.signal,
+        });
+
+        if (!directResponse.ok) {
+          const errorText = await directResponse.text();
+          throw new Error(`HTTP ${directResponse.status}: ${errorText.slice(0, 200)}`);
+        }
+        if (!directResponse.body) throw new Error("No response body");
+
+        updateAgentState("engineer", { status: "streaming" });
+
+        const directReader = directResponse.body.getReader();
+        const directDecoder = new TextDecoder();
+        let directOutput = "";
+        let directSseBuffer = "";
+        let directCode = "";
+        let directFiles: Record<string, string> | null = null;
+
+        const processDirectLines = (lines: string[]) => {
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6).trim();
+            if (!data || data === "[DONE]") continue;
+            try {
+              const event = JSON.parse(data) as { type: string; content?: string; code?: string; files?: Record<string, string>; error?: string };
+              if (event.type === "chunk") {
+                directOutput += event.content ?? "";
+                updateAgentState("engineer", { output: directOutput });
+              } else if (event.type === "code_complete") {
+                if (event.code) directCode = event.code;
+              } else if (event.type === "files_complete" && event.files) {
+                directFiles = event.files;
+              } else if (event.type === "reset") {
+                directOutput = "";
+                updateAgentState("engineer", { output: "" });
+              } else if (event.type === "error") {
+                throw new Error(event.error ?? "Stream error");
+              }
+            } catch (parseErr) {
+              if (parseErr instanceof SyntaxError) continue;
+              throw parseErr;
+            }
+          }
+        };
+
+        while (true) {
+          const { done, value } = await directReader.read();
+          directSseBuffer += done
+            ? directDecoder.decode()
+            : directDecoder.decode(value, { stream: true });
+          const lines = directSseBuffer.split("\n");
+          directSseBuffer = done ? "" : (lines.pop() ?? "");
+          processDirectLines(lines);
+          if (done) break;
+        }
+        if (directSseBuffer.trim()) processDirectLines([directSseBuffer]);
+
+        updateAgentState("engineer", { status: "done", output: directOutput });
+
+        const directMsg: ProjectMessage = {
+          id: `temp-agent-engineer-${Date.now()}`,
+          projectId: project.id,
+          role: "engineer",
+          content: directOutput,
+          metadata: null,
+          createdAt: new Date(),
+        };
+        currentMessages = [...currentMessages, directMsg];
+        onMessagesChange(currentMessages);
+        await persistMessage("engineer", directOutput, {
+          agentName: AGENTS.engineer.name,
+          agentColor: AGENTS.engineer.color,
+        });
+
+        if (isMultiFileV1 && directFiles) {
+          // Merge: LLM re-emits all files; output overrides V1 for each path.
+          const mergedFiles = { ...currentFiles, ...(directFiles as Record<string, string>) };
+          const res = await fetchAPI("/api/versions", {
+            method: "POST",
+            body: JSON.stringify({
+              projectId: project.id,
+              files: mergedFiles,
+              description: prompt.slice(0, 80),
+            }),
+          });
+          const version = await res.json();
+          onFilesGenerated(mergedFiles, version);
+        } else if (directCode) {
+          const res = await fetchAPI("/api/versions", {
+            method: "POST",
+            body: JSON.stringify({
+              projectId: project.id,
+              code: directCode,
+              description: prompt.slice(0, 80),
+            }),
+          });
+          const version = await res.json();
+          onFilesGenerated({ "/App.js": directCode }, version);
+        }
+
+        return; // skip full pipeline — finally block still runs
+      }
+
       for (const agentRole of AGENT_ORDER) {
         // Engineer: attempt multi-file path after architect completes
         if (agentRole === "engineer") {
@@ -260,6 +406,7 @@ export function ChatArea({
                     sharedTypes: scaffold.sharedTypes,
                     completedFiles: allCompletedFiles,
                     designNotes: scaffold.designNotes,
+                    existingFiles: hasExistingCode ? currentFiles : undefined,
                   });
 
                   const response = await fetch("/api/generate", {
@@ -354,12 +501,24 @@ export function ChatArea({
 
         const context =
           agentRole === "pm"
-            ? undefined
+            ? (intent === "feature_add" && lastPmOutput)
+                ? buildPmIterationContext(lastPmOutput)
+                : undefined
             : agentRole === "architect"
               ? outputs.pm
               : parsedPm
-                ? buildEngineerContextFromStructured(prompt, parsedPm, outputs.architect)
-                : buildEngineerContext(prompt, outputs.pm, outputs.architect);
+                ? buildEngineerContextFromStructured(
+                    prompt,
+                    parsedPm,
+                    outputs.architect,
+                    hasExistingCode ? currentFiles : undefined
+                  )
+                : buildEngineerContext(
+                    prompt,
+                    outputs.pm,
+                    outputs.architect,
+                    hasExistingCode ? currentFiles : undefined
+                  );
 
         const response = await fetch("/api/generate", {
           method: "POST",
@@ -468,6 +627,11 @@ export function ChatArea({
         });
         const version = await res.json();
         onFilesGenerated({ "/App.js": lastCode }, version);
+      }
+
+      // Persist PM output so next iteration can inject feature summary
+      if (parsedPm) {
+        onPmOutputGenerated?.(parsedPm);
       }
     } catch (err) {
       const isAbort =

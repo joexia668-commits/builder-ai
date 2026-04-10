@@ -141,10 +141,11 @@ interface MultiFileEngineerPromptInput {
   readonly sharedTypes: string;
   readonly completedFiles: Record<string, string>;
   readonly designNotes: string;
+  readonly existingFiles?: Record<string, string>;
 }
 
 export function getMultiFileEngineerPrompt(input: MultiFileEngineerPromptInput): string {
-  const { projectId, targetFiles, sharedTypes, completedFiles, designNotes } = input;
+  const { projectId, targetFiles, sharedTypes, completedFiles, designNotes, existingFiles } = input;
 
   const targetFileList = targetFiles
     .map(
@@ -165,6 +166,14 @@ export function getMultiFileEngineerPrompt(input: MultiFileEngineerPromptInput):
               : `// === FILE: ${path} (snipped — exports only) ===`;
             return `${header}\n${code}`;
           })
+          .join("\n\n")}`
+      : "";
+
+  // V1 existing files — only shown on iteration (when existingFiles is provided)
+  const existingFilesSection =
+    existingFiles && Object.keys(existingFiles).length > 0
+      ? `当前版本已有代码（迭代时参考，保留兼容的逻辑和样式，不要推倒重来）：\n${Object.entries(existingFiles)
+          .map(([path, code]) => `// === EXISTING FILE: ${path} ===\n${code}`)
           .join("\n\n")}`
       : "";
 
@@ -194,6 +203,8 @@ import { supabase } from '/supabaseClient.js'
 
 共享类型定义：
 ${sharedTypes}
+
+${existingFilesSection}
 
 ${completedSection}
 

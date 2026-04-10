@@ -2,6 +2,25 @@ import * as fs from "fs";
 import * as path from "path";
 import { getSystemPrompt } from "@/lib/generate-prompts";
 import { buildEngineerContext } from "@/lib/agent-context";
+import { NextRequest } from "next/server";
+
+// ── Mocks for PM context tests ─────────────────────────────────────────────
+jest.mock("next-auth/jwt", () => ({
+  getToken: jest.fn().mockResolvedValue({ sub: "user-1" }),
+}));
+
+jest.mock("@/lib/ai-providers", () => ({
+  resolveModelId: jest.requireActual("@/lib/ai-providers").resolveModelId,
+  createProvider: jest.fn(),
+  isRateLimitError: jest.fn().mockReturnValue(false),
+}));
+
+jest.mock("@/lib/extract-code", () => ({
+  extractReactCode: jest.fn((code: string) => code),
+}));
+
+import { POST } from "@/app/api/generate/route";
+import { createProvider } from "@/lib/ai-providers";
 
 /**
  * IT-06 ~ IT-07: Generate Route 行为
@@ -112,5 +131,57 @@ describe("Generate Route — Edge Runtime & auth declarations (EPIC 5)", () => {
     expect(routeContent).toContain("Unauthorized");
     // The guard pattern: if (!token) return 401
     expect(routeContent).toMatch(/if\s*\(\s*!token\s*\)/);
+  });
+});
+
+describe("Generate Route — PM agent context injection", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("PM agent: prepends context to user message when context is provided", async () => {
+    const mockStream = {
+      streamCompletion: jest.fn().mockResolvedValue(undefined),
+    };
+    (createProvider as jest.Mock).mockReturnValue(mockStream);
+
+    const req = new NextRequest("http://localhost/api/generate", {
+      method: "POST",
+      body: JSON.stringify({
+        projectId: "proj-1",
+        agent: "pm",
+        prompt: "添加搜索功能",
+        context: "当前应用已有：[功能]: 待办列表",
+      }),
+    });
+
+    await POST(req);
+
+    const [messages] = mockStream.streamCompletion.mock.calls[0];
+    const userMsg = messages.find((m: { role: string }) => m.role === "user");
+    expect(userMsg.content).toContain("添加搜索功能");
+    expect(userMsg.content).toContain("当前应用已有");
+  });
+
+  it("PM agent: uses plain prompt when context is absent", async () => {
+    const mockStream = {
+      streamCompletion: jest.fn().mockResolvedValue(undefined),
+    };
+    (createProvider as jest.Mock).mockReturnValue(mockStream);
+
+    const req = new NextRequest("http://localhost/api/generate", {
+      method: "POST",
+      body: JSON.stringify({
+        projectId: "proj-1",
+        agent: "pm",
+        prompt: "做一个日历",
+      }),
+    });
+
+    await POST(req);
+
+    const [messages] = mockStream.streamCompletion.mock.calls[0];
+    const userMsg = messages.find((m: { role: string }) => m.role === "user");
+    expect(userMsg.content).toBe("用户需求：做一个日历");
   });
 });

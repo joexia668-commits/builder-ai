@@ -51,7 +51,9 @@ export async function POST(req: NextRequest) {
 
   const userContent =
     agent === "pm"
-      ? `用户需求：${prompt}`
+      ? context
+        ? `用户需求：${prompt}\n\n${context}`
+        : `用户需求：${prompt}`
       : agent === "architect"
         ? `PM 的产品需求文档：\n\n${context}\n\n请基于以上 PRD 设计多文件 React 项目的文件结构和技术方案。`
         : `请根据以下完整背景信息，生成完整可运行的 React 组件代码：\n\n${context}`;
