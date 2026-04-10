@@ -127,6 +127,9 @@ export interface CompletionOptions {
   readonly jsonMode?: boolean;
 }
 
+// Intent of a user's follow-up prompt — drives pipeline routing
+export type Intent = "new_project" | "bug_fix" | "feature_add" | "style_change";
+
 // Multi-file scaffold types (Architect agent output)
 export interface ScaffoldFile {
   readonly path: string;
