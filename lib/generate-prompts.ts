@@ -195,6 +195,13 @@ UI 样式只使用 Tailwind CSS class。
 图标只使用 lucide-react。若需同时从 lucide-react 和本地组件文件导入同名符号，必须对图标做别名：import { Calculator as CalculatorIcon } from 'lucide-react'，JSX 中使用别名。
 HTTP 请求只使用原生 fetch API。
 
+【本地文件导入限制】
+只允许 import 以下本地路径：
+- 当前目标文件的 deps 列表中明确列出的文件路径
+- /supabaseClient.js
+禁止 import 任何未在 deps 中出现的本地路径（如 /utils/format.js、/helpers/xxx.js 等）。
+如果需要工具函数，必须在当前文件内自己实现，不得假设存在其他文件。
+
 如需数据持久化，使用沙箱预置的 Supabase 客户端：
 import { supabase } from '/supabaseClient.js'
 // 使用 dynamic_app_data 表，appId 固定为 '${projectId}'
