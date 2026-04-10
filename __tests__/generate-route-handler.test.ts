@@ -143,3 +143,85 @@ describe("Generate Route Handler — normal generation", () => {
     expect((filesEvent?.files as Record<string, string>)["/App.js"]).toBeDefined();
   });
 });
+
+// ── Behavioral branches ──────────────────────────────────────────────────────
+
+describe("Generate Route Handler — behavioral branches", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (getToken as jest.Mock).mockResolvedValue({ sub: "user-1" });
+  });
+
+  it("test 5: rate limit triggers Groq fallback", async () => {
+    // Primary provider throws 429; Groq provider succeeds
+    const primaryProvider = {
+      streamCompletion: jest.fn().mockRejectedValue(new Error("429 rate limit exceeded")),
+    };
+    const groqProvider = makeSuccessProvider(["groq response"]);
+    const mockCreateProvider = jest.fn()
+      .mockReturnValueOnce(primaryProvider)  // first call: primary model
+      .mockReturnValueOnce(groqProvider);    // second call: llama-3.3-70b fallback
+
+    const originalKey = process.env.GROQ_API_KEY;
+    process.env.GROQ_API_KEY = "test-groq-key";
+
+    try {
+      const handler = createHandler({ createProvider: mockCreateProvider });
+      const res = await handler(makeReq({ agent: "pm", prompt: "build", projectId: "p1" }));
+      const events = await collectSSE(res);
+
+      // createProvider called twice: once for primary, once for Groq
+      expect(mockCreateProvider).toHaveBeenCalledTimes(2);
+      expect(mockCreateProvider.mock.calls[1][0]).toBe("llama-3.3-70b");
+
+      // SSE has reset (discard partial) then done
+      const types = events.map((e) => e.type);
+      expect(types).toContain("reset");
+      expect(types).toContain("done");
+    } finally {
+      if (originalKey === undefined) delete process.env.GROQ_API_KEY;
+      else process.env.GROQ_API_KEY = originalKey;
+    }
+  });
+
+  it("test 6: max_tokens triggers conciseness retry for engineer", async () => {
+    (extractReactCode as jest.Mock).mockReturnValue("function App(){}");
+
+    const provider = {
+      streamCompletion: jest.fn()
+        .mockRejectedValueOnce(new Error("max_tokens_exceeded"))         // first attempt fails
+        .mockImplementationOnce(async (_: unknown, onChunk: (t: string) => void) => {
+          onChunk("function App(){}");                                    // retry succeeds
+        }),
+    };
+    const handler = createHandler({ createProvider: jest.fn().mockReturnValue(provider) });
+
+    const res = await handler(makeReq({ agent: "engineer", prompt: "build", projectId: "p1", context: "ctx" }));
+    const events = await collectSSE(res);
+
+    // streamCompletion called twice: original + retry
+    expect(provider.streamCompletion).toHaveBeenCalledTimes(2);
+    // Retry request contains the conciseness instruction
+    const retryCall = provider.streamCompletion.mock.calls[1];
+    expect(JSON.stringify(retryCall[0])).toContain("280 行以内");
+
+    // SSE has reset then code_complete
+    const types = events.map((e) => e.type);
+    expect(types).toContain("reset");
+    expect(types).toContain("code_complete");
+  });
+
+  it("test 7: parse failure emits parse_failed error code", async () => {
+    // streamCompletion succeeds but extractReactCode returns null (garbage output)
+    const provider = makeSuccessProvider(["GARBAGE_OUTPUT_NOT_CODE"]);
+    const handler = createHandler({ createProvider: jest.fn().mockReturnValue(provider) });
+    (extractReactCode as jest.Mock).mockReturnValue(null);
+
+    const res = await handler(makeReq({ agent: "engineer", prompt: "build", projectId: "p1", context: "ctx" }));
+    const events = await collectSSE(res);
+
+    const errorEvent = events.find((e) => e.type === "error");
+    expect(errorEvent).toBeDefined();
+    expect(errorEvent?.errorCode).toBe("parse_failed");
+  });
+});
