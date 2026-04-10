@@ -1,6 +1,11 @@
-import { retryWithBackoff } from "@/lib/engineer-circuit";
+import { retryWithBackoff, runLayerWithFallback } from "@/lib/engineer-circuit";
+import type { ScaffoldFile } from "@/lib/types";
 
 jest.useFakeTimers();
+
+const FILE_A: ScaffoldFile = { path: "/A.js", description: "A", exports: ["A"], deps: [], hints: "" };
+const FILE_B: ScaffoldFile = { path: "/B.js", description: "B", exports: ["B"], deps: ["/A.js"], hints: "" };
+const FILE_C: ScaffoldFile = { path: "/C.js", description: "C", exports: ["C"], deps: [], hints: "" };
 
 describe("retryWithBackoff", () => {
   beforeEach(() => jest.clearAllTimers());
@@ -74,5 +79,81 @@ describe("retryWithBackoff", () => {
     await jest.advanceTimersByTimeAsync(1);
     expect(fn).toHaveBeenCalledTimes(3); // after 200ms
     await expect(promise).resolves.toBe("ok");
+  });
+});
+
+describe("runLayerWithFallback", () => {
+  beforeEach(() => jest.clearAllTimers());
+
+  // EC-10: full-layer request succeeds — returns files, no fallback
+  it("EC-10: 整层请求成功，直接返回文件", async () => {
+    const requestFn = jest.fn().mockResolvedValue({ "/A.js": "code-a", "/B.js": "code-b" });
+    const result = await runLayerWithFallback([FILE_A, FILE_B], requestFn);
+    expect(result.files).toEqual({ "/A.js": "code-a", "/B.js": "code-b" });
+    expect(result.failed).toEqual([]);
+    expect(requestFn).toHaveBeenCalledTimes(1);
+  });
+
+  // EC-11: layer fails 3×, fallback per-file both succeed
+  it("EC-11: 整层失败后降级为逐文件请求", async () => {
+    const fn = jest
+      .fn()
+      // 3 full-layer failures
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockRejectedValueOnce(new Error("fail"))
+      // per-file: A succeeds
+      .mockResolvedValueOnce({ "/A.js": "code-a" })
+      // per-file: B succeeds
+      .mockResolvedValueOnce({ "/B.js": "code-b" });
+
+    const promise = runLayerWithFallback([FILE_A, FILE_B], fn);
+    // advance through 3 layer retries: 100ms + 200ms
+    await jest.advanceTimersByTimeAsync(300);
+    const result = await promise;
+
+    expect(result.files).toEqual({ "/A.js": "code-a", "/B.js": "code-b" });
+    expect(result.failed).toEqual([]);
+  });
+
+  // EC-12: fallback per-file: A fails, B succeeds — A in failed[]
+  it("EC-12: 逐文件降级时部分文件失败", async () => {
+    const fn = jest
+      .fn()
+      // 3 full-layer failures
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockRejectedValueOnce(new Error("fail"))
+      // per-file A: 3 failures
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockRejectedValueOnce(new Error("fail"))
+      // per-file B: success
+      .mockResolvedValueOnce({ "/B.js": "code-b" });
+
+    const promise = runLayerWithFallback([FILE_A, FILE_B], fn);
+    await jest.advanceTimersByTimeAsync(700);
+    const result = await promise;
+
+    expect(result.failed).toContain("/A.js");
+    expect(result.files["/B.js"]).toBe("code-b");
+  });
+
+  // EC-13: circuit breaker — 3 consecutive per-file failures → 4th file skipped
+  it("EC-13: 断路器触发后剩余文件直接标记失败", async () => {
+    const FILE_D: ScaffoldFile = { path: "/D.js", description: "D", exports: ["D"], deps: [], hints: "" };
+    const fn = jest.fn().mockRejectedValue(new Error("API down"));
+
+    const promise = runLayerWithFallback([FILE_A, FILE_B, FILE_C, FILE_D], fn);
+    await jest.advanceTimersByTimeAsync(3000);
+    const result = await promise;
+
+    expect(result.failed).toContain("/A.js");
+    expect(result.failed).toContain("/B.js");
+    expect(result.failed).toContain("/C.js");
+    expect(result.failed).toContain("/D.js");
+    // D was never attempted (circuit was open after A, B, C consecutive failures)
+    const dCalls = fn.mock.calls.filter(([files]) => files.length === 1 && files[0].path === "/D.js");
+    expect(dCalls).toHaveLength(0);
   });
 });
