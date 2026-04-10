@@ -13,6 +13,10 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import type { ProjectVersion } from "@/lib/types";
 
 // Mock heavy child components
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 jest.mock("@/components/sidebar/conversation-sidebar", () => ({
   ConversationSidebar: () => <div>Sidebar</div>,
 }));

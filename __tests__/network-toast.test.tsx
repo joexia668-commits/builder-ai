@@ -20,6 +20,10 @@ jest.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 // Mock next-auth
 jest.mock("next-auth/react", () => ({
   useSession: () => ({ data: null, status: "unauthenticated" }),

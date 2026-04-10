@@ -14,6 +14,10 @@ jest.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 // Track what files/versions PreviewPanel receives
 let capturedCode = "";
 let capturedVersions: unknown[] = [];

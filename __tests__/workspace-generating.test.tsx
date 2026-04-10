@@ -14,6 +14,10 @@ window.HTMLElement.prototype.scrollIntoView = jest.fn();
 // Mock fetch for SSE streaming
 global.fetch = jest.fn();
 
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 jest.mock("@/lib/api-client", () => ({
   fetchAPI: jest.fn().mockResolvedValue({
     json: jest.fn().mockResolvedValue({ id: "v1", code: "code", projectId: "p1" }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ConversationSidebar } from "@/components/sidebar/conversation-sidebar";
 import { ChatArea } from "@/components/workspace/chat-area";
@@ -19,6 +20,7 @@ interface WorkspaceProps {
 type MobileTab = "chat" | "preview";
 
 export function Workspace({ project, allProjects }: WorkspaceProps) {
+  const router = useRouter();
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
 
   useEffect(() => {
@@ -119,6 +121,7 @@ export function Workspace({ project, allProjects }: WorkspaceProps) {
               setVersions((prev) => [...prev, version]);
               setPreviewingVersion(null);
             }}
+            onNewProject={() => router.push("/")}
           />
         </div>
 

@@ -13,6 +13,11 @@ jest.mock("sonner", () => ({
   toast: { error: jest.fn(), success: jest.fn() },
   Toaster: () => null,
 }));
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 jest.mock("next-auth/react", () => ({
   useSession: () => ({ data: null, status: "unauthenticated" }),
 }));
