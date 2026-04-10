@@ -127,7 +127,7 @@ describe("ProjectList", () => {
   // UI-PL-04: new project button opens Dialog
   it("UI-PL-04: + 新建项目 button opens dialog", () => {
     render(<ProjectList projects={[makeProject()]} />);
-    fireEvent.click(screen.getByRole("button", { name: /新建项目/ }));
+    fireEvent.click(screen.getByTestId("btn-new-project"));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("项目名称")).toBeInTheDocument();
   });
@@ -166,7 +166,7 @@ describe("ProjectList", () => {
 
   it("UI-PL-04d: cancel button closes dialog", () => {
     render(<ProjectList projects={[makeProject()]} />);
-    fireEvent.click(screen.getByRole("button", { name: /新建项目/ }));
+    fireEvent.click(screen.getByTestId("btn-new-project"));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /取消/ }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

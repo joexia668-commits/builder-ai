@@ -90,6 +90,7 @@ export function ProjectList({ projects: initialProjects }: ProjectListProps) {
         </div>
         <Button
           onClick={() => setOpen(true)}
+          data-testid="btn-new-project"
           className="h-[34px] px-[14px] rounded-lg transition-all duration-150 hover:shadow-[0_2px_8px_rgba(79,70,229,0.25)]"
         >
           + 新建项目
@@ -144,6 +145,7 @@ export function ProjectList({ projects: initialProjects }: ProjectListProps) {
           {/* Dashed new-project card */}
           <button
             onClick={() => setOpen(true)}
+            data-testid="btn-new-project-card"
             className="border-[1.5px] border-dashed border-[#d1d5db] rounded-xl min-h-[108px] flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all duration-150 hover:border-[#a5b4fc] hover:bg-[#f5f3ff]"
           >
             <div className="w-7 h-7 rounded-[8px] bg-[#eef2ff] flex items-center justify-center text-[#4f46e5] text-base font-medium">
