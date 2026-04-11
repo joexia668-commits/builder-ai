@@ -2,6 +2,7 @@ import {
   buildEngineerContext,
   buildEngineerContextFromStructured,
   buildDirectEngineerContext,
+  buildDirectMultiFileEngineerContext,
   buildPmIterationContext,
 } from "@/lib/agent-context";
 import type { PmOutput } from "@/lib/types";
@@ -212,9 +213,9 @@ describe("buildDirectEngineerContext", () => {
     expect(result).toContain(prompt);
   });
 
-  it("includes existing file content with EXISTING FILE marker", () => {
+  it("includes existing file content with source tags", () => {
     const result = buildDirectEngineerContext(prompt, files);
-    expect(result).toContain("EXISTING FILE: /App.js");
+    expect(result).toContain('<source file="/App.js">');
     expect(result).toContain("export default function App()");
   });
 
@@ -229,8 +230,8 @@ describe("buildDirectEngineerContext", () => {
       "/components/Button.js": "export function Button() {}",
     };
     const result = buildDirectEngineerContext(prompt, multiFiles);
-    expect(result).toContain("EXISTING FILE: /App.js");
-    expect(result).toContain("EXISTING FILE: /components/Button.js");
+    expect(result).toContain('<source file="/App.js">');
+    expect(result).toContain('<source file="/components/Button.js">');
   });
 });
 
@@ -274,5 +275,42 @@ describe("buildPmIterationContext", () => {
     };
     const result = buildPmIterationContext(pmNoData);
     expect(result).not.toContain("[数据模型]");
+  });
+});
+
+describe("buildDirectMultiFileEngineerContext", () => {
+  const prompt = "所有按键底色换成黄色";
+  const files = {
+    "/App.js": "export default function App() { return <div><Button/></div> }",
+    "/components/Button.js": "export function Button() { return <button>Click</button> }",
+  };
+
+  it("includes user prompt labeled as 用户反馈", () => {
+    const result = buildDirectMultiFileEngineerContext(prompt, files);
+    expect(result).toContain("用户反馈");
+    expect(result).toContain(prompt);
+  });
+
+  it("includes existing file content", () => {
+    const result = buildDirectMultiFileEngineerContext(prompt, files);
+    expect(result).toContain("/App.js");
+    expect(result).toContain("/components/Button.js");
+    expect(result).toContain("export default function App()");
+  });
+
+  it("instructs LLM to output ONLY modified files (not all files)", () => {
+    const result = buildDirectMultiFileEngineerContext(prompt, files);
+    expect(result).toContain("只输出你实际需要修改的文件");
+  });
+
+  it("does NOT instruct LLM to copy unchanged files verbatim", () => {
+    const result = buildDirectMultiFileEngineerContext(prompt, files);
+    expect(result).not.toContain("未修改的文件原样复制");
+    expect(result).not.toContain("必须输出全部文件");
+  });
+
+  it("uses FILE separator format in output instructions", () => {
+    const result = buildDirectMultiFileEngineerContext(prompt, files);
+    expect(result).toContain("// === FILE:");
   });
 });

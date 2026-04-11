@@ -90,11 +90,6 @@ export function buildDirectEngineerContext(
 
 /**
  * Builds Engineer context for the direct bug-fix / style-change path on multi-file V1 apps.
- * Instructs the LLM to output ALL files in FILE separator format so extractMultiFileCode
- * can parse the result. Even unchanged files must be re-emitted verbatim.
- */
-/**
- * Builds Engineer context for the direct bug-fix / style-change path on multi-file V1 apps.
  * Instructs the LLM to output ONLY the files it actually modifies.
  * Unchanged files are NOT re-emitted — the caller merges { ...currentFiles, ...llmOutput }
  * so unmodified files are preserved automatically without going through the LLM.
