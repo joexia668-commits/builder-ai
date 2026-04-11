@@ -12,8 +12,15 @@ export default async function HomePage() {
     redirect("/login");
   }
 
+  const isDemo = session.user.isDemo ?? false;
+  const userId = isDemo
+    ? (process.env.DEMO_USER_ID ?? null)
+    : session.user.id;
+
+  if (!userId) redirect("/login");
+
   const projects = await prisma.project.findMany({
-    where: { userId: session.user.id },
+    where: { userId },
     orderBy: { updatedAt: "desc" },
     include: {
       _count: { select: { versions: true, messages: true } },
