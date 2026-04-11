@@ -14,10 +14,16 @@ jest.mock("next-auth/jwt", () => ({
 jest.mock("@/lib/extract-code", () => ({
   extractReactCode: jest.fn(),
   extractMultiFileCode: jest.fn(),
+  extractMultiFileCodePartial: jest.fn(),
+  extractAnyMultiFileCode: jest.fn(),
 }));
 
 import { createHandler } from "@/app/api/generate/handler";
-import { extractReactCode, extractMultiFileCode } from "@/lib/extract-code";
+import {
+  extractReactCode,
+  extractMultiFileCode,
+  extractMultiFileCodePartial,
+} from "@/lib/extract-code";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -132,7 +138,11 @@ describe("Generate Route Handler — normal generation", () => {
   it("test 4: Engineer multi-file sends files_complete", async () => {
     const provider = makeSuccessProvider(["// FILE: /App.js\nfunction App(){}"]);
     const handler = createHandler({ createProvider: jest.fn().mockReturnValue(provider) });
-    (extractMultiFileCode as jest.Mock).mockReturnValue({ "/App.js": "function App(){}" });
+    (extractMultiFileCodePartial as jest.Mock).mockReturnValue({
+      ok: { "/App.js": "function App(){}" },
+      failed: [],
+      truncatedTail: null,
+    });
 
     const targetFiles = [{ path: "/App.js", description: "main", exports: ["App"], deps: [], hints: "" }];
     const res = await handler(makeReq({ agent: "engineer", prompt: "build", projectId: "p1", context: "ctx", targetFiles }));
@@ -223,5 +233,48 @@ describe("Generate Route Handler — behavioral branches", () => {
     const errorEvent = events.find((e) => e.type === "error");
     expect(errorEvent).toBeDefined();
     expect(errorEvent?.errorCode).toBe("parse_failed");
+  });
+
+  it("test 10: Engineer multi-file emits partial_files_complete when some files parse", async () => {
+    const provider = makeSuccessProvider(["// FILE: /A.js\ncode-a"]);
+    const handler = createHandler({ createProvider: jest.fn().mockReturnValue(provider) });
+    (extractMultiFileCodePartial as jest.Mock).mockReturnValue({
+      ok: { "/A.js": "code-a" },
+      failed: ["/B.js"],
+      truncatedTail: "tail...",
+    });
+
+    const targetFiles = [
+      { path: "/A.js", description: "A", exports: ["A"], deps: [], hints: "" },
+      { path: "/B.js", description: "B", exports: ["B"], deps: [], hints: "" },
+    ];
+    const res = await handler(makeReq({ agent: "engineer", prompt: "build", projectId: "p1", context: "ctx", targetFiles }));
+    const events = await collectSSE(res);
+
+    const partialEvent = events.find((e) => e.type === "partial_files_complete");
+    expect(partialEvent).toBeDefined();
+    expect((partialEvent?.files as Record<string, string>)["/A.js"]).toBe("code-a");
+    expect((partialEvent?.failed as string[])).toContain("/B.js");
+    expect(partialEvent?.truncatedTail).toBeDefined();
+  });
+
+  it("test 11: Engineer multi-file emits error parse_failed with failedFiles when all files fail", async () => {
+    const provider = makeSuccessProvider(["GARBAGE_OUTPUT_NOT_CODE"]);
+    const handler = createHandler({ createProvider: jest.fn().mockReturnValue(provider) });
+    (extractMultiFileCodePartial as jest.Mock).mockReturnValue({
+      ok: {},
+      failed: ["/A.js"],
+      truncatedTail: "tail",
+    });
+
+    const targetFiles = [{ path: "/A.js", description: "A", exports: ["A"], deps: [], hints: "" }];
+    const res = await handler(makeReq({ agent: "engineer", prompt: "build", projectId: "p1", context: "ctx", targetFiles }));
+    const events = await collectSSE(res);
+
+    const errorEvent = events.find((e) => e.type === "error");
+    expect(errorEvent).toBeDefined();
+    expect(errorEvent?.errorCode).toBe("parse_failed");
+    expect((errorEvent?.failedFiles as string[])).toContain("/A.js");
+    expect(errorEvent?.truncatedTail).toBeDefined();
   });
 });
