@@ -19,7 +19,7 @@ const config: Config = {
     ],
   },
   testMatch: ["**/__tests__/**/*.test.(ts|tsx)"],
-  testPathIgnorePatterns: ["/node_modules/", "/.worktrees/"],
+  testPathIgnorePatterns: ["/node_modules/"],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
   projects: [
@@ -27,7 +27,7 @@ const config: Config = {
       displayName: "node",
       testEnvironment: "node",
       testMatch: ["**/__tests__/**/*.test.ts"],
-      testPathIgnorePatterns: ["/node_modules/", "/.worktrees/"],
+      testPathIgnorePatterns: ["/node_modules/"],
       moduleNameMapper: { "^@/(.*)$": "<rootDir>/$1" },
       transform: {
         "^.+\\.ts$": [
@@ -46,7 +46,7 @@ const config: Config = {
       displayName: "jsdom",
       testEnvironment: "jsdom",
       testMatch: ["**/__tests__/**/*.test.tsx"],
-      testPathIgnorePatterns: ["/node_modules/", "/.worktrees/"],
+      testPathIgnorePatterns: ["/node_modules/"],
       moduleNameMapper: { "^@/(.*)$": "<rootDir>/$1" },
       transform: {
         "^.+\\.(ts|tsx)$": [
