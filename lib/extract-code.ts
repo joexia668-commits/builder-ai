@@ -180,6 +180,55 @@ const WHITELISTED_LOCAL = new Set(["/supabaseClient.js"]);
 
 /**
  * Scan all generated files for imports of local paths ('/...') that are not
+ * present in the files map. Returns a Map from missing path to the set of
+ * named exports required from that path (empty set = only default/namespace import).
+ * /supabaseClient.js is always whitelisted (it is injected by buildSandpackConfig).
+ */
+export function findMissingLocalImportsWithNames(
+  files: Readonly<Record<string, string>>
+): Map<string, Set<string>> {
+  const presentPaths = new Set(Object.keys(files));
+  const missing = new Map<string, Set<string>>();
+
+  const ensurePath = (path: string) => {
+    if (!missing.has(path)) missing.set(path, new Set());
+  };
+
+  // Regex matches: import [Default,] { Foo, Bar as B } from '/path'
+  const namedImportRe = /import\s+(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s+from\s+['"](\/.+?)['"]/g;
+
+  for (const code of Object.values(files)) {
+    // Pass 1: extract named import specifiers per path
+    for (const m of Array.from(code.matchAll(namedImportRe))) {
+      const path = m[2];
+      if (!WHITELISTED_LOCAL.has(path) && !presentPaths.has(path)) {
+        ensurePath(path);
+        for (const token of m[1].split(",")) {
+          const raw = token.trim();
+          if (!raw) continue;
+          // "Foo as Bar" → use original export name "Foo"
+          const name = raw.split(/\s+as\s+/)[0].trim();
+          if (name && /^[a-zA-Z_$][\w$]*$/.test(name)) {
+            missing.get(path)!.add(name);
+          }
+        }
+      }
+    }
+
+    // Pass 2: catch default/namespace imports to ensure the path is tracked
+    for (const m of Array.from(code.matchAll(/from\s+['"](\/.+?)['"]/g))) {
+      const path = m[1];
+      if (!WHITELISTED_LOCAL.has(path) && !presentPaths.has(path)) {
+        ensurePath(path);
+      }
+    }
+  }
+
+  return missing;
+}
+
+/**
+ * Scan all generated files for imports of local paths ('/...') that are not
  * present in the files map. Returns a deduplicated list of missing paths.
  * /supabaseClient.js is always whitelisted (it is injected by buildSandpackConfig).
  */

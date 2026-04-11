@@ -57,8 +57,8 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
   },
 ];
 
-/** Default to Gemini Flash — always available on Vercel (GOOGLE_GENERATIVE_AI_API_KEY is set) */
-export const DEFAULT_MODEL_ID = "gemini-2.0-flash";
+/** Default fallback model — used only when no preferred model has a valid API key */
+export const DEFAULT_MODEL_ID = "deepseek-chat";
 
 export function getModelById(id: string | undefined): ModelDefinition | undefined {
   if (!id) return undefined;

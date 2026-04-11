@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
 import Groq from "groq-sdk";
-import { getModelById, DEFAULT_MODEL_ID, type ModelDefinition } from "@/lib/model-registry";
+import { getModelById, getAvailableModels, DEFAULT_MODEL_ID, type ModelDefinition } from "@/lib/model-registry";
 import type { CompletionOptions } from "@/lib/types";
 
 export interface CompletionMessage {
@@ -198,22 +198,30 @@ export function createProvider(modelId: string): AIProvider {
 
 /**
  * Resolve the model ID to use, following the priority chain:
- *   requestModelId → projectModelId → userModelId → env AI_PROVIDER → DEFAULT_MODEL_ID
+ *   requestModelId → projectModelId → userModelId → env AI_PROVIDER → DEFAULT_MODEL_ID → first available
+ *
+ * Each candidate is skipped if its API key env var is not set, so the resolver
+ * automatically falls through to the first actually-available model.
  */
 export function resolveModelId(
   requestModelId?: string | null,
   projectModelId?: string | null,
-  userModelId?: string | null
+  userModelId?: string | null,
+  env: Record<string, string | undefined> = process.env
 ): string {
   const candidates = [
     requestModelId,
     projectModelId,
     userModelId,
-    process.env.AI_PROVIDER,
+    env.AI_PROVIDER,
     DEFAULT_MODEL_ID,
   ];
   for (const id of candidates) {
-    if (id && getModelById(id)) return id;
+    if (!id) continue;
+    const model = getModelById(id);
+    if (model && Boolean(env[model.envKey])) return id;
   }
-  return DEFAULT_MODEL_ID;
+  // Ultimate fallback: first model with a key present
+  const available = getAvailableModels(env);
+  return available.length > 0 ? available[0].id : DEFAULT_MODEL_ID;
 }

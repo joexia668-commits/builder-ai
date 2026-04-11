@@ -5,7 +5,7 @@
  * This utility handles the fallback case where fences slip through.
  */
 
-import { extractReactCode, extractMultiFileCode, findMissingLocalImports } from "@/lib/extract-code";
+import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames } from "@/lib/extract-code";
 
 describe("extractReactCode", () => {
   it("extracts code from ```jsx fences", () => {
@@ -186,6 +186,69 @@ describe("findMissingLocalImports", () => {
 
   it("returns empty array for empty files map", () => {
     expect(findMissingLocalImports({})).toEqual([]);
+  });
+});
+
+describe("findMissingLocalImportsWithNames", () => {
+  it("returns named exports for missing named imports", () => {
+    const files = {
+      "/App.js": `import { AuthForm, LoginButton } from '/components/auth.js'\nexport default function App() { return null; }`,
+    };
+    const result = findMissingLocalImportsWithNames(files);
+    expect(result.size).toBe(1);
+    const names = result.get("/components/auth.js");
+    expect(names).toBeDefined();
+    expect(names!.has("AuthForm")).toBe(true);
+    expect(names!.has("LoginButton")).toBe(true);
+  });
+
+  it("uses original export name for renamed imports (Foo as Bar → Foo)", () => {
+    const files = {
+      "/App.js": `import { Foo as Bar } from '/utils/foo.js'`,
+    };
+    const result = findMissingLocalImportsWithNames(files);
+    const names = result.get("/utils/foo.js");
+    expect(names!.has("Foo")).toBe(true);
+    expect(names!.has("Bar")).toBe(false);
+  });
+
+  it("tracks default-only import path with empty named exports set", () => {
+    const files = {
+      "/App.js": `import MyComponent from '/components/my.js'`,
+    };
+    const result = findMissingLocalImportsWithNames(files);
+    expect(result.has("/components/my.js")).toBe(true);
+    expect(result.get("/components/my.js")!.size).toBe(0);
+  });
+
+  it("merges named exports from multiple files importing the same path", () => {
+    const files = {
+      "/A.js": `import { Foo } from '/utils/shared.js'`,
+      "/B.js": `import { Bar } from '/utils/shared.js'`,
+    };
+    const result = findMissingLocalImportsWithNames(files);
+    const names = result.get("/utils/shared.js");
+    expect(names!.has("Foo")).toBe(true);
+    expect(names!.has("Bar")).toBe(true);
+  });
+
+  it("whitelists /supabaseClient.js", () => {
+    const files = {
+      "/App.js": `import { supabase } from '/supabaseClient.js'`,
+    };
+    expect(findMissingLocalImportsWithNames(files).size).toBe(0);
+  });
+
+  it("does not flag present paths as missing", () => {
+    const files = {
+      "/App.js": `import { foo } from '/utils/helpers.js'`,
+      "/utils/helpers.js": `export const foo = () => null;`,
+    };
+    expect(findMissingLocalImportsWithNames(files).size).toBe(0);
+  });
+
+  it("returns empty map for empty files", () => {
+    expect(findMissingLocalImportsWithNames({}).size).toBe(0);
   });
 });
 

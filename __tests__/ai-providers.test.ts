@@ -71,82 +71,95 @@ const MESSAGES = [
 
 // ── resolveModelId priority chain ─────────────────────────────────────────
 describe("resolveModelId", () => {
-  const VALID_IDS = {
+  const IDS = {
     gemini: "gemini-2.0-flash",
     deepseek: "deepseek-chat",
     groq: "llama-3.3-70b",
     pro: "gemini-1.5-pro",
   };
 
-  const originalEnv = process.env;
+  // Env maps with keys present for specific providers
+  const allKeysEnv = {
+    GOOGLE_GENERATIVE_AI_API_KEY: "g-key",
+    DEEPSEEK_API_KEY: "d-key",
+    GROQ_API_KEY: "q-key",
+  };
+  const deepseekOnlyEnv = { DEEPSEEK_API_KEY: "d-key" };
+  const groqOnlyEnv = { GROQ_API_KEY: "q-key" };
+  const geminiAndDeepseekEnv = {
+    GOOGLE_GENERATIVE_AI_API_KEY: "g-key",
+    DEEPSEEK_API_KEY: "d-key",
+  };
+  const noKeysEnv = {};
 
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-    delete process.env.AI_PROVIDER;
+  // U-01: requestModelId 可用时直接返回（最高优先级）
+  it("U-01: 返回可用的 requestModelId（优先级最高）", () => {
+    expect(resolveModelId(IDS.gemini, IDS.deepseek, IDS.groq, allKeysEnv))
+      .toBe(IDS.gemini);
   });
 
-  afterAll(() => {
-    process.env = originalEnv;
+  // U-02: requestModelId API key 缺失时，跳过并回退到 projectModelId
+  it("U-02: requestModelId key 缺失时回退到 projectModelId", () => {
+    expect(resolveModelId(IDS.gemini, IDS.deepseek, IDS.groq, deepseekOnlyEnv))
+      .toBe(IDS.deepseek);
   });
 
-  // U-01: requestModelId 有效时直接返回（最高优先级）
-  it("U-01: 返回有效的 requestModelId（优先级最高）", () => {
-    expect(resolveModelId(VALID_IDS.gemini, VALID_IDS.deepseek, VALID_IDS.groq))
-      .toBe(VALID_IDS.gemini);
+  // U-03: 前两层 key 均缺失，回退到 userModelId
+  it("U-03: requestModelId 和 projectModelId key 均缺失时回退到 userModelId", () => {
+    expect(resolveModelId(IDS.gemini, IDS.deepseek, IDS.groq, groqOnlyEnv))
+      .toBe(IDS.groq);
   });
 
-  // U-02: requestModelId 无效，回退到 projectModelId
-  it("U-02: requestModelId 无效时回退到 projectModelId", () => {
-    expect(resolveModelId("invalid-model", VALID_IDS.deepseek, VALID_IDS.groq))
-      .toBe(VALID_IDS.deepseek);
+  // U-04: 前三层均无 key，回退到 AI_PROVIDER 环境变量
+  it("U-04: 前三层均无 key 时回退到 AI_PROVIDER 环境变量", () => {
+    expect(resolveModelId("bad-1", "bad-2", "bad-3", {
+      AI_PROVIDER: IDS.pro,
+      GOOGLE_GENERATIVE_AI_API_KEY: "g-key",
+    })).toBe(IDS.pro);
   });
 
-  // U-03: 前两层均无效，回退到 userModelId
-  it("U-03: requestModelId 和 projectModelId 均无效时回退到 userModelId", () => {
-    expect(resolveModelId("bad-1", "bad-2", VALID_IDS.groq))
-      .toBe(VALID_IDS.groq);
+  // U-05: 全部首选均不可用，回退到 DEFAULT_MODEL_ID（需要 key）
+  it("U-05: 首选均不可用时，DEFAULT_MODEL_ID 有 key 则返回它", () => {
+    expect(resolveModelId("bad-1", "bad-2", "bad-3", deepseekOnlyEnv))
+      .toBe(IDS.deepseek);
   });
 
-  // U-04: 前三层无效，回退到 AI_PROVIDER 环境变量
-  it("U-04: 前三层均无效时回退到 AI_PROVIDER 环境变量", () => {
-    process.env.AI_PROVIDER = VALID_IDS.pro;
-    expect(resolveModelId("bad-1", "bad-2", "bad-3"))
-      .toBe(VALID_IDS.pro);
+  // U-06: 所有 key 均缺失时，回退到注册表里第一个可用的模型
+  it("U-06: 所有首选无 key 且 DEFAULT 也无 key 时，返回注册表中第一个有 key 的模型", () => {
+    expect(resolveModelId("bad-1", "bad-2", "bad-3", groqOnlyEnv))
+      .toBe(IDS.groq);
   });
 
-  // U-05: 全部无效，回退到 DEFAULT_MODEL_ID
-  it("U-05: 全部无效时回退到 DEFAULT_MODEL_ID（deepseek-chat）", () => {
-    expect(resolveModelId("bad-1", "bad-2", "bad-3"))
+  // U-07: null / undefined 视为"未指定"，继续往后查找
+  it("U-07: null 视为未指定，继续往后查找", () => {
+    expect(resolveModelId(null, IDS.deepseek, IDS.groq, deepseekOnlyEnv))
+      .toBe(IDS.deepseek);
+  });
+
+  it("U-07b: undefined 视为未指定，继续往后查找", () => {
+    expect(resolveModelId(undefined, undefined, IDS.groq, groqOnlyEnv))
+      .toBe(IDS.groq);
+  });
+
+  // U-08: 非注册表字符串视为无效（无论 key 是否存在）
+  it("U-08: 非注册表字符串（如 gpt-4）视为无效，继续回退", () => {
+    expect(resolveModelId("gpt-4", "gpt-3.5-turbo", IDS.gemini, allKeysEnv))
+      .toBe(IDS.gemini);
+  });
+
+  // U-09: 无参调用（没有任何 key）返回 DEFAULT_MODEL_ID
+  it("U-09: 完全无参时返回 DEFAULT_MODEL_ID", () => {
+    // No keys in env → ultimate fallback is DEFAULT_MODEL_ID
+    expect(resolveModelId(undefined, undefined, undefined, noKeysEnv))
       .toBe("deepseek-chat");
   });
 
-  // U-06: null 和 undefined 均被视为"无效"
-  it("U-06: null 视为无效，继续往后查找", () => {
-    expect(resolveModelId(null, VALID_IDS.deepseek, VALID_IDS.groq))
-      .toBe(VALID_IDS.deepseek);
-  });
-
-  it("U-06b: undefined 视为无效，继续往后查找", () => {
-    expect(resolveModelId(undefined, undefined, VALID_IDS.groq))
-      .toBe(VALID_IDS.groq);
-  });
-
-  // U-07: 非白名单字符串视为无效
-  it("U-07: 非白名单字符串（如 gpt-4）视为无效，继续回退", () => {
-    expect(resolveModelId("gpt-4", "gpt-3.5-turbo", VALID_IDS.gemini))
-      .toBe(VALID_IDS.gemini);
-  });
-
-  // U-08: 无参调用返回默认值
-  it("U-08: 无参调用返回 DEFAULT_MODEL_ID", () => {
-    expect(resolveModelId()).toBe("deepseek-chat");
-  });
-
-  // U-09: AI_PROVIDER 为无效值时跳过至 DEFAULT
-  it("U-09: AI_PROVIDER 环境变量为无效值时跳过，返回 DEFAULT_MODEL_ID", () => {
-    process.env.AI_PROVIDER = "unknown-provider-xyz";
-    expect(resolveModelId(null, null, null))
-      .toBe("deepseek-chat");
+  // U-10: AI_PROVIDER 为无效值时跳过
+  it("U-10: AI_PROVIDER 为无效 model id 时跳过，回退到第一个有 key 的模型", () => {
+    expect(resolveModelId(null, null, null, {
+      AI_PROVIDER: "unknown-provider-xyz",
+      DEEPSEEK_API_KEY: "d-key",
+    })).toBe(IDS.deepseek);
   });
 });
 

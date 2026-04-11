@@ -31,6 +31,16 @@ describe("buildSandpackConfig", () => {
     expect(config.files["/supabaseClient.js"].code).toContain("createClient");
   });
 
+  it("includes named exports in stubs for missing named imports", () => {
+    const files = {
+      "/App.js": `import { AuthForm, LoginButton } from '/components/auth.js'\nexport default function App() { return null; }`,
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    const stubCode = config.files["/components/auth.js"].code;
+    expect(stubCode).toContain("export const AuthForm");
+    expect(stubCode).toContain("export const LoginButton");
+  });
+
   it("injects stubs for multiple missing imports", () => {
     const files = {
       "/App.js": [
