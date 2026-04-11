@@ -40,7 +40,7 @@ Single-file direct path is explicitly skipped.
 The core idea is a **tap** on the engineer token stream inside `/api/generate`. As each delta arrives from the AI provider:
 
 1. It is appended to `fullText` (authoritative path — unchanged).
-2. It is also fed into a `StreamTap` that does incremental boundary detection against the engineer multi-file format (`=== FILE: /path ===\n...content...`) and emits best-effort SSE events describing per-file lifecycle.
+2. It is also fed into a `StreamTap` that does incremental boundary detection against the engineer multi-file format (`// === FILE: /path ===\n...content...`) and emits best-effort SSE events describing per-file lifecycle.
 
 When the provider stream finishes, `fullText` is parsed by `extractMultiFileCodePartial` exactly as before, and `files_complete` / `partial_files_complete` is emitted. The frontend uses this authoritative event to **overwrite** any streaming buffer content, so any boundary-detection mistake self-heals at completion time.
 
@@ -143,40 +143,61 @@ export function createEngineerStreamTap(attempt: number) {
 }
 ```
 
-**Why SAFE_TAIL = 256:** prevents a `=== FILE: /path ===` header from being mis-emitted as content when a token boundary cuts it in half. A realistic maximum header is `=== FILE: ` (10) + path (≤ 200) + ` ===\n` (5) ≈ 215 chars. 256 provides comfortable headroom so that even the longest plausible header can sit unflushed in the buffer until the next delta completes it. The tradeoff — a fixed ≤256 char delay on the last chunk of each file — is invisible given the `FLUSH_INTERVAL_MS` cadence and the authoritative `files_complete` overwrite at completion time.
+**Why SAFE_TAIL = 256:** prevents a `// === FILE: /path ===` header from being mis-emitted as content when a token boundary cuts it in half. A realistic maximum header is `=== FILE: ` (10) + path (≤ 200) + ` ===\n` (5) ≈ 215 chars. 256 provides comfortable headroom so that even the longest plausible header can sit unflushed in the buffer until the next delta completes it. The tradeoff — a fixed ≤256 char delay on the last chunk of each file — is invisible given the `FLUSH_INTERVAL_MS` cadence and the authoritative `files_complete` overwrite at completion time.
 
-### `/api/generate/route.ts` changes (engineer multi-file branch only)
+### `app/api/generate/handler.ts` changes (engineer multi-file branches)
+
+Note: `route.ts` is a 7-line wrapper; all logic lives in `handler.ts`. The tap wires into **both** engineer multi-file branches:
+
+1. `targetFiles && targetFiles.length > 0` — full pipeline layered engineer (path 3)
+2. `partialMultiFile === true` — direct multi-file bug_fix / style_change (path 2)
+
+Both branches emit `// === FILE: ===` markers. The `code_complete` single-file branch (path 1) is out of scope.
+
+Current handler uses a single `onChunk` callback passed to `provider.streamCompletion` (handler.ts line 82). The tap wires in there:
 
 ```typescript
-const tap = createEngineerStreamTap(meta.attempt);
-let fullText = "";
+// handler.ts — inside createHandler, near the existing onChunk definition
+const isEngineerMultiFile =
+  agent === "engineer" && (partialMultiFile || (targetFiles && targetFiles.length > 0));
+const tap = isEngineerMultiFile ? createEngineerStreamTap() : null;
 let lastFlush = Date.now();
 let pendingEvents: StreamTapEvent[] = [];
 const FLUSH_INTERVAL_MS = 80;
 
-for await (const delta of stream) {
-  fullText += delta;
-  pendingEvents.push(...tap.feed(delta));
-
-  if (Date.now() - lastFlush >= FLUSH_INTERVAL_MS) {
-    flushCoalesced(controller, pendingEvents);
-    pendingEvents = [];
-    lastFlush = Date.now();
-  }
+function flushPending() {
+  if (pendingEvents.length === 0) return;
+  const coalesced = coalesceChunks(pendingEvents);
+  for (const ev of coalesced) send(controller, ev);
+  pendingEvents = [];
+  lastFlush = Date.now();
 }
-flushCoalesced(controller, [...pendingEvents, ...tap.finalize()]);
 
-// authoritative path unchanged
-const parsed = extractMultiFileCodePartial(fullText, targetFiles);
-controller.enqueue(sseEncode({
-  type: parsed.failed.length > 0 ? "partial_files_complete" : "files_complete",
-  files: parsed.ok,
-  failed: parsed.failed,
-  truncatedTail: parsed.truncatedTail,
-}));
+const onChunk = (text: string) => {
+  fullContent += text;
+  send(controller, { type: "chunk", content: text });
+
+  if (tap) {
+    pendingEvents.push(...tap.feed(text));
+    if (Date.now() - lastFlush >= FLUSH_INTERVAL_MS) flushPending();
+  }
+};
 ```
 
-`flushCoalesced` merges consecutive `file_chunk` events for the same path into one, collapsing 100-200 token chunks into ~12 SSE events per second (see Performance section).
+After `streamCompletion` returns and before the authoritative extract block:
+
+```typescript
+if (tap) {
+  pendingEvents.push(...tap.finalize());
+  flushPending();
+}
+```
+
+On the `reset` event path (rate-limit Groq fallback, max-tokens retry), `tap` must also be reset — call `tap.reset()` (new method, clears internal buffer and currentPath without emitting) alongside the existing `fullContent = ""` line. The retry then streams into a fresh tap state.
+
+The authoritative path (`extractAnyMultiFileCode` / `extractMultiFileCodePartial` / `extractReactCode`) is unchanged.
+
+`coalesceChunks` merges consecutive `file_chunk` events for the same path into one (concatenating deltas), collapsing 100-200 token events into ~12 SSE events per second. `file_start` / `file_end` pass through unchanged. Implementation is a simple single-pass reducer, ~15 lines.
 
 ## Frontend Implementation
 
@@ -194,6 +215,10 @@ export interface LiveFileStream {
   }>;
 }
 ```
+
+### State location: `lib/generation-session.ts`, not local `useState`
+
+`liveStreams` must be added to the `GenerationSession` interface in `lib/generation-session.ts`, not to `chat-area.tsx` local state. The existing `useGenerationSession` hook wraps a module-scoped store precisely because chat-area is allowed to unmount/remount mid-generation and state must survive (see `__tests__/chat-area-remount-survives-generation.test.tsx`). Putting `liveStreams` in local `useState` would silently lose streaming content on remount. `updateSession(projectId, { liveStreams })` matches the pattern used for `engineerProgress` and `agentStates`.
 
 ### New component: `components/preview/activity-panel.tsx`
 
