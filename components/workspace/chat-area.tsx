@@ -387,6 +387,8 @@ export function ChatArea({
               },
             });
 
+            let lastTruncatedTail: string | undefined;
+
             for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
               const layerPaths = layers[layerIdx];
               const layerFiles = layerPaths
@@ -413,7 +415,7 @@ export function ChatArea({
 
               const layerResult = await runLayerWithFallback(
                 layerFiles,
-                async (files) => {
+                async (files, meta) => {
                   const engineerPrompt = getMultiFileEngineerPrompt({
                     projectId: project.id,
                     targetFiles: files,
@@ -421,6 +423,14 @@ export function ChatArea({
                     completedFiles: allCompletedFiles,
                     designNotes: scaffold.designNotes,
                     existingFiles: hasExistingCode ? currentFiles : undefined,
+                    retryHint:
+                      meta.attempt > 1
+                        ? {
+                            attempt: meta.attempt,
+                            reason: "parse_failed",
+                            priorTail: lastTruncatedTail,
+                          }
+                        : undefined,
                   });
 
                   const response = await fetch("/api/generate", {
@@ -445,9 +455,37 @@ export function ChatArea({
                   }
                   if (!response.body) throw new Error("No response body");
                   updateSession(project.id, { transitionText: null });
-                  return readEngineerSSE(response.body, `engineer:layer-${layerIdx + 1}`);
+                  const sseResult = await readEngineerSSE(
+                    response.body,
+                    `engineer:layer-${layerIdx + 1}`
+                  );
+                  lastTruncatedTail = sseResult.truncatedTail;
+                  return {
+                    files: sseResult.files,
+                    failed: sseResult.failedInResponse,
+                  };
                 },
-                abortController.signal
+                abortController.signal,
+                (info) => {
+                  const prev = getSession(project.id).engineerProgress;
+                  if (!prev) return;
+                  const isFirstLayerAttempt = info.attempt === 1 && info.phase === "layer";
+                  updateSession(project.id, {
+                    engineerProgress: {
+                      ...prev,
+                      retryInfo: isFirstLayerAttempt
+                        ? null
+                        : {
+                            layerIdx,
+                            attempt: info.attempt,
+                            maxAttempts: info.maxAttempts,
+                            reason: info.reason,
+                            failedSubset: [...info.failedSubset],
+                            phase: info.phase,
+                          },
+                    },
+                  });
+                }
               );
 
               Object.assign(allCompletedFiles, layerResult.files);
@@ -465,6 +503,29 @@ export function ChatArea({
                     },
                   });
                 }
+              }
+
+              // Clear retryInfo once the layer settles
+              {
+                const prev = getSession(project.id).engineerProgress;
+                if (prev) {
+                  updateSession(project.id, {
+                    engineerProgress: { ...prev, retryInfo: null },
+                  });
+                }
+              }
+
+              // Eager Sandpack push: let users see partial progress after each layer
+              if (Object.keys(allCompletedFiles).length > 0) {
+                const syntheticVersion: ProjectVersion = {
+                  id: `layer-${layerIdx + 1}-preview-${Date.now()}`,
+                  projectId: project.id,
+                  versionNumber: -1,
+                  code: "",
+                  description: `layer-${layerIdx + 1} partial preview`,
+                  createdAt: new Date(),
+                };
+                onFilesGenerated({ ...allCompletedFiles }, syntheticVersion);
               }
             }
 
