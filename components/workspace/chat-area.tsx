@@ -146,29 +146,50 @@ export function ChatArea({
     abortSession(project.id);
   }
 
+  interface EngineerSSEResult {
+    files: Record<string, string>;
+    failedInResponse: string[];
+    truncatedTail?: string;
+  }
+
   async function readEngineerSSE(
     body: ReadableStream<Uint8Array>,
     tag: string
-  ): Promise<Record<string, string>> {
-    let layerResult: Record<string, string> | null = null;
+  ): Promise<EngineerSSEResult> {
+    let files: Record<string, string> | null = null;
+    let failedInResponse: string[] = [];
+    let truncatedTail: string | undefined;
 
     await readSSEBody<{
       type: string;
       code?: string;
       files?: Record<string, string>;
+      failed?: string[];
+      truncatedTail?: string;
       error?: string;
       errorCode?: ErrorCode;
+      failedFiles?: string[];
     }>(
       body,
       (event) => {
         if (event.type === "files_complete" && event.files) {
-          layerResult = event.files;
+          files = event.files;
+          failedInResponse = [];
+        } else if (event.type === "partial_files_complete" && event.files) {
+          files = event.files;
+          failedInResponse = event.failed ?? [];
+          truncatedTail = event.truncatedTail;
         } else if (event.type === "code_complete" && event.code) {
-          layerResult = { "/App.js": event.code };
+          files = { "/App.js": event.code };
+          failedInResponse = [];
         } else if (event.type === "error") {
           throw Object.assign(
             new Error(event.error ?? "Stream error"),
-            { errorCode: event.errorCode ?? "unknown" }
+            {
+              errorCode: event.errorCode ?? "unknown",
+              failedFiles: event.failedFiles ?? [],
+              truncatedTail: event.truncatedTail,
+            }
           );
         }
       },
@@ -178,8 +199,8 @@ export function ChatArea({
       }
     );
 
-    if (!layerResult) throw new Error("No files received from engineer");
-    return layerResult;
+    if (!files) throw new Error("No files received from engineer");
+    return { files, failedInResponse, truncatedTail };
   }
 
   async function handleSubmit(prompt: string) {
