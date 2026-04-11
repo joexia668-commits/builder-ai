@@ -4,13 +4,17 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 
-type PrismaClientType = InstanceType<typeof PrismaClient>;
+// Regex matching transient network/pg errors worth retrying.
+// Supavisor (Supabase's pooler) occasionally drops sockets mid-query even
+// in transaction mode on free tier; pg-pool then fails to acquire a fresh
+// connection within the timeout, producing the two-layer error
+//   "Connection terminated due to connection timeout"
+//     caused by "Connection terminated unexpectedly"
+// Both messages contain "Connection terminated", so one pattern covers it.
+const TRANSIENT_DB_ERROR_RE =
+  /Connection terminated|ECONNRESET|socket hang up|write EPIPE|ETIMEDOUT/i;
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClientType | undefined;
-};
-
-function createPrismaClient(): PrismaClientType {
+function createBasePrismaClient() {
   if (!process.env.DATABASE_URL) {
     throw new Error(
       "[prisma] DATABASE_URL is not set — add it to Vercel environment variables"
@@ -73,7 +77,57 @@ function createPrismaClient(): PrismaClientType {
   });
 }
 
-export const prisma: PrismaClientType =
-  globalForPrisma.prisma ?? createPrismaClient();
+/**
+ * Wrap a base Prisma client with a $extends query interceptor that retries
+ * every operation up to 3 times on transient DB connection errors. Matches
+ * `Connection terminated`, `ECONNRESET`, `socket hang up`, etc. All other
+ * errors pass through untouched on the first attempt.
+ *
+ * Backoff: 100ms → 200ms → 400ms, plus up to 50ms jitter, to give Supavisor
+ * a moment to evict the dead socket and hand out a fresh one.
+ */
+function withConnectionRetry<T extends PrismaClient>(base: T) {
+  return base.$extends({
+    query: {
+      $allModels: {
+        async $allOperations({ args, query, model, operation }) {
+          const maxAttempts = 3;
+          let lastErr: unknown;
+          for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+              return await query(args);
+            } catch (err) {
+              lastErr = err;
+              const msg = err instanceof Error ? err.message : "";
+              const isTransient = TRANSIENT_DB_ERROR_RE.test(msg);
+              if (attempt === maxAttempts || !isTransient) throw err;
+              console.warn(
+                `[prisma:retry] ${model}.${operation} attempt ${attempt}/${maxAttempts} after transient error: ${msg}`
+              );
+              const delay =
+                100 * Math.pow(2, attempt - 1) + Math.random() * 50;
+              await new Promise((r) => setTimeout(r, delay));
+            }
+          }
+          throw lastErr;
+        },
+      },
+    },
+  });
+}
+
+// Create once, extend once. The extended client is what the rest of the app
+// imports — TypeScript infers the extended type automatically.
+const basePrismaClient = createBasePrismaClient();
+const extendedPrismaClient = withConnectionRetry(basePrismaClient);
+
+type ExtendedPrismaClient = typeof extendedPrismaClient;
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: ExtendedPrismaClient | undefined;
+};
+
+export const prisma: ExtendedPrismaClient =
+  globalForPrisma.prisma ?? extendedPrismaClient;
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
