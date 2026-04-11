@@ -340,6 +340,85 @@ describe("snipCompletedFiles", () => {
     expect(promptFull).not.toContain("snipped — exports only");
     expect(promptSnipped.length).toBeLessThan(promptFull.length);
   });
+
+  // GP-SC-05: extractExportSignatures must not mangle React components with
+  // destructured-props signatures. Previously the buggy regex truncated at the
+  // first `{` which incorrectly matched the destructure instead of the body.
+  it("GP-SC-05: extractExportSignatures 正确处理解构 props 的 React 组件", () => {
+    const completed = {
+      "/Button.js":
+        "export function Button({ variant, size, onClick, children }) {\n  return <button onClick={onClick}>{children}</button>;\n}\nconst INTERNAL = 42;",
+    };
+    // Use a target whose deps don't include /Button.js so Button is compressed.
+    const target: ScaffoldFile = {
+      path: "/Other.js", description: "other", exports: ["Other"], deps: [], hints: "",
+    };
+    const result = snipCompletedFiles(completed, [target]);
+    const signature = result["/Button.js"];
+
+    // Destructured props list must survive
+    expect(signature).toContain("variant");
+    expect(signature).toContain("size");
+    expect(signature).toContain("onClick");
+    expect(signature).toContain("children");
+    // Function body replaced with ellipsis marker
+    expect(signature).toContain("/* ... */");
+    // Internal impl detail not included
+    expect(signature).not.toContain("INTERNAL");
+    // Result is shorter than original
+    expect(signature.length).toBeLessThan(completed["/Button.js"].length);
+  });
+
+  // GP-SC-06: when target file has >5 direct deps (composer pattern), even
+  // direct deps are compressed to signatures to protect against prompt bloat.
+  it("GP-SC-06: composer 层（direct deps > 5）也压缩直接依赖", () => {
+    const depCode =
+      "export function Dep({ a, b }) {\n  return <div />;\n}\nconst hidden = 1;";
+    const completed: Record<string, string> = {};
+    const deps: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const path = `/dep${i}.js`;
+      completed[path] = depCode;
+      deps.push(path);
+    }
+
+    const composer: ScaffoldFile = {
+      path: "/MainLayout.js",
+      description: "composer",
+      exports: ["MainLayout"],
+      deps,
+      hints: "",
+    };
+    const result = snipCompletedFiles(completed, [composer]);
+
+    // Every dep should have been compressed (not full code)
+    for (const path of deps) {
+      const snipped = result[path];
+      expect(snipped).toContain("/* ... */");
+      expect(snipped).not.toContain("hidden = 1");
+    }
+  });
+
+  // GP-SC-07: normal (non-composer) layer still gets full code for direct deps,
+  // confirming the threshold defense does not regress the common case.
+  it("GP-SC-07: 非 composer 层（direct deps ≤ 5）direct deps 仍保留完整代码", () => {
+    const depCode =
+      "export function Dep({ a }) {\n  return <div />;\n}\nconst hidden = 1;";
+    const completed = { "/dep.js": depCode };
+
+    const normalTarget: ScaffoldFile = {
+      path: "/User.js",
+      description: "normal",
+      exports: ["User"],
+      deps: ["/dep.js"],
+      hints: "",
+    };
+    const result = snipCompletedFiles(completed, [normalTarget]);
+
+    // Full code preserved (including internal `hidden = 1`)
+    expect(result["/dep.js"]).toBe(depCode);
+    expect(result["/dep.js"]).toContain("hidden = 1");
+  });
 });
 
 import { getMultiFileEngineerPrompt as _getMultiFileEngineerPrompt } from "@/lib/generate-prompts";

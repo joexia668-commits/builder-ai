@@ -118,13 +118,61 @@ HTTP 请求只使用原生 fetch API。
   return prompts[agent];
 }
 
+/**
+ * Strip a function body from a single export declaration line, using
+ * paren-depth tracking so destructured-props `{a, b}` inside `(...)`
+ * parameters are not mistaken for the body opening brace.
+ *
+ * Examples:
+ *   `export function Foo({ a, b }) { return null; }`
+ *     → `export function Foo({ a, b }) { /* ... *\/ }`
+ *   `export const Bar = ({ x }) => { return 1; }`
+ *     → `export const Bar = ({ x }) => { /* ... *\/ }`
+ *   `export { A, B };`  → kept verbatim (named re-export)
+ *   `export const C = 1;` → kept verbatim (no body)
+ */
+function stripFunctionBody(line: string): string {
+  // Named re-export: `export { A, B };` — keep verbatim.
+  if (/^\s*export\s*\{/.test(line)) return line.trimEnd();
+
+  let parenDepth = 0;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === "(") parenDepth++;
+    else if (ch === ")") parenDepth--;
+    else if (ch === "{" && parenDepth === 0) {
+      return line.slice(0, i).trimEnd() + " { /* ... */ }";
+    }
+  }
+  return line.trimEnd();
+}
+
+/**
+ * Extract export-declaration signatures from a full file. Each matching
+ * `export …` line has its function body stripped. Returns a newline-joined
+ * block or a placeholder comment if no export lines were found.
+ *
+ * NOTE: this only inspects single lines; multi-line signatures
+ *   (rare in this codebase per the "compact writing" prompt rule) may be
+ *   preserved incomplete. The compressed text remains syntactically
+ *   innocuous — it's for LLM context, not for re-compilation.
+ */
 function extractExportSignatures(code: string): string {
   const exportLines = code
     .split("\n")
-    .filter((line) => /^export\s/.test(line))
-    .map((line) => line.replace(/\s*\{[^}]*\}.*$/, " {}").replace(/\s*=.*$/, "").trimEnd());
+    .filter((line) => /^\s*export\s/.test(line))
+    .map(stripFunctionBody);
   return exportLines.length > 0 ? exportLines.join("\n") : "// (no exports found)";
 }
+
+/**
+ * When a target file's direct-deps count exceeds this threshold, even direct
+ * deps are compressed to signatures-only. This is the targeted defense
+ * against "composer file in solo layer" prompt bloat failures (e.g.
+ * MainLayout with 7 deps, App with 6-8 deps). Normal files with ≤5 deps
+ * continue to receive full direct-dep code as before.
+ */
+const COMPOSER_DEP_THRESHOLD = 5;
 
 export function snipCompletedFiles(
   completedFiles: Record<string, string>,
@@ -136,12 +184,17 @@ export function snipCompletedFiles(
       directDeps.add(dep);
     }
   }
+  const isComposerLayer = directDeps.size > COMPOSER_DEP_THRESHOLD;
 
   const result: Record<string, string> = {};
   for (const [path, code] of Object.entries(completedFiles)) {
-    if (directDeps.has(path)) {
+    if (directDeps.has(path) && !isComposerLayer) {
+      // Normal case: direct dep → full code (preserves original design intent
+      // so engineer can read the dep's implementation precisely).
       result[path] = code;
     } else {
+      // Either non-dep, or direct-dep in a composer-layer — compress to
+      // signatures to keep the prompt size bounded.
       result[path] = extractExportSignatures(code);
     }
   }
