@@ -169,19 +169,81 @@ export function ChatArea({
       error?: string;
       errorCode?: ErrorCode;
       failedFiles?: string[];
+      path?: string;
+      delta?: string;
+      attempt?: number;
     }>(
       body,
       (event) => {
         if (event.type === "files_complete" && event.files) {
           files = event.files;
           failedInResponse = [];
+          // Self-heal: overwrite streaming buffer with authoritative code
+          const authoritative = event.files;
+          const current = getSession(project.id);
+          const next = { ...current.liveStreams };
+          for (const [p, code] of Object.entries(authoritative)) {
+            if (next[p] !== undefined) {
+              next[p] = { ...next[p], status: "done" as const, content: code };
+            }
+          }
+          updateSession(project.id, { liveStreams: next });
         } else if (event.type === "partial_files_complete" && event.files) {
           files = event.files;
           failedInResponse = event.failed ?? [];
           truncatedTail = event.truncatedTail;
+          const authoritative = event.files;
+          const failedPaths = event.failed ?? [];
+          const current = getSession(project.id);
+          const next = { ...current.liveStreams };
+          for (const [p, code] of Object.entries(authoritative)) {
+            if (next[p] !== undefined) {
+              next[p] = { ...next[p], status: "done" as const, content: code };
+            }
+          }
+          for (const p of failedPaths) {
+            if (next[p] !== undefined) {
+              next[p] = { ...next[p], status: "failed" as const };
+            }
+          }
+          updateSession(project.id, { liveStreams: next });
         } else if (event.type === "code_complete" && event.code) {
           files = { "/App.js": event.code };
           failedInResponse = [];
+        } else if (event.type === "file_start" && event.path) {
+          const path = event.path;
+          const current = getSession(project.id);
+          const existing = current.liveStreams[path];
+          updateSession(project.id, {
+            liveStreams: {
+              ...current.liveStreams,
+              [path]: {
+                path,
+                content: "",
+                status: "streaming" as const,
+                attempt: existing?.attempt ?? 1,
+                failedAttempts: existing?.failedAttempts ?? [],
+              },
+            },
+          });
+        } else if (event.type === "file_chunk" && event.path && event.delta !== undefined) {
+          const path = event.path;
+          const delta = event.delta;
+          const current = getSession(project.id);
+          const cur = current.liveStreams[path];
+          if (cur !== undefined) {
+            const MAX_STREAM_CHARS = 50_000;
+            const nextContent =
+              cur.content.length >= MAX_STREAM_CHARS ? cur.content : cur.content + delta;
+            updateSession(project.id, {
+              liveStreams: {
+                ...current.liveStreams,
+                [path]: { ...cur, content: nextContent },
+              },
+            });
+          }
+        } else if (event.type === "file_end") {
+          // No-op: await authoritative files_complete / partial_files_complete
         } else if (event.type === "error") {
           throw Object.assign(
             new Error(event.error ?? "Stream error"),
@@ -212,6 +274,7 @@ export function ChatArea({
       isGenerating: true,
       stallWarning: false,
       abortController,
+      liveStreams: {},
       agentStates: {
         pm: { role: "pm", status: "idle", output: "" },
         architect: { role: "architect", status: "idle", output: "" },
@@ -301,6 +364,8 @@ export function ChatArea({
               files?: Record<string, string>;
               error?: string;
               errorCode?: ErrorCode;
+              path?: string;
+              delta?: string;
             }>(
               directResponse.body,
               (event) => {
@@ -311,9 +376,54 @@ export function ChatArea({
                   if (event.code) directCode = event.code;
                 } else if (event.type === "files_complete" && event.files) {
                   directFiles = event.files;
+                  // Self-heal: overwrite streaming buffer with authoritative code
+                  const authoritative = event.files;
+                  const current = getSession(project.id);
+                  const next = { ...current.liveStreams };
+                  for (const [p, code] of Object.entries(authoritative)) {
+                    if (next[p] !== undefined) {
+                      next[p] = { ...next[p], status: "done" as const, content: code };
+                    }
+                  }
+                  updateSession(project.id, { liveStreams: next });
                 } else if (event.type === "reset") {
                   directOutput = "";
                   updateAgentState("engineer", { output: "" });
+                  updateSession(project.id, { liveStreams: {} });
+                } else if (event.type === "file_start" && event.path) {
+                  const path = event.path;
+                  const current = getSession(project.id);
+                  const existing = current.liveStreams[path];
+                  updateSession(project.id, {
+                    liveStreams: {
+                      ...current.liveStreams,
+                      [path]: {
+                        path,
+                        content: "",
+                        status: "streaming" as const,
+                        attempt: existing?.attempt ?? 1,
+                        failedAttempts: existing?.failedAttempts ?? [],
+                      },
+                    },
+                  });
+                } else if (event.type === "file_chunk" && event.path && event.delta !== undefined) {
+                  const path = event.path;
+                  const delta = event.delta;
+                  const current = getSession(project.id);
+                  const cur = current.liveStreams[path];
+                  if (cur !== undefined) {
+                    const MAX_STREAM_CHARS = 50_000;
+                    const nextContent =
+                      cur.content.length >= MAX_STREAM_CHARS ? cur.content : cur.content + delta;
+                    updateSession(project.id, {
+                      liveStreams: {
+                        ...current.liveStreams,
+                        [path]: { ...cur, content: nextContent },
+                      },
+                    });
+                  }
+                } else if (event.type === "file_end") {
+                  // No-op
                 } else if (event.type === "error") {
                   throw Object.assign(
                     new Error(event.error ?? "Stream error"),
@@ -521,6 +631,26 @@ export function ChatArea({
                           },
                     },
                   });
+                  // Archive current streaming content when retrying specific files
+                  if (info.attempt > 1 && info.failedSubset.length > 0) {
+                    const session = getSession(project.id);
+                    const next = { ...session.liveStreams };
+                    for (const path of info.failedSubset) {
+                      const cur = next[path];
+                      if (cur === undefined) continue;
+                      next[path] = {
+                        ...cur,
+                        failedAttempts: [
+                          ...cur.failedAttempts,
+                          { content: cur.content, reason: info.reason },
+                        ],
+                        content: "",
+                        attempt: info.attempt,
+                        status: "streaming" as const,
+                      };
+                    }
+                    updateSession(project.id, { liveStreams: next });
+                  }
                 }
               );
 
@@ -762,6 +892,13 @@ export function ChatArea({
         stallWarning: false,
       });
       onGeneratingChange?.(false);
+      // Keep liveStreams visible for 2.5s then clear so a new submission starts clean.
+      setTimeout(() => {
+        const current = getSession(project.id);
+        if (!current.isGenerating) {
+          updateSession(project.id, { liveStreams: {} });
+        }
+      }, 2500);
     }
   }
 
