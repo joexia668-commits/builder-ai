@@ -32,6 +32,7 @@ export function FileBlock({ stream }: FileBlockProps) {
         if (lang === "typescript" || lang === "javascript") {
           const ts = (await import("highlight.js/lib/languages/typescript")).default;
           hljs.registerLanguage("typescript", ts);
+          hljs.registerLanguage("javascript", ts);
         } else if (lang === "css") {
           const css = (await import("highlight.js/lib/languages/css")).default;
           hljs.registerLanguage("css", css);
