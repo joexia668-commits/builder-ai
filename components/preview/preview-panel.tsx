@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { PreviewFrame } from "@/components/preview/preview-frame";
-import { MultiFileEditor } from "@/components/preview/multi-file-editor";
+import { FileTreeCodeViewer } from "@/components/preview/file-tree-code-viewer";
 import { VersionTimeline } from "@/components/timeline/version-timeline";
 import { fetchAPI } from "@/lib/api-client";
 import type { ProjectVersion } from "@/lib/types";
@@ -202,7 +202,7 @@ export function PreviewPanel({
             )}
           </div>
         ) : (
-          <MultiFileEditor files={files} onFilesChange={onFilesChange} />
+          <FileTreeCodeViewer files={files} />
         )}
 
         {versions.length > 0 && (

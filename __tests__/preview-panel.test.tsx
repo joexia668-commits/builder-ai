@@ -10,8 +10,8 @@ import { PreviewPanel } from "@/components/preview/preview-panel";
 jest.mock("@/components/preview/preview-frame", () => ({
   PreviewFrame: () => <div data-testid="preview-frame">preview</div>,
 }));
-jest.mock("@/components/preview/multi-file-editor", () => ({
-  MultiFileEditor: () => <div data-testid="code-editor">editor</div>,
+jest.mock("@/components/preview/file-tree-code-viewer", () => ({
+  FileTreeCodeViewer: () => <div data-testid="code-editor">editor</div>,
 }));
 jest.mock("@/components/timeline/version-timeline", () => ({
   VersionTimeline: () => <div data-testid="version-timeline">timeline</div>,
