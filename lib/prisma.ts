@@ -11,9 +11,15 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient(): PrismaClientType {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "[prisma] DATABASE_URL is not set — add it to Vercel environment variables"
+    );
+  }
+
   // Strip Prisma-only params that confuse the pg driver (pgbouncer, connection_limit, etc.)
   // Keep postgres-standard params like sslmode.
-  const rawUrl = process.env.DATABASE_URL ?? "";
+  const rawUrl = process.env.DATABASE_URL;
   let connectionString = rawUrl;
   try {
     const url = new URL(rawUrl);
