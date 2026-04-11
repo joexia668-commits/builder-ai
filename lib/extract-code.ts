@@ -58,7 +58,7 @@ export function stripComments(code: string): string {
 export function deduplicateDefaultExport(code: string): string {
   // Matches standalone re-export lines: `export default identifier;`
   const re = /^export default \w+;[ \t]*\n?/gm;
-  const matches = [...code.matchAll(re)];
+  const matches = Array.from(code.matchAll(re));
   if (matches.length <= 1) return code;
 
   let seen = 0;
