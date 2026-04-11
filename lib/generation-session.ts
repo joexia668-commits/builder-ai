@@ -3,6 +3,7 @@ import type {
   AgentState,
   EngineerProgress,
   ErrorCode,
+  LiveFileStream,
 } from "@/lib/types";
 
 export interface GenerationSession {
@@ -10,6 +11,7 @@ export interface GenerationSession {
   abortController: AbortController;
   agentStates: Record<AgentRole, AgentState>;
   engineerProgress: EngineerProgress | null;
+  liveStreams: Record<string, LiveFileStream>;
   isGenerating: boolean;
   generationError: { code: ErrorCode; raw: string } | null;
   transitionText: string | null;
@@ -28,6 +30,7 @@ function makeEmptySession(projectId: string = ""): GenerationSession {
       engineer: { role: "engineer", status: "idle", output: "" },
     },
     engineerProgress: null,
+    liveStreams: {},
     isGenerating: false,
     generationError: null,
     transitionText: null,
@@ -38,7 +41,23 @@ function makeEmptySession(projectId: string = ""): GenerationSession {
 }
 
 /** Sentinel value for SSR snapshot in useSyncExternalStore */
-export const EMPTY_SESSION: GenerationSession = makeEmptySession();
+export const EMPTY_SESSION: GenerationSession = {
+  projectId: "",
+  abortController: new AbortController(),
+  agentStates: {
+    pm: { role: "pm", status: "idle", output: "" },
+    architect: { role: "architect", status: "idle", output: "" },
+    engineer: { role: "engineer", status: "idle", output: "" },
+  },
+  engineerProgress: null,
+  liveStreams: {},
+  isGenerating: false,
+  generationError: null,
+  transitionText: null,
+  lastPrompt: "",
+  lastEventAt: null,
+  stallWarning: false,
+};
 
 const sessions = new Map<string, GenerationSession>();
 const listeners = new Map<string, Set<() => void>>();
