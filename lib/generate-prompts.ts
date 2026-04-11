@@ -118,32 +118,58 @@ HTTP 请求只使用原生 fetch API。
   return prompts[agent];
 }
 
-function extractExportSignatures(code: string): string {
-  const exportLines = code
-    .split("\n")
-    .filter((line) => /^export\s/.test(line))
-    .map((line) => line.replace(/\s*\{[^}]*\}.*$/, " {}").replace(/\s*=.*$/, "").trimEnd());
-  return exportLines.length > 0 ? exportLines.join("\n") : "// (no exports found)";
+const SNIP_HEAD_LINES = 20;
+
+/**
+ * Truncate a completed file to a compact summary:
+ *   - Keep the first SNIP_HEAD_LINES lines (imports + component signature +
+ *     props destructuring + top of the return statement — enough for the
+ *     engineer to understand the API surface).
+ *   - Append any additional lines starting with `export` from below the head
+ *     (covers trailing `export default X;` and `export { A, B };` re-exports
+ *     that would otherwise be lost).
+ *   - Insert an ellipsis marker between the head and the collected tail
+ *     exports if any content was dropped.
+ *
+ * Files shorter than SNIP_HEAD_LINES are kept verbatim.
+ */
+function summarizeCompletedFile(code: string): string {
+  const lines = code.split("\n");
+  if (lines.length <= SNIP_HEAD_LINES) return code;
+
+  const head = lines.slice(0, SNIP_HEAD_LINES);
+  const tailExports = lines
+    .slice(SNIP_HEAD_LINES)
+    .filter((line) => /^\s*export\s/.test(line));
+  const omittedCount = lines.length - SNIP_HEAD_LINES - tailExports.length;
+
+  const parts: string[] = [head.join("\n")];
+  if (omittedCount > 0) {
+    parts.push(`// ... (${omittedCount} lines omitted — implementation details)`);
+  }
+  if (tailExports.length > 0) {
+    parts.push(...tailExports);
+  }
+  return parts.join("\n");
 }
 
+/**
+ * Compress completed files for the engineer prompt. All files get the same
+ * head-plus-trailing-exports treatment regardless of direct-dep status —
+ * this uniformly caps the prompt size and prevents the composer-file bloat
+ * failure mode where a file with 5+ large direct deps produces a prompt so
+ * long that the model drifts or truncates mid-output.
+ *
+ * The `_targetFiles` parameter is retained for signature stability with
+ * existing callers and tests; it is no longer used for per-file decisions.
+ */
 export function snipCompletedFiles(
   completedFiles: Record<string, string>,
-  targetFiles: readonly ScaffoldFile[]
+  _targetFiles: readonly ScaffoldFile[]
 ): Record<string, string> {
-  const directDeps = new Set<string>();
-  for (const f of targetFiles) {
-    for (const dep of f.deps) {
-      directDeps.add(dep);
-    }
-  }
-
   const result: Record<string, string> = {};
   for (const [path, code] of Object.entries(completedFiles)) {
-    if (directDeps.has(path)) {
-      result[path] = code;
-    } else {
-      result[path] = extractExportSignatures(code);
-    }
+    result[path] = summarizeCompletedFile(code);
   }
   return result;
 }
@@ -173,17 +199,11 @@ export function getMultiFileEngineerPrompt(input: MultiFileEngineerPromptInput):
     .join("\n");
 
   const snipped = snipCompletedFiles(completedFiles, targetFiles);
-  const directDepPaths = new Set(targetFiles.flatMap((f) => f.deps));
   const completedFileEntries = Object.entries(snipped);
   const completedSection =
     completedFileEntries.length > 0
-      ? `已完成的依赖文件代码（直接引用，不要重复实现）：\n${completedFileEntries
-          .map(([path, code]) => {
-            const header = directDepPaths.has(path)
-              ? `// === FILE: ${path} ===`
-              : `// === FILE: ${path} (snipped — exports only) ===`;
-            return `${header}\n${code}`;
-          })
+      ? `已完成的依赖文件（只展示前 ${SNIP_HEAD_LINES} 行 + 导出声明，供了解 API 签名；直接 import 使用，不要重复实现）：\n${completedFileEntries
+          .map(([path, code]) => `// === FILE: ${path} (summary) ===\n${code}`)
           .join("\n\n")}`
       : "";
 
