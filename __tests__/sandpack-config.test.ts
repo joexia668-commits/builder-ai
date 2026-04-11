@@ -17,8 +17,8 @@ describe("buildSandpackConfig", () => {
       "/utils/helpers.js": `export const foo = () => null;`,
     };
     const config = buildSandpackConfig(files, "proj-1");
-    // /utils/helpers.js should come from userFiles, not be a stub
-    expect(config.files["/utils/helpers.js"].code).toBe(`export const foo = () => null;`);
+    // /utils/helpers.js should come from userFiles, not be replaced by a stub
+    expect(config.files["/utils/helpers.js"].code).toContain(`export const foo = () => null;`);
     expect(config.files["/utils/helpers.js"].hidden).toBeUndefined();
   });
 

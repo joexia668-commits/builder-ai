@@ -9,49 +9,38 @@
 import { findMissingLocalImportsWithNames } from "@/lib/extract-code";
 
 /**
- * Detect default-vs-named export mismatches between generated files and patch them.
+ * Ensure every AI-generated file exposes both a default export and at least one
+ * named export, so that both `import X from` and `import { X } from` always
+ * resolve to a valid value in Sandpack.
  *
- * AI often generates `export default function Foo()` in one file while another file
- * does `import { Foo } from '/Foo.jsx'` (named import), or vice versa. Both resolve
- * to `undefined` at runtime, causing the "Element type is invalid: got undefined" error.
+ * Works file-by-file without cross-file import analysis — immune to import
+ * style variations that caused the previous regex-based patcher to silently skip.
  *
- * Fix strategy (minimal, non-destructive):
- *   • Named import of a default-only export  → append `export { default as Name };`
- *   • Default import of a named-only export  → append `export default FirstNamedExport;`
+ * Rules applied per file:
+ *   • Has `export default function/class X` or `export default X` but no same-named
+ *     named export → append `export { default as X };`
+ *   • Has named exports but no default export → append `export default FirstNamed;`
+ *   • Already has both, or default is anonymous → no change
  */
-function patchExportMismatches(
+function normalizeExports(
   files: Record<string, string>
 ): Record<string, string> {
-  const namedImportRe = /import\s+(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s+from\s+['"](\/.+?)['"]/g;
-  const defaultImportRe = /import\s+([\w$]+)\s+from\s+['"](\/.+?)['"]/g;
-
-  // What each existing file is expected to provide
-  const needsDefault = new Set<string>();
-  const needsNamed = new Map<string, Set<string>>();
-
-  for (const code of Object.values(files)) {
-    for (const m of Array.from(code.matchAll(defaultImportRe))) {
-      const path = m[2];
-      if (files[path]) needsDefault.add(path);
-    }
-    for (const m of Array.from(code.matchAll(namedImportRe))) {
-      const path = m[2];
-      if (!files[path]) continue;
-      if (!needsNamed.has(path)) needsNamed.set(path, new Set());
-      for (const token of m[1].split(",")) {
-        const name = token.trim().split(/\s+as\s+/)[0].trim();
-        if (name && /^[a-zA-Z_$][\w$]*$/.test(name))
-          needsNamed.get(path)!.add(name);
-      }
-    }
-  }
-
   const result = { ...files };
 
   for (const [path, code] of Object.entries(files)) {
+    const additions: string[] = [];
+
+    // 1. Detect default export name (null for anonymous defaults)
+    const defaultFnMatch = code.match(
+      /export\s+default\s+(?:async\s+)?(?:function|class)\s+([a-zA-Z_$][\w$]*)/
+    );
+    const defaultIdMatch = !defaultFnMatch
+      ? code.match(/export\s+default\s+([a-zA-Z_$][\w$]*)/)
+      : null;
+    const defaultName = defaultFnMatch?.[1] ?? defaultIdMatch?.[1];
     const hasDefault = /export\s+default\b/.test(code);
 
-    // Named exports: `export function/class/const/let/var Name` or `export { X }`
+    // 2. Collect all named exports from this file
     const namedSet = new Set<string>();
     for (const m of Array.from(
       code.matchAll(/export\s+(?:async\s+)?(?:function|class|const|let|var)\s+([a-zA-Z_$][\w$]*)/g)
@@ -67,31 +56,19 @@ function patchExportMismatches(
       }
     }
 
-    const additions: string[] = [];
-
-    // File imported as default but has no default export → re-export first named as default
-    if (needsDefault.has(path) && !hasDefault) {
-      const first = Array.from(namedSet)[0];
-      if (first) additions.push(`export default ${first};`);
+    // 3. Bidirectional normalization
+    // Default with a name but no matching named export → add named re-export
+    if (defaultName && !namedSet.has(defaultName)) {
+      additions.push(`export { default as ${defaultName} };`);
     }
-
-    // File imported by name but missing some named exports → add them
-    const needed = needsNamed.get(path);
-    if (needed) {
-      for (const name of Array.from(needed)) {
-        if (!namedSet.has(name)) {
-          // If the file has a default export, re-export it under the needed name
-          additions.push(
-            hasDefault
-              ? `export { default as ${name} };`
-              : `export const ${name} = () => null;`
-          );
-        }
-      }
+    // Named exports exist but no default → promote first named to default
+    if (!hasDefault && namedSet.size > 0) {
+      const first = Array.from(namedSet)[0];
+      additions.push(`export default ${first};`);
     }
 
     if (additions.length > 0) {
-      result[path] = code + "\n// [builder-ai: export patch]\n" + additions.join("\n");
+      result[path] = code + "\n// [builder-ai: export normalization]\n" + additions.join("\n");
     }
   }
 
@@ -142,9 +119,10 @@ export function buildSandpackConfig(
   let userFiles: Record<string, string> =
     typeof input === "string" ? { "/App.js": input || PLACEHOLDER_APP } : { ...input };
 
-  // Fix default-vs-named export mismatches before Sandpack sees the files.
+  // Normalize exports: ensure every file exposes both named and default export
+  // styles so any import form resolves to a valid component, not undefined.
   if (typeof input !== "string") {
-    userFiles = patchExportMismatches(userFiles);
+    userFiles = normalizeExports(userFiles);
   }
 
   // Ensure /App.js has a value (Sandpack entry point)
