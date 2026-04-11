@@ -69,7 +69,6 @@ export function createHandler(deps: GenerateDeps) {
 
     const stream = new ReadableStream({
       async start(controller) {
-        const startedAt = Date.now();
         try {
           send(controller, { type: "thinking", content: `${agent} 正在分析...` });
 
@@ -126,13 +125,6 @@ export function createHandler(deps: GenerateDeps) {
               const { extractAnyMultiFileCode } = await import("@/lib/extract-code");
               const filesResult = extractAnyMultiFileCode(fullContent);
               if (filesResult === null) {
-                console.error("[generate:diag:parse_failed:partialMultiFile]", {
-                  agent,
-                  model: resolvedModelId,
-                  elapsedMs: Date.now() - startedAt,
-                  fullContentLength: fullContent.length,
-                  tail: fullContent.slice(-200),
-                });
                 send(controller, { type: "error", error: "生成的代码不完整，请重试", errorCode: "parse_failed" satisfies ErrorCode });
               } else {
                 send(controller, { type: "files_complete", files: filesResult });
@@ -144,16 +136,6 @@ export function createHandler(deps: GenerateDeps) {
               const okCount = Object.keys(result.ok).length;
 
               if (okCount === 0) {
-                console.error("[generate:diag:parse_failed:multiFile]", {
-                  agent,
-                  model: resolvedModelId,
-                  elapsedMs: Date.now() - startedAt,
-                  fullContentLength: fullContent.length,
-                  expectedPaths,
-                  okPaths: Object.keys(result.ok),
-                  failedPaths: result.failed,
-                  tail: fullContent.slice(-200),
-                });
                 send(controller, {
                   type: "error",
                   error: "生成的代码不完整，请重试",
@@ -174,13 +156,6 @@ export function createHandler(deps: GenerateDeps) {
             } else {
               const finalCode = extractReactCode(fullContent);
               if (finalCode === null) {
-                console.error("[generate:diag:parse_failed:singleFile]", {
-                  agent,
-                  model: resolvedModelId,
-                  elapsedMs: Date.now() - startedAt,
-                  fullContentLength: fullContent.length,
-                  tail: fullContent.slice(-200),
-                });
                 send(controller, { type: "error", error: "生成的代码不完整，请重试", errorCode: "parse_failed" satisfies ErrorCode });
               } else {
                 send(controller, { type: "code_complete", code: finalCode });

@@ -389,7 +389,18 @@ export function ChatArea({
       for (const agentRole of AGENT_ORDER) {
         // Engineer: attempt multi-file path after architect completes
         if (agentRole === "engineer") {
-          const scaffold = extractScaffoldFromTwoPhase(outputs.architect);
+          const scaffoldRaw = extractScaffoldFromTwoPhase(outputs.architect);
+          // /supabaseClient.js is platform infrastructure — auto-injected by
+          // buildSandpackConfig and whitelisted by findMissingLocalImports.
+          // Drop it from the scaffold so Engineer is never asked to generate it.
+          const scaffold = scaffoldRaw
+            ? {
+                ...scaffoldRaw,
+                files: scaffoldRaw.files.filter(
+                  (f) => f.path !== "/supabaseClient.js"
+                ),
+              }
+            : null;
 
           if (scaffold && scaffold.files.length > 1) {
             // === MULTI-FILE PATH ===

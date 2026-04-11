@@ -33,11 +33,28 @@ function createPrismaClient(): PrismaClientType {
 
   const pool = new pg.Pool({
     connectionString,
-    // Conservative pool settings — Supabase free tier limits direct connections
-    max: 3,
+    // Tuned for Vercel serverless + Supabase pgbouncer:
+    //   max=2        —— serverless instances run few concurrent requests; keep
+    //                   low to avoid exhausting Supabase free-tier pooler slots.
+    //   idle=5000    —— evict connections quickly so frozen-then-unfrozen
+    //                   Lambda instances don't hand out stale TCP sockets that
+    //                   pgbouncer has already dropped (root cause of the
+    //                   observed "Connection terminated due to connection
+    //                   timeout" errors on /api/messages writes).
+    //   connect=10s  —— don't block the function's 60s wall on pool acquisition.
+    //   allowExitOnIdle=true —— don't keep the event loop alive after the
+    //                   response is sent; lets the function return cleanly.
+    max: 2,
     min: 0,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 15000,
+    idleTimeoutMillis: 5000,
+    connectionTimeoutMillis: 10000,
+    allowExitOnIdle: true,
+  });
+
+  // Swallow async pool errors so a single bad socket doesn't crash the
+  // serverless instance; Prisma will surface the error on the next query.
+  pool.on("error", (err) => {
+    console.error("[prisma] idle pg pool error:", err.message);
   });
 
   const adapter = new PrismaPg(pool);
