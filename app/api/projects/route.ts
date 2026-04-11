@@ -8,8 +8,12 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const userId = session.user.isDemo
-    ? process.env.DEMO_USER_ID!
+    ? process.env.DEMO_USER_ID ?? null
     : session.user.id;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Demo mode not configured" }, { status: 503 });
+  }
 
   const projects = await prisma.project.findMany({
     where: { userId },

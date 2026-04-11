@@ -72,9 +72,22 @@ describe("Demo mode API protection", () => {
     expect(res.status).toBe(403);
   });
 
-  it("GET /api/projects returns projects for demo user (no 403)", async () => {
+  it("GET /api/projects queries with DEMO_USER_ID for demo user", async () => {
     process.env.DEMO_USER_ID = "developer_id";
+    const { prisma } = jest.requireMock("@/lib/prisma");
+    (prisma.project.findMany as jest.Mock).mockResolvedValue([]);
     const res = await projectsGET();
     expect(res.status).not.toBe(403);
+    expect(prisma.project.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: "developer_id" } })
+    );
+  });
+
+  it("GET /api/projects returns 503 when DEMO_USER_ID is not configured", async () => {
+    const saved = process.env.DEMO_USER_ID;
+    delete process.env.DEMO_USER_ID;
+    const res = await projectsGET();
+    expect(res.status).toBe(503);
+    process.env.DEMO_USER_ID = saved;
   });
 });

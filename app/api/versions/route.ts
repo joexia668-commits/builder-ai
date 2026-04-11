@@ -8,8 +8,12 @@ export async function GET(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const allowedUserId = session.user.isDemo
-    ? process.env.DEMO_USER_ID!
+    ? process.env.DEMO_USER_ID ?? null
     : session.user.id;
+
+  if (!allowedUserId) {
+    return NextResponse.json({ error: "Demo mode not configured" }, { status: 503 });
+  }
 
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get("projectId");

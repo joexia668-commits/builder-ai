@@ -13,6 +13,7 @@ function slugify(name: string): string {
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (session.user.isDemo) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json() as { projectId?: string; versionId?: string }
   const { projectId, versionId } = body

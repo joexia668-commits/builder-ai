@@ -80,7 +80,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user && token.id) {
         session.user.id = token.id;
-        session.user.isDemo = (token.isDemo as boolean) ?? false;
+        session.user.isDemo = token.isDemo ?? false;
       }
       return session;
     },
