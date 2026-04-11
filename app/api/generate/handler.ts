@@ -31,13 +31,14 @@ export function createHandler(deps: GenerateDeps) {
     }
 
     const body = await req.json();
-    const { agent, prompt, context, projectId, modelId, targetFiles } =
+    const { agent, prompt, context, projectId, modelId, targetFiles, partialMultiFile } =
       body as {
         projectId: string;
         prompt: string;
         agent: AgentRole;
         context?: string;
         modelId?: string;
+        partialMultiFile?: boolean;
         targetFiles?: Array<{
           path: string;
           description: string;
@@ -118,7 +119,17 @@ export function createHandler(deps: GenerateDeps) {
           }
 
           if (agent === "engineer") {
-            if (targetFiles && targetFiles.length > 0) {
+            if (partialMultiFile) {
+              // Direct bug-fix / style-change path: LLM only emits modified files.
+              // Extract whatever FILE blocks are present; caller merges with existing files.
+              const { extractAnyMultiFileCode } = await import("@/lib/extract-code");
+              const filesResult = extractAnyMultiFileCode(fullContent);
+              if (filesResult === null) {
+                send(controller, { type: "error", error: "生成的代码不完整，请重试", errorCode: "parse_failed" satisfies ErrorCode });
+              } else {
+                send(controller, { type: "files_complete", files: filesResult });
+              }
+            } else if (targetFiles && targetFiles.length > 0) {
               const { extractMultiFileCode } = await import("@/lib/extract-code");
               const expectedPaths = targetFiles.map((f) => f.path);
               const filesResult = extractMultiFileCode(fullContent, expectedPaths);

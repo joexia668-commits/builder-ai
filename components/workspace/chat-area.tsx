@@ -242,16 +242,9 @@ export function ChatArea({
         // Multi-file V1: use FILE separator format so the server can parse with
         // extractMultiFileCode. Single-file V1: keep the merged single-file path.
         const isMultiFileV1 = Object.keys(currentFiles).length > 1;
-        const v1Paths = Object.keys(currentFiles);
         const directContext = isMultiFileV1
           ? buildDirectMultiFileEngineerContext(prompt, currentFiles)
           : buildDirectEngineerContext(prompt, currentFiles);
-
-        // For multi-file: tell the server which paths to expect so it routes to
-        // extractMultiFileCode instead of extractReactCode.
-        const targetFilesPayload = isMultiFileV1
-          ? v1Paths.map((p) => ({ path: p, description: "", exports: [], deps: [], hints: "" }))
-          : undefined;
 
         const directResponse = await fetch("/api/generate", {
           method: "POST",
@@ -262,7 +255,9 @@ export function ChatArea({
             agent: "engineer",
             context: directContext,
             modelId: selectedModel,
-            ...(targetFilesPayload ? { targetFiles: targetFilesPayload } : {}),
+            // Multi-file direct path: LLM only emits modified files; server extracts
+            // whatever FILE blocks are present and client merges with currentFiles.
+            ...(isMultiFileV1 ? { partialMultiFile: true } : {}),
           }),
           signal: abortController.signal,
         });

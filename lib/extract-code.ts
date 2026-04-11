@@ -127,6 +127,44 @@ export function extractReactCode(raw: string): string | null {
 }
 
 /**
+ * Extract all `// === FILE: /path ===` blocks from LLM output without requiring
+ * specific paths to be present. Used for the direct bug-fix / style-change path
+ * where the LLM only emits modified files.
+ *
+ * @returns Record of path → code for every block found, or null if none found
+ *          or any block has unbalanced braces.
+ */
+export function extractAnyMultiFileCode(
+  raw: string
+): Record<string, string> | null {
+  const marker = /^\/\/ === FILE: (.+?) ===/;
+  const lines = raw.split("\n");
+  const fileMap: Record<string, string[]> = {};
+  let currentPath: string | null = null;
+
+  for (const line of lines) {
+    const match = line.match(marker);
+    if (match) {
+      currentPath = match[1];
+      fileMap[currentPath] = [];
+    } else if (currentPath !== null) {
+      fileMap[currentPath].push(line);
+    }
+  }
+
+  if (Object.keys(fileMap).length === 0) return null;
+
+  const result: Record<string, string> = {};
+  for (const [path, codeLines] of Object.entries(fileMap)) {
+    const code = codeLines.join("\n").trim();
+    if (!isBracesBalanced(code)) return null;
+    result[path] = code;
+  }
+
+  return result;
+}
+
+/**
  * Extract multiple files from LLM output using FILE separator markers.
  *
  * Expected format:
