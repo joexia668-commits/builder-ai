@@ -68,7 +68,7 @@ export function buildSandpackConfig(
   // resolves to () => null instead of undefined, preventing the React
   // "Element type is invalid: got undefined" error.
   const missingImports = findMissingLocalImportsWithNames(userFiles);
-  for (const [missingPath, namedExports] of missingImports.entries()) {
+  for (const [missingPath, namedExports] of Array.from(missingImports.entries())) {
     const namedLines = Array.from(namedExports)
       .map((n) => `export const ${n} = () => null;`)
       .join("\n");
