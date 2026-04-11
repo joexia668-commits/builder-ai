@@ -270,4 +270,66 @@ ${JSON.stringify(VALID_SCAFFOLD_TP)}
     const result = extractScaffoldFromTwoPhase(raw);
     expect(result).not.toBeNull();
   });
+
+  // EJ-TP-07: realistic truncation — <output> opened, files array complete,
+  // but sharedTypes string and </output> were cut by stream timeout.
+  // Must salvage the files array and return empty sharedTypes/designNotes.
+  it("EJ-TP-07: 尾部截断时仍能抢救 files 数组", () => {
+    const truncated = `<thinking>reasoning</thinking>
+<output>
+{
+  "files": [
+    { "path": "/App.js", "description": "root", "exports": ["App"], "deps": ["/components/Header.js"], "hints": "main" },
+    { "path": "/components/Header.js", "description": "nav", "exports": ["Header"], "deps": [], "hints": "lucide" }
+  ],
+  "sharedTypes": "/** user type */\\ntype User = {\\n  id: string;\\n  name: string;\\n  email`;
+    const result = extractScaffoldFromTwoPhase(truncated);
+    expect(result).not.toBeNull();
+    expect(result!.files).toHaveLength(2);
+    expect(result!.files[0].path).toBe("/App.js");
+    expect(result!.files[1].path).toBe("/components/Header.js");
+    expect(result!.sharedTypes).toBe("");
+    expect(result!.designNotes).toBe("");
+  });
+
+  // EJ-TP-08: truncation inside the files array itself (mid-object) —
+  // the files array is NOT salvageable, must return null.
+  it("EJ-TP-08: 截断发生在 files 数组内部时返回 null", () => {
+    const truncated = `<output>
+{
+  "files": [
+    { "path": "/App.js", "description": "root", "exports": ["App"], "deps": [], "hints": "main" },
+    { "path": "/components/Head`;
+    expect(extractScaffoldFromTwoPhase(truncated)).toBeNull();
+  });
+
+  // EJ-TP-09: bare JSON (no <output> wrapper) with trailing truncation —
+  // matches the exact shape observed in production for password manager bug.
+  it("EJ-TP-09: 裸 JSON 尾部截断时也能抢救 files 数组", () => {
+    const truncated = `{
+  "files": [
+    { "path": "/App.js", "description": "root", "exports": ["App"], "deps": [], "hints": "x" }
+  ],
+  "sharedTypes": "type X = { a: string; b`;
+    const result = extractScaffoldFromTwoPhase(truncated);
+    expect(result).not.toBeNull();
+    expect(result!.files).toHaveLength(1);
+    expect(result!.sharedTypes).toBe("");
+  });
+
+  // EJ-TP-10: strings inside files array contain brackets and escaped quotes —
+  // salvage must not be confused by these.
+  it("EJ-TP-10: files 数组内字符串含方括号/转义引号时抢救仍正确", () => {
+    const truncated = `<output>
+{
+  "files": [
+    { "path": "/App.js", "description": "uses [brackets] and \\"quotes\\" in hints", "exports": ["App"], "deps": [], "hints": "has ] inside" }
+  ],
+  "sharedTypes": "truncated`;
+    const result = extractScaffoldFromTwoPhase(truncated);
+    expect(result).not.toBeNull();
+    expect(result!.files).toHaveLength(1);
+    expect(result!.files[0].description).toContain("[brackets]");
+    expect(result!.files[0].hints).toContain("]");
+  });
 });

@@ -111,11 +111,86 @@ export function extractScaffold(raw: string): ScaffoldData | null {
   }
 }
 
+/**
+ * Locate `"files": [ ... ]` in raw text and return the array's text span.
+ * Uses bracket counting with JSON string-literal awareness (handles escaped
+ * quotes and brackets inside strings). Returns null if the opening `[` is
+ * not found or the matching `]` is not present (truncated mid-array).
+ */
+function locateFilesArrayText(raw: string): string | null {
+  const keyRe = /"files"\s*:\s*\[/g;
+  const keyMatch = keyRe.exec(raw);
+  if (!keyMatch) return null;
+
+  const start = keyRe.lastIndex - 1; // position of `[`
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "[") depth++;
+    else if (ch === "]") {
+      depth--;
+      if (depth === 0) return raw.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * Salvage path: if strict JSON.parse fails (typically because the tail of
+ * the scaffold — sharedTypes / designNotes / closing `}` — was truncated by
+ * a stream abort), try to recover just the `files` array. Returns a
+ * ScaffoldData with empty sharedTypes / designNotes if at least one valid
+ * file entry can be parsed.
+ */
+function salvageScaffold(raw: string): ScaffoldData | null {
+  const arrayText = locateFilesArrayText(raw);
+  if (!arrayText) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(arrayText);
+  } catch {
+    return null;
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) return null;
+  if (!parsed.every(isScaffoldFile)) return null;
+
+  return {
+    files: parsed as ScaffoldFile[],
+    sharedTypes: "",
+    designNotes: "",
+  };
+}
+
 export function extractScaffoldFromTwoPhase(raw: string): ScaffoldData | null {
   const outputMatch = raw.match(/<output>\s*([\s\S]*?)\s*<\/output>/i);
   if (outputMatch) {
     const result = extractScaffold(outputMatch[1]);
     if (result) return result;
   }
-  return extractScaffold(raw);
+  const full = extractScaffold(raw);
+  if (full) return full;
+
+  // Strict parse failed — tail is likely truncated by stream abort.
+  // Prefer searching inside the opened <output> region if present,
+  // otherwise search the whole raw body.
+  const salvageSource = raw.match(/<output>\s*([\s\S]*)/i)?.[1] ?? raw;
+  return salvageScaffold(salvageSource);
 }
