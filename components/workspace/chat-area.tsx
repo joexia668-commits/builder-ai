@@ -34,7 +34,6 @@ import type {
   AgentState,
   AgentRole,
   PmOutput,
-  EngineerProgress,
   ScaffoldFile,
 } from "@/lib/types";
 import { AGENT_ORDER, AGENTS } from "@/lib/types";
