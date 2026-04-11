@@ -46,21 +46,22 @@ export function buildFileTree(paths: string[]): TreeNode[] {
     }
   }
 
-  sortNodes(roots);
-  return roots;
+  return sortNodes(roots);
 }
 
-function sortNodes(nodes: TreeNode[]): void {
-  nodes.sort((a, b) => {
-    // Dirs before files
-    if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
-    // App.js always first among files
-    if (a.kind === "file" && a.name === "App.js") return -1;
-    if (b.kind === "file" && b.name === "App.js") return 1;
-    return a.name.localeCompare(b.name);
-  });
-  // Recurse into dirs
-  for (const node of nodes) {
-    if (node.kind === "dir") sortNodes(node.children);
-  }
+function sortNodes(nodes: readonly TreeNode[]): TreeNode[] {
+  return [...nodes]
+    .sort((a, b) => {
+      // Dirs before files
+      if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
+      // App.js always first among files
+      if (a.kind === "file" && a.name === "App.js") return -1;
+      if (b.kind === "file" && b.name === "App.js") return 1;
+      return a.name.localeCompare(b.name);
+    })
+    .map((node) =>
+      node.kind === "dir"
+        ? { ...node, children: sortNodes(node.children) }
+        : node
+    );
 }
