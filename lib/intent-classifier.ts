@@ -18,8 +18,10 @@ const NEW_PROJECT_KEYWORDS = [
   "重做", "从头", "推倒重来",
 ] as const;
 
-// Matches any Chinese color word ending in 色 (黄色, 红色, 底色, 背景色…)
-const CHINESE_COLOR_RE = /[\u4e00-\u9fa5]{0,4}色/;
+// Matches any Chinese color word: explicit color characters (红橙黄绿蓝紫粉黑白灰青棕)
+// or explicit color expressions (底色, 背景色, 主色, 文字色, 边框色, 字体色).
+// This prevents false positives from non-color words like 角色(role), 特色(feature), etc.
+const CHINESE_COLOR_RE = /[红橙黄绿蓝紫粉黑白灰青棕]色|底色|背景色|主色|文字色|边框色|字体色/;
 
 // Matches CSS hex or rgb color values
 const CSS_COLOR_RE = /#[0-9a-fA-F]{3,6}|rgb\(|rgba\(/i;

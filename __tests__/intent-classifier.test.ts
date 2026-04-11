@@ -57,6 +57,42 @@ describe("classifyIntent", () => {
     it("detects 'dark mode' (multi-word English keyword)", () => {
       expect(classifyIntent("switch to dark mode", true)).toBe("style_change");
     });
+
+    it("detects 黄色 (specific color word)", () => {
+      expect(classifyIntent("所有按键底色换成黄色", true)).toBe("style_change");
+    });
+
+    it("detects 底色 (color suffix word)", () => {
+      expect(classifyIntent("底色改一下", true)).toBe("style_change");
+    });
+
+    it("detects 红色", () => {
+      expect(classifyIntent("把标题改成红色", true)).toBe("style_change");
+    });
+
+    it("detects 蓝色", () => {
+      expect(classifyIntent("背景换成蓝色", true)).toBe("style_change");
+    });
+
+    it("detects hex color value", () => {
+      expect(classifyIntent("把主色换成 #ff6600", true)).toBe("style_change");
+    });
+
+    it("detects rgb() color value", () => {
+      expect(classifyIntent("color should be rgb(255,0,0)", true)).toBe("style_change");
+    });
+
+    it("detects 圆角", () => {
+      expect(classifyIntent("给按钮加圆角", true)).toBe("style_change");
+    });
+
+    it("detects 阴影", () => {
+      expect(classifyIntent("卡片加个阴影效果", true)).toBe("style_change");
+    });
+
+    it("detects 加粗", () => {
+      expect(classifyIntent("标题文字加粗", true)).toBe("style_change");
+    });
   });
 
   describe("new_project override", () => {
@@ -80,6 +116,15 @@ describe("classifyIntent", () => {
 
     it("returns feature_add when prompt has no matching keywords", () => {
       expect(classifyIntent("添加用户登录功能", true)).toBe("feature_add");
+    });
+
+    it("no regression: 纯功能请求仍为 feature_add", () => {
+      expect(classifyIntent("添加用户登录注册功能", true)).toBe("feature_add");
+    });
+
+    it("no regression: bug_fix 优先级高于颜色词", () => {
+      // prompt contains both a bug keyword and a color word
+      expect(classifyIntent("修复黄色按钮点击报错", true)).toBe("bug_fix");
     });
   });
 
