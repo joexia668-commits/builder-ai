@@ -7,6 +7,8 @@ import { isValidModelId } from "@/lib/model-registry";
 import { inferErrorCode } from "@/lib/error-codes";
 import type { AgentRole, CompletionOptions, ErrorCode } from "@/lib/types";
 import type { AIProvider } from "@/lib/ai-providers";
+import { createEngineerStreamTap, type StreamTapEvent } from "@/lib/engineer-stream-tap";
+import { coalesceChunks } from "@/lib/coalesce-chunks";
 
 export interface GenerateDeps {
   readonly createProvider: (modelId: string) => AIProvider;
@@ -74,6 +76,23 @@ export function createHandler(deps: GenerateDeps) {
 
           let fullContent = "";
 
+          const isEngineerMultiFile =
+            agent === "engineer" &&
+            (partialMultiFile === true ||
+              (targetFiles !== undefined && targetFiles.length > 0));
+          const tap = isEngineerMultiFile ? createEngineerStreamTap() : null;
+          let pendingTapEvents: StreamTapEvent[] = [];
+          let lastTapFlush = Date.now();
+          const TAP_FLUSH_INTERVAL_MS = 80;
+
+          function flushTapPending() {
+            if (pendingTapEvents.length === 0) return;
+            const coalesced = coalesceChunks(pendingTapEvents);
+            for (const ev of coalesced) send(controller, ev);
+            pendingTapEvents = [];
+            lastTapFlush = Date.now();
+          }
+
           const messages: Parameters<typeof provider.streamCompletion>[0] = [
             { role: "system", content: getSystemPrompt(agent, projectId) },
             { role: "user", content: userContent },
@@ -82,6 +101,13 @@ export function createHandler(deps: GenerateDeps) {
           const onChunk = (text: string) => {
             fullContent += text;
             send(controller, { type: "chunk", content: text });
+
+            if (tap !== null) {
+              pendingTapEvents.push(...tap.feed(text));
+              if (Date.now() - lastTapFlush >= TAP_FLUSH_INTERVAL_MS) {
+                flushTapPending();
+              }
+            }
           };
 
           // PM outputs bare JSON — enable JSON mode. Architect uses two-phase <thinking>/<output>
@@ -96,6 +122,8 @@ export function createHandler(deps: GenerateDeps) {
             if (isMaxTokens && agent === "engineer") {
               // Token budget exhausted — retry with an explicit conciseness instruction.
               fullContent = "";
+              tap?.reset();
+              pendingTapEvents = [];
               send(controller, { type: "reset" });
               const retryMessages: Parameters<typeof provider.streamCompletion>[0] = [
                 messages[0],
@@ -110,12 +138,19 @@ export function createHandler(deps: GenerateDeps) {
               // Reset fullContent and notify the client to discard partial chunks so
               // both sides stay in sync before Groq re-generates from scratch.
               fullContent = "";
+              tap?.reset();
+              pendingTapEvents = [];
               send(controller, { type: "reset" });
               const groqProvider = deps.createProvider("llama-3.3-70b");
               await groqProvider.streamCompletion(messages, onChunk, completionOptions);
             } else {
               throw err;
             }
+          }
+
+          if (tap !== null) {
+            pendingTapEvents.push(...tap.finalize());
+            flushTapPending();
           }
 
           if (agent === "engineer") {
