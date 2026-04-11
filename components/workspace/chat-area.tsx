@@ -515,18 +515,7 @@ export function ChatArea({
                 }
               }
 
-              // Eager Sandpack push: let users see partial progress after each layer
-              if (Object.keys(allCompletedFiles).length > 0) {
-                const syntheticVersion: ProjectVersion = {
-                  id: `layer-${layerIdx + 1}-preview-${Date.now()}`,
-                  projectId: project.id,
-                  versionNumber: -1,
-                  code: "",
-                  description: `layer-${layerIdx + 1} partial preview`,
-                  createdAt: new Date(),
-                };
-                onFilesGenerated({ ...allCompletedFiles }, syntheticVersion);
-              }
+
             }
 
             const completedList = Object.keys(allCompletedFiles).join(", ");
