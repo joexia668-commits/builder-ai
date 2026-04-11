@@ -96,7 +96,10 @@ export type SSEEventType =
   | "partial_files_complete"
   | "reset"
   | "done"
-  | "error";
+  | "error"
+  | "file_start"
+  | "file_chunk"
+  | "file_end";
 
 export type ErrorCode =
   | "rate_limited"
@@ -118,6 +121,10 @@ export interface SSEEvent {
   messageId?: string;
   error?: string;
   errorCode?: ErrorCode;
+  // Live-stream fields (engineer multi-file observational tap)
+  path?: string;
+  delta?: string;
+  attempt?: number;
 }
 
 // ---------------------------------------------------------------
@@ -228,4 +235,15 @@ export interface Deployment {
   url: string;
   status: 'building' | 'ready' | 'error';
   createdAt: Date;
+}
+
+export interface LiveFileStream {
+  readonly path: string;
+  readonly content: string;
+  readonly status: "streaming" | "done" | "failed";
+  readonly attempt: number;
+  readonly failedAttempts: ReadonlyArray<{
+    readonly content: string;
+    readonly reason: string;
+  }>;
 }
