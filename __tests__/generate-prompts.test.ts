@@ -280,103 +280,65 @@ describe("getMultiFileEngineerPrompt", () => {
 });
 
 describe("snipCompletedFiles", () => {
-  const TARGET: ScaffoldFile = {
-    path: "/B.js", description: "B", exports: ["B"], deps: ["/A.js"], hints: "",
+  const FILE_A: ScaffoldFile = {
+    path: "/A.js", description: "A", exports: ["ComponentA"], deps: [], hints: "",
+  };
+  const FILE_B: ScaffoldFile = {
+    path: "/B.js", description: "B", exports: ["ComponentB"], deps: ["/A.js"], hints: "",
   };
 
-  // GP-SC-01: files shorter than SNIP_HEAD_LINES (20) are kept verbatim
-  it("GP-SC-01: 短文件原样保留", () => {
-    const shortCode =
-      "export function ComponentA({ variant, onClick }) {\n  return <div />;\n}\nexport default ComponentA;";
-    const result = snipCompletedFiles({ "/A.js": shortCode }, [TARGET]);
-    expect(result["/A.js"]).toBe(shortCode);
+  const completedFiles = {
+    "/A.js": "export function ComponentA() { return null; }\nconst x = 1;",
+    "/util.js": "export const add = (a, b) => a + b;\nexport default function noop() {}",
+  };
+
+  // GP-SC-01: direct dep gets full code
+  it("GP-SC-01: 直接依赖文件保留完整代码", () => {
+    const result = snipCompletedFiles(completedFiles, [FILE_B]);
+    expect(result["/A.js"]).toBe(completedFiles["/A.js"]);
   });
 
-  // GP-SC-02: long files are truncated to head + trailing exports + omission marker
-  it("GP-SC-02: 长文件被压缩为 head + 尾部导出声明", () => {
-    // 40 lines: 15 imports/signature/body, then 20 lines of internal impl, then trailing export
-    const longCode = [
-      "import React from 'react';",
-      "import { Icon } from 'lucide-react';",
-      "export function BigComponent({ variant, size, onClick, children }) {",
-      "  const [state, setState] = React.useState(0);",
-      "  const handle = () => setState(s => s + 1);",
-      "  return (",
-      "    <div className=\"p-4\">",
-      "      <button onClick={handle}>{children}</button>",
-      "      <Icon />",
-      "    </div>",
-      "  );",
-      "}",
-      "function helperA() { return 1; }",
-      "function helperB() { return 2; }",
-      "function helperC() { return 3; }",
-      "function helperD() { return 4; }",
-      "function helperE() { return 5; }",
-      "function helperF() { return 6; }",
-      "function helperG() { return 7; }",
-      "function helperH() { return 8; }",
-      "function helperI() { return 9; }",
-      "function helperJ() { return 10; }",
-      "const internalConfig = { foo: 1, bar: 2 };",
-      "const anotherInternal = 42;",
-      "export default BigComponent;",
-    ].join("\n");
-
-    const result = snipCompletedFiles({ "/Big.js": longCode }, [TARGET]);
-    const snipped = result["/Big.js"];
-
-    // Head is preserved
-    expect(snipped).toContain("import React");
-    expect(snipped).toContain("export function BigComponent({ variant, size, onClick, children })");
-    // Trailing export is preserved
-    expect(snipped).toContain("export default BigComponent");
-    // Omission marker is present
-    expect(snipped).toMatch(/lines omitted — implementation details/);
-    // Internal helpers beyond head are dropped
-    expect(snipped).not.toContain("helperJ");
-    expect(snipped).not.toContain("anotherInternal");
-    // Result is shorter than the original
-    expect(snipped.length).toBeLessThan(longCode.length);
+  // GP-SC-02: non-dep gets export lines only (no header — header is added in getMultiFileEngineerPrompt)
+  it("GP-SC-02: 非依赖文件被压缩为 exports only", () => {
+    const result = snipCompletedFiles(completedFiles, [FILE_A]);
+    expect(result["/util.js"]).not.toContain("snipped — exports only");
+    expect(result["/util.js"]).toContain("export const add");
+    expect(result["/util.js"]).toContain("export default function noop");
+    expect(result["/util.js"]).not.toContain("const x = 1");
   });
 
-  // GP-SC-03: long files with no trailing exports still get head + omission marker
-  it("GP-SC-03: 长文件无尾部导出时依然正常压缩", () => {
-    const lines = Array.from({ length: 30 }, (_, i) => `const line${i} = ${i};`);
-    lines[0] = "export function Foo() { return 1; }";
-    const code = lines.join("\n");
-
-    const result = snipCompletedFiles({ "/Foo.js": code }, [TARGET]);
-    const snipped = result["/Foo.js"];
-
-    expect(snipped).toContain("export function Foo");
-    expect(snipped).toContain("line1");
-    expect(snipped).not.toContain("line29");
-    expect(snipped).toMatch(/lines omitted/);
+  // GP-SC-03: file with no exports gets placeholder comment (header added in prompt, not here)
+  it("GP-SC-03: 无导出的文件包含 placeholder 注释", () => {
+    const noExports = { "/styles.js": "const x = 1;" };
+    const result = snipCompletedFiles(noExports, [FILE_A]);
+    expect(result["/styles.js"]).not.toContain("snipped — exports only");
+    expect(result["/styles.js"]).toContain("(no exports found)");
   });
 
-  // GP-SC-04: direct-dep files are now ALSO truncated (behavior change) —
-  // verifies the composer-file bloat defense is active.
-  it("GP-SC-04: direct dep 文件也被压缩（行为变化）", () => {
-    const lines = Array.from({ length: 50 }, (_, i) => `const line${i} = ${i};`);
-    lines[0] = "export function ComponentA() { return null; }";
-    const bigCode = lines.join("\n");
+  // GP-SC-04: non-dep file prompt includes snipped header; full dep prompt does not
+  it("GP-SC-04: 非依赖文件在 prompt 中包含 snipped 标注", () => {
+    const bigCode = "export function Big() {}\nconst internal = 1;\n".repeat(50);
+    const completed = { "/A.js": bigCode };
 
+    const targetNoDep: ScaffoldFile = {
+      path: "/C.js", description: "C", exports: ["C"], deps: [], hints: "",
+    };
     const targetWithDep: ScaffoldFile = {
       path: "/C.js", description: "C", exports: ["C"], deps: ["/A.js"], hints: "",
     };
 
-    const prompt = getMultiFileEngineerPrompt({
+    const promptSnipped = getMultiFileEngineerPrompt({
+      projectId: "p1", targetFiles: [targetNoDep],
+      sharedTypes: "", completedFiles: completed, designNotes: "",
+    });
+    const promptFull = getMultiFileEngineerPrompt({
       projectId: "p1", targetFiles: [targetWithDep],
-      sharedTypes: "", completedFiles: { "/A.js": bigCode }, designNotes: "",
+      sharedTypes: "", completedFiles: completed, designNotes: "",
     });
 
-    // Summary header is used uniformly now
-    expect(prompt).toContain("(summary)");
-    expect(prompt).toContain("export function ComponentA");
-    // Internal lines beyond head are not in the prompt
-    expect(prompt).not.toContain("line49");
-    expect(prompt).toMatch(/lines omitted/);
+    expect(promptSnipped).toContain("snipped — exports only");
+    expect(promptFull).not.toContain("snipped — exports only");
+    expect(promptSnipped.length).toBeLessThan(promptFull.length);
   });
 });
 
