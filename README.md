@@ -19,6 +19,7 @@ BuilderAI 是一个 AI 驱动的代码生成平台。你描述想要什么，系
 - **多 Agent 协作** — PM → Architect → Engineer 顺序流转，实时可见每个 Agent 的思考过程
 - **意图路由** — 自动识别 bug_fix / style_change / feature_add / new_project，修 bug 和调样式直接跳过前两个 Agent，响应速度提升 2–3 倍
 - **分层并行生成** — Architect 输出文件依赖图，Engineer 按拓扑排序分层并行生成，绕过单次 token 上限
+- **局部容错与可见重试** — 单层输出截断时保留已成功解析的文件，仅对失败子集重试；UI 实时展示重试进度与原因
 - **迭代上下文记忆** — 新增功能时 PM 和 Engineer 均感知上一版本状态，输出增量而非重建
 - **Sandpack 沙箱预览** — 多文件 React 应用在浏览器内编译运行，零服务器开销
 - **BaaS 数据持久化** — 生成的应用通过 Supabase Anon Key 直连数据库
@@ -131,7 +132,7 @@ npm run dev          # → http://localhost:3000
 
 全流程路径中，Engineer 按文件依赖关系**分层串行、层内并行**生成：同层文件并发调用 `/api/generate`，层间严格有序，每层完成后才进入下一层。
 
-内置三级容错：全层重试 → 逐文件回退 → 熔断（已完成文件正常渲染）。
+内置三级容错：局部解析保留 → 仅失败文件重试（最多 2 次全层 + 2 次逐文件）→ 熔断（已完成文件正常渲染）。重试期间 UI 显示进度横幅，自适应 Prompt 仅请求失败文件并附加截断上下文。
 
 → **[完整流程图、场景示例、容错详情](docs/examples/agent-orchestration.md)**
 
@@ -189,7 +190,8 @@ builder-ai/
 | 决策 | 原因 |
 |------|------|
 | Sandpack 而非 WebContainer | Vercel Hobby 不支持 COOP/COEP 响应头，WebContainer 无法部署 |
-| 一次性渲染而非流式更新 Sandpack | 频繁 remount 产生闪烁，稳定性优先 |
+| 一次性渲染而非流式更新 Sandpack | 频繁 remount 产生闪烁，且会触发 ChunkLoadError（webpack chunk URL 解析为 undefined），稳定性优先 |
+| 提取层自动去重 `export default` | `feature_add` 合并时 Engineer 常复制原文件尾部的 re-export 行，导致双 default export 语法错误；在 `extractMultiFileCodePartial` 等提取函数中统一后处理，无需改 Prompt |
 | 版本只 INSERT 不 UPDATE | 最低代价实现完整时间线，零数据丢失 |
 | 多 Provider 工厂模式 | 统一接口，Gemini 限速时自动 fallback 到 Groq |
 | 拓扑排序分层并行 | 绕过单次请求 token 上限，最大化并发 |
