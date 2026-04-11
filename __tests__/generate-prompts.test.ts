@@ -169,6 +169,21 @@ describe("getSystemPrompt", () => {
     expect(prompt).toContain("CalculatorPanel");
     expect(prompt).toContain("lucide-react 图标重名");
   });
+
+  // GP-AUTH-01: engineer prompt bans supabase.auth methods
+  it("GP-AUTH-01: engineer 提示词禁止使用 supabase.auth 方法", () => {
+    const prompt = getSystemPrompt("engineer", "proj-1");
+    expect(prompt).toContain("supabase.auth");
+    expect(prompt).toContain("signInWithPassword");
+    expect(prompt).toContain("认证限制");
+  });
+
+  // GP-AUTH-02: engineer prompt provides the DEMO_CREDENTIALS pattern
+  it("GP-AUTH-02: engineer 提示词包含 DEMO_CREDENTIALS 本地状态登录示例", () => {
+    const prompt = getSystemPrompt("engineer", "proj-1");
+    expect(prompt).toContain("DEMO_CREDENTIALS");
+    expect(prompt).toContain("isLoggedIn");
+  });
 });
 
 describe("getMultiFileEngineerPrompt", () => {

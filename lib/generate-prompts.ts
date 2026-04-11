@@ -79,6 +79,18 @@ recharts, react-router-dom, axios, lodash, date-fns,
 framer-motion, styled-components, react-query, zustand,
 @radix-ui/*, @headlessui/*, classnames 等。
 
+【认证限制 - 违反将导致登录永远失败】
+绝对禁止使用 supabase.auth 的任何方法，包括：
+  signInWithPassword, signUp, signOut, getSession, onAuthStateChange 等
+
+如需实现登录功能，必须使用本地状态模拟：
+  const DEMO_CREDENTIALS = { email: "admin@demo.com", password: "demo123" }
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  // 表单提交时比对 DEMO_CREDENTIALS，匹配则 setIsLoggedIn(true)
+
+必须在登录表单内显著展示 demo 凭据，例如：
+  <p>演示账号：admin@demo.com &nbsp;密码：demo123</p>
+
 UI 样式只使用 Tailwind CSS class。
 图标只使用 lucide-react。
 HTTP 请求只使用原生 fetch API。
