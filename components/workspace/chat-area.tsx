@@ -365,6 +365,8 @@ export function ChatArea({
           });
           const version = await res.json();
           onFilesGenerated({ "/App.js": directCode }, version);
+        } else {
+          setGenerationError({ code: "unknown", raw: "Engineer 未能生成可解析的代码，请重试" });
         }
 
         return; // skip full pipeline — finally block still runs
