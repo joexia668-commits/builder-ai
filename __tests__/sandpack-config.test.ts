@@ -53,6 +53,33 @@ describe("buildSandpackConfig", () => {
     expect(config.files["/utils/format.js"]).toBeDefined();
     expect(config.files["/utils/math.js"]).toBeDefined();
   });
+
+  it("injects supabase.auth mock into supabaseClient.js", () => {
+    const files = {
+      "/App.js": `import { supabase } from '/supabaseClient.js'\nexport default function App() { return null; }`,
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    const clientCode = config.files["/supabaseClient.js"].code;
+    expect(clientCode).toContain("supabase.auth");
+    expect(clientCode).toContain("signInWithPassword");
+    expect(clientCode).toContain("signOut");
+    expect(clientCode).toContain("getSession");
+    expect(clientCode).toContain("onAuthStateChange");
+  });
+
+  it("supabase.auth mock does not overwrite supabase data methods", () => {
+    const files = {
+      "/App.js": `export default function App() { return null; }`,
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    const clientCode = config.files["/supabaseClient.js"].code;
+    // Real Supabase client is still created via createClient — data methods intact
+    expect(clientCode).toContain("createClient");
+    // Auth mock is added after client creation, not replacing it
+    const createClientIdx = clientCode.indexOf("createClient");
+    const authMockIdx = clientCode.indexOf("supabase.auth");
+    expect(authMockIdx).toBeGreaterThan(createClientIdx);
+  });
 });
 
 describe("normalizeExports (via buildSandpackConfig)", () => {

@@ -87,7 +87,22 @@ function buildSupabaseClientCode(): string {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
   return `import { createClient } from '@supabase/supabase-js';
-export const supabase = createClient('${url}', '${key}');`;
+export const supabase = createClient('${url}', '${key}');
+// Auth mock — supabase.auth is non-functional in the Sandpack sandbox.
+// All calls are intercepted and return harmless success responses so that
+// any AI-generated auth code does not permanently block the app's login page.
+supabase.auth = {
+  signInWithPassword: async ({ email }) =>
+    ({ data: { user: { email }, session: { access_token: "demo" } }, error: null }),
+  signUp: async ({ email }) =>
+    ({ data: { user: { email }, session: null }, error: null }),
+  signOut: async () =>
+    ({ error: null }),
+  getSession: async () =>
+    ({ data: { session: null }, error: null }),
+  onAuthStateChange: () =>
+    ({ data: { subscription: { unsubscribe: () => {} } } }),
+};`;
 }
 
 export interface SandpackFileEntry {
