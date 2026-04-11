@@ -7,6 +7,10 @@ export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const allowedUserId = session.user.isDemo
+    ? process.env.DEMO_USER_ID!
+    : session.user.id;
+
   const { searchParams } = new URL(req.url);
   const projectId = searchParams.get("projectId");
 
@@ -15,7 +19,7 @@ export async function GET(req: Request) {
   }
 
   const versions = await prisma.version.findMany({
-    where: { projectId, project: { userId: session.user.id } },
+    where: { projectId, project: { userId: allowedUserId } },
     orderBy: { versionNumber: "asc" },
   });
 
@@ -25,6 +29,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (session.user.isDemo) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json();
   const { projectId, code, files, description } = body as {
