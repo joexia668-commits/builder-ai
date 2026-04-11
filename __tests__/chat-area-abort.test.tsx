@@ -61,12 +61,14 @@ jest.mock("@/components/workspace/chat-input", () => ({
 }));
 
 import { ChatArea } from "@/components/workspace/chat-area";
+import { resetSession } from "@/lib/generation-session";
 
 const project = { id: "proj-1", name: "Test", updatedAt: new Date() } as never;
 
 describe("ChatArea stop generation", () => {
   beforeEach(() => {
     capturedOnStop = undefined;
+    resetSession("proj-1");
   });
 
   it("passes onStop to ChatInput", async () => {

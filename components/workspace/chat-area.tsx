@@ -1,6 +1,12 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback } from "react";
+import { useGenerationSession } from "@/hooks/use-generation-session";
+import {
+  updateSession,
+  abortSession,
+  getSession,
+} from "@/lib/generation-session";
 import { AgentStatusBar } from "@/components/agent/agent-status-bar";
 import { AgentMessage } from "@/components/agent/agent-message";
 import { ChatInput } from "@/components/workspace/chat-input";
@@ -77,27 +83,14 @@ export function ChatArea({
   onNewProject,
 }: ChatAreaProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
   const persistModelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationError, setGenerationError] = useState<{
-    code: ErrorCode;
-    raw: string;
-  } | null>(null);
-  const [lastPrompt, setLastPrompt] = useState<string>("");
-  const [transitionText, setTransitionText] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>(
     initialModel ?? DEFAULT_MODEL_ID
   );
-  const [agentStates, setAgentStates] = useState<Record<AgentRole, AgentState>>(
-    {
-      pm: { role: "pm", status: "idle", output: "" },
-      architect: { role: "architect", status: "idle", output: "" },
-      engineer: { role: "engineer", status: "idle", output: "" },
-    }
-  );
-  const [engineerProgress, setEngineerProgress] = useState<EngineerProgress | null>(null);
+
+  const session = useGenerationSession(project.id);
+  const { isGenerating, generationError, lastPrompt, transitionText, agentStates, engineerProgress } = session;
 
   const availableModelIds = getAvailableModels({
     GOOGLE_GENERATIVE_AI_API_KEY: process.env.NEXT_PUBLIC_GEMINI_CONFIGURED ?? "",
@@ -110,10 +103,13 @@ export function ChatArea({
   }, [messages, agentStates, transitionText]);
 
   function updateAgentState(role: AgentRole, update: Partial<AgentState>) {
-    setAgentStates((prev) => ({
-      ...prev,
-      [role]: { ...prev[role], ...update },
-    }));
+    const current = getSession(project.id);
+    updateSession(project.id, {
+      agentStates: {
+        ...current.agentStates,
+        [role]: { ...current.agentStates[role], ...update },
+      },
+    });
   }
 
   async function persistMessage(
@@ -148,7 +144,7 @@ export function ChatArea({
   );
 
   function stopGeneration() {
-    abortControllerRef.current?.abort();
+    abortSession(project.id);
   }
 
   async function readEngineerSSE(
@@ -206,22 +202,24 @@ export function ChatArea({
 
   async function handleSubmit(prompt: string) {
     if (isGenerating) return;
-    setGenerationError(null);
-    setLastPrompt(prompt);
-    setIsGenerating(true);
-    onGeneratingChange?.(true);
     const abortController = new AbortController();
-    abortControllerRef.current = abortController;
+    updateSession(project.id, {
+      generationError: null,
+      lastPrompt: prompt,
+      isGenerating: true,
+      stallWarning: false,
+      abortController,
+      agentStates: {
+        pm: { role: "pm", status: "idle", output: "" },
+        architect: { role: "architect", status: "idle", output: "" },
+        engineer: { role: "engineer", status: "idle", output: "" },
+      },
+    });
+    onGeneratingChange?.(true);
 
     // Phase 0: classify intent to route pipeline
     const hasExistingCode = Object.keys(currentFiles).length > 0;
     const intent = classifyIntent(prompt, hasExistingCode);
-
-    setAgentStates({
-      pm: { role: "pm", status: "idle", output: "" },
-      architect: { role: "architect", status: "idle", output: "" },
-      engineer: { role: "engineer", status: "idle", output: "" },
-    });
 
     const userMsg: ProjectMessage = {
       id: `temp-${Date.now()}`,
@@ -366,7 +364,7 @@ export function ChatArea({
           const version = await res.json();
           onFilesGenerated({ "/App.js": directCode }, version);
         } else {
-          setGenerationError({ code: "unknown", raw: "Engineer 未能生成可解析的代码，请重试" });
+          updateSession(project.id, { generationError: { code: "unknown", raw: "Engineer 未能生成可解析的代码，请重试" } });
         }
 
         return; // skip full pipeline — finally block still runs
@@ -386,13 +384,15 @@ export function ChatArea({
             const allCompletedFiles: Record<string, string> = {};
             const allFailedFiles: string[] = [];
 
-            setEngineerProgress({
-              totalLayers: layers.length,
-              currentLayer: 0,
-              totalFiles,
-              currentFiles: [],
-              completedFiles: [],
-              failedFiles: [],
+            updateSession(project.id, {
+              engineerProgress: {
+                totalLayers: layers.length,
+                currentLayer: 0,
+                totalFiles,
+                currentFiles: [],
+                completedFiles: [],
+                failedFiles: [],
+              },
             });
 
             for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
@@ -401,15 +401,18 @@ export function ChatArea({
                 .map((p) => scaffold.files.find((f) => f.path === p))
                 .filter((f): f is ScaffoldFile => f !== undefined);
 
-              setEngineerProgress((prev) =>
-                prev
-                  ? {
+              {
+                const prev = getSession(project.id).engineerProgress;
+                if (prev) {
+                  updateSession(project.id, {
+                    engineerProgress: {
                       ...prev,
                       currentLayer: layerIdx + 1,
                       currentFiles: layerPaths.map((p) => p.split("/").pop() ?? p),
-                    }
-                  : prev
-              );
+                    },
+                  });
+                }
+              }
 
               updateAgentState("engineer", {
                 status: "streaming",
@@ -449,7 +452,7 @@ export function ChatArea({
                     throw new Error(`HTTP ${response.status}: ${errorText.slice(0, 200)}`);
                   }
                   if (!response.body) throw new Error("No response body");
-                  setTransitionText(null);
+                  updateSession(project.id, { transitionText: null });
                   return readEngineerSSE(response.body);
                 },
                 abortController.signal
@@ -459,15 +462,18 @@ export function ChatArea({
               if (layerResult.failed.length > 0) {
                 allFailedFiles.push(...layerResult.failed);
               }
-              setEngineerProgress((prev) =>
-                prev
-                  ? {
+              {
+                const prev = getSession(project.id).engineerProgress;
+                if (prev) {
+                  updateSession(project.id, {
+                    engineerProgress: {
                       ...prev,
                       completedFiles: Object.keys(allCompletedFiles),
                       failedFiles: [...prev.failedFiles, ...layerResult.failed],
-                    }
-                  : prev
-              );
+                    },
+                  });
+                }
+              }
             }
 
             const completedList = Object.keys(allCompletedFiles).join(", ");
@@ -479,7 +485,7 @@ export function ChatArea({
 
             outputs.engineer = summaryOutput;
             updateAgentState("engineer", { status: "done", output: summaryOutput });
-            setEngineerProgress(null);
+            updateSession(project.id, { engineerProgress: null });
 
             const engineerMsg: ProjectMessage = {
               id: `temp-agent-engineer-${Date.now()}`,
@@ -500,9 +506,11 @@ export function ChatArea({
             if (Object.keys(allCompletedFiles).length > 0) {
               const missingImports = findMissingLocalImports(allCompletedFiles);
               if (missingImports.length > 0) {
-                setGenerationError({
-                  code: "missing_imports",
-                  raw: `AI 生成的代码引用了未创建的文件：${missingImports.join("、")}`,
+                updateSession(project.id, {
+                  generationError: {
+                    code: "missing_imports",
+                    raw: `AI 生成的代码引用了未创建的文件：${missingImports.join("、")}`,
+                  },
                 });
                 // Intentionally do NOT return here — stubs were injected by buildSandpackConfig
                 // so the preview renders with partial functionality instead of a blank screen.
@@ -567,7 +575,7 @@ export function ChatArea({
         }
         if (!response.body) throw new Error("No response body");
 
-        setTransitionText(null);
+        updateSession(project.id, { transitionText: null });
         updateAgentState(agentRole, { status: "streaming" });
 
         const reader = response.body.getReader();
@@ -641,7 +649,7 @@ export function ChatArea({
 
         const handoff = TRANSITION_MESSAGES[agentRole];
         if (handoff) {
-          setTransitionText(handoff);
+          updateSession(project.id, { transitionText: handoff });
           await delay(800);
         }
       }
@@ -674,21 +682,24 @@ export function ChatArea({
           err !== null && typeof err === "object" && "errorCode" in err
             ? (err as { errorCode: ErrorCode }).errorCode
             : "unknown";
-        setGenerationError({ code: errorCode, raw: message });
+        updateSession(project.id, { generationError: { code: errorCode, raw: message } });
       }
       if (isAbort) {
-        setAgentStates({
-          pm: { role: "pm", status: "idle", output: "" },
-          architect: { role: "architect", status: "idle", output: "" },
-          engineer: { role: "engineer", status: "idle", output: "" },
+        updateSession(project.id, {
+          agentStates: {
+            pm: { role: "pm", status: "idle", output: "" },
+            architect: { role: "architect", status: "idle", output: "" },
+            engineer: { role: "engineer", status: "idle", output: "" },
+          },
         });
       }
     } finally {
-      setIsGenerating(false);
+      updateSession(project.id, {
+        isGenerating: false,
+        transitionText: null,
+        engineerProgress: null,
+      });
       onGeneratingChange?.(false);
-      setTransitionText(null);
-      setEngineerProgress(null);
-      abortControllerRef.current = null;
     }
   }
 

@@ -53,12 +53,14 @@ jest.mock("@/components/workspace/chat-input", () => ({
 }));
 
 import { ChatArea } from "@/components/workspace/chat-area";
+import { resetSession } from "@/lib/generation-session";
 
 const project = { id: "proj-1", name: "Test", updatedAt: new Date() } as never;
 
 describe("ChatArea error state", () => {
   beforeEach(() => {
     (global.fetch as jest.Mock).mockReset();
+    resetSession("proj-1");
   });
 
   it("shows error message when generation fails", async () => {

@@ -44,6 +44,7 @@ jest.mock("@/components/workspace/chat-input", () => ({
 }));
 
 import { ChatArea } from "@/components/workspace/chat-area";
+import { resetSession } from "@/lib/generation-session";
 
 const project = { id: "proj-1", name: "Test", updatedAt: new Date() } as never;
 
@@ -82,6 +83,10 @@ describe("agent handoff transition text lifetime", () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       (global as Record<string, unknown>).TextDecoder = require("util").TextDecoder;
     }
+  });
+
+  beforeEach(() => {
+    resetSession("proj-1");
   });
 
   it("PM 移交文案在 800ms 延迟结束后仍然可见（arch fetch 未完成时）", async () => {
