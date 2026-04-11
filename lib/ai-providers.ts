@@ -17,6 +17,10 @@ export interface AIProvider {
   ): Promise<void>;
 }
 
+// Per-agent stream timeout: bail out cleanly rather than burning the full 300s
+// Vercel maxDuration. 90s is generous for even the slowest model responses.
+const STREAM_TIMEOUT_MS = 90_000;
+
 // ── Rate-limit retry helpers ───────────────────────────────────────────────
 
 export function isRateLimitError(err: unknown): boolean {
@@ -84,11 +88,22 @@ export class GeminiProvider implements AIProvider {
       .filter(Boolean)
       .join("\n\n");
 
-    const result = await withRetry(() => model.generateContentStream(prompt));
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(
+      () => abortController.abort(new Error("Gemini stream timeout")),
+      STREAM_TIMEOUT_MS
+    );
 
-    for await (const chunk of result.stream) {
-      const text = chunk.text();
-      if (text) onChunk(text);
+    try {
+      const result = await withRetry(() =>
+        model.generateContentStream(prompt, { signal: abortController.signal })
+      );
+      for await (const chunk of result.stream) {
+        const text = chunk.text();
+        if (text) onChunk(text);
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 }
@@ -114,15 +129,21 @@ export class DeepSeekProvider implements AIProvider {
       baseURL: "https://api.deepseek.com/v1",
     });
 
-    const result = await client.chat.completions.create({
-      model: this.providerModel,
-      messages,
-      stream: true,
-      max_tokens: this.maxOutputTokens,
-      ...(options?.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
-    });
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(
+      () => abortController.abort(new Error("DeepSeek stream timeout")),
+      STREAM_TIMEOUT_MS
+    );
 
     try {
+      const result = await client.chat.completions.create({
+        model: this.providerModel,
+        messages,
+        stream: true,
+        max_tokens: this.maxOutputTokens,
+        ...(options?.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
+      }, { signal: abortController.signal });
+
       for await (const chunk of result) {
         const text = chunk.choices[0]?.delta?.content;
         if (text) onChunk(text);
@@ -133,6 +154,8 @@ export class DeepSeekProvider implements AIProvider {
     } catch (err) {
       if (err instanceof Error && err.message === "max_tokens_exceeded") throw err;
       throw new Error(`DeepSeek stream error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 }
@@ -157,15 +180,21 @@ export class GroqProvider implements AIProvider {
       apiKey: process.env.GROQ_API_KEY ?? "",
     });
 
-    const result = await client.chat.completions.create({
-      model: this.providerModel,
-      messages,
-      stream: true,
-      max_tokens: this.maxOutputTokens,
-      ...(options?.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
-    });
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(
+      () => abortController.abort(new Error("Groq stream timeout")),
+      STREAM_TIMEOUT_MS
+    );
 
     try {
+      const result = await client.chat.completions.create({
+        model: this.providerModel,
+        messages,
+        stream: true,
+        max_tokens: this.maxOutputTokens,
+        ...(options?.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
+      }, { signal: abortController.signal });
+
       for await (const chunk of result) {
         const choice = (chunk as { choices: Array<{ delta: { content?: string }; finish_reason?: string }> }).choices[0];
         if (choice?.delta?.content) onChunk(choice.delta.content);
@@ -176,6 +205,8 @@ export class GroqProvider implements AIProvider {
     } catch (err) {
       if (err instanceof Error && err.message === "max_tokens_exceeded") throw err;
       throw new Error(`Groq stream error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 }
