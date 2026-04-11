@@ -219,6 +219,14 @@ ${completedSection}
 需要实现的目标文件：
 ${targetFileList}
 
+【导出规则 - 严格遵守，防止 undefined 组件错误】
+每个组件/工具文件必须同时提供具名导出和默认导出：
+  export function ComponentName(props) { ... }   // 具名导出（必须）
+  export default ComponentName;                   // 默认导出（必须）
+这样无论调用方使用哪种导入方式都能正确解析：
+  import ComponentName from '/ComponentName.jsx'       // ✓
+  import { ComponentName } from '/ComponentName.jsx'   // ✓
+
 输出格式（严格遵守）：
 - 每个文件以分隔符开头：// === FILE: /path ===
 - 紧接着是该文件的完整代码
