@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ConversationSidebar } from "@/components/sidebar/conversation-sidebar";
 import { ChatArea } from "@/components/workspace/chat-area";
 import { PreviewPanel } from "@/components/preview/preview-panel";
+import { DemoBanner } from "@/components/layout/demo-banner";
 import { getVersionFiles } from "@/lib/version-files";
 import type { Project, ProjectMessage, ProjectVersion, PmOutput } from "@/lib/types";
 
@@ -15,11 +16,12 @@ interface WorkspaceProps {
     versions: ProjectVersion[];
   };
   allProjects: { id: string; name: string; updatedAt: Date }[];
+  isDemo?: boolean;
 }
 
 type MobileTab = "chat" | "preview";
 
-export function Workspace({ project, allProjects }: WorkspaceProps) {
+export function Workspace({ project, allProjects, isDemo = false }: WorkspaceProps) {
   const router = useRouter();
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
 
@@ -62,6 +64,7 @@ export function Workspace({ project, allProjects }: WorkspaceProps) {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      {isDemo && <DemoBanner />}
       {/* Mobile tab bar — visible only on mobile (<768px) */}
       <div className="flex md:hidden border-b bg-white shrink-0">
         <button
@@ -113,6 +116,7 @@ export function Workspace({ project, allProjects }: WorkspaceProps) {
             onMessagesChange={setMessages}
             onGeneratingChange={setIsGenerating}
             isPreviewingHistory={previewingVersion !== null}
+            isDemo={isDemo}
             currentFiles={currentFiles}
             lastPmOutput={lastPmOutput}
             onPmOutputGenerated={setLastPmOutput}
