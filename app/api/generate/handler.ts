@@ -136,6 +136,23 @@ export function createHandler(deps: GenerateDeps) {
               const okCount = Object.keys(result.ok).length;
 
               if (okCount === 0) {
+                // Targeted diagnostic: for per-file fallback (expectedPaths.length === 1)
+                // or small layer retries (<=2), log what the engineer actually emitted
+                // so we can distinguish "wrong path" vs "no marker at all" vs
+                // "truncated mid-file" vs "hallucinated unrelated content".
+                if (expectedPaths.length <= 2) {
+                  const foundMarkers = Array.from(
+                    fullContent.matchAll(/^\/\/ === FILE: (.+?) ===/gm)
+                  ).map((m) => m[1]);
+                  console.error("[generate:diag:fallback_empty]", {
+                    model: resolvedModelId,
+                    expectedPaths,
+                    foundMarkers,
+                    fullContentLength: fullContent.length,
+                    head: fullContent.slice(0, 200),
+                    tail: fullContent.slice(-200),
+                  });
+                }
                 send(controller, {
                   type: "error",
                   error: "生成的代码不完整，请重试",
