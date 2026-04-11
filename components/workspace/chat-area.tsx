@@ -10,7 +10,7 @@ import {
 import { AgentStatusBar } from "@/components/agent/agent-status-bar";
 import { AgentMessage } from "@/components/agent/agent-message";
 import { ChatInput } from "@/components/workspace/chat-input";
-import { fetchAPI } from "@/lib/api-client";
+import { fetchAPI, readSSEBody } from "@/lib/api-client";
 import { DEFAULT_MODEL_ID, getAvailableModels } from "@/lib/model-registry";
 import { topologicalSort } from "@/lib/topo-sort";
 import { extractPmOutput, extractScaffoldFromTwoPhase } from "@/lib/extract-json";
@@ -148,53 +148,36 @@ export function ChatArea({
   }
 
   async function readEngineerSSE(
-    body: ReadableStream<Uint8Array>
+    body: ReadableStream<Uint8Array>,
+    tag: string
   ): Promise<Record<string, string>> {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let sseBuffer = "";
     let layerResult: Record<string, string> | null = null;
 
-    const processLines = (lines: string[]) => {
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const data = line.slice(6).trim();
-        if (!data || data === "[DONE]") continue;
-        try {
-          const event = JSON.parse(data) as {
-            type: string;
-            content?: string;
-            code?: string;
-            files?: Record<string, string>;
-            error?: string;
-            errorCode?: import("@/lib/types").ErrorCode;
-          };
-          if (event.type === "files_complete" && event.files) {
-            layerResult = event.files;
-          } else if (event.type === "code_complete" && event.code) {
-            layerResult = { "/App.js": event.code };
-          } else if (event.type === "error") {
-            throw Object.assign(
-              new Error(event.error ?? "Stream error"),
-              { errorCode: event.errorCode ?? "unknown" }
-            );
-          }
-        } catch (parseErr) {
-          if (parseErr instanceof SyntaxError) continue;
-          throw parseErr;
+    await readSSEBody<{
+      type: string;
+      code?: string;
+      files?: Record<string, string>;
+      error?: string;
+      errorCode?: ErrorCode;
+    }>(
+      body,
+      (event) => {
+        if (event.type === "files_complete" && event.files) {
+          layerResult = event.files;
+        } else if (event.type === "code_complete" && event.code) {
+          layerResult = { "/App.js": event.code };
+        } else if (event.type === "error") {
+          throw Object.assign(
+            new Error(event.error ?? "Stream error"),
+            { errorCode: event.errorCode ?? "unknown" }
+          );
         }
+      },
+      {
+        tag,
+        onStall: () => updateSession(project.id, { stallWarning: true }),
       }
-    };
-
-    while (true) {
-      const { done, value } = await reader.read();
-      sseBuffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-      const lines = sseBuffer.split("\n");
-      sseBuffer = done ? "" : (lines.pop() ?? "");
-      processLines(lines);
-      if (done) break;
-    }
-    if (sseBuffer.trim()) processLines([sseBuffer]);
+    );
 
     if (!layerResult) throw new Error("No files received from engineer");
     return layerResult;
@@ -273,54 +256,42 @@ export function ChatArea({
 
         updateAgentState("engineer", { status: "streaming" });
 
-        const directReader = directResponse.body.getReader();
-        const directDecoder = new TextDecoder();
         let directOutput = "";
-        let directSseBuffer = "";
         let directCode = "";
         let directFiles: Record<string, string> | null = null;
 
-        const processDirectLines = (lines: string[]) => {
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const data = line.slice(6).trim();
-            if (!data || data === "[DONE]") continue;
-            try {
-              const event = JSON.parse(data) as { type: string; content?: string; code?: string; files?: Record<string, string>; error?: string; errorCode?: import("@/lib/types").ErrorCode };
-              if (event.type === "chunk") {
-                directOutput += event.content ?? "";
-                updateAgentState("engineer", { output: directOutput });
-              } else if (event.type === "code_complete") {
-                if (event.code) directCode = event.code;
-              } else if (event.type === "files_complete" && event.files) {
-                directFiles = event.files;
-              } else if (event.type === "reset") {
-                directOutput = "";
-                updateAgentState("engineer", { output: "" });
-              } else if (event.type === "error") {
-                throw Object.assign(
-                  new Error(event.error ?? "Stream error"),
-                  { errorCode: event.errorCode ?? "unknown" }
-                );
-              }
-            } catch (parseErr) {
-              if (parseErr instanceof SyntaxError) continue;
-              throw parseErr;
+        await readSSEBody<{
+          type: string;
+          content?: string;
+          code?: string;
+          files?: Record<string, string>;
+          error?: string;
+          errorCode?: ErrorCode;
+        }>(
+          directResponse.body,
+          (event) => {
+            if (event.type === "chunk") {
+              directOutput += event.content ?? "";
+              updateAgentState("engineer", { output: directOutput });
+            } else if (event.type === "code_complete") {
+              if (event.code) directCode = event.code;
+            } else if (event.type === "files_complete" && event.files) {
+              directFiles = event.files;
+            } else if (event.type === "reset") {
+              directOutput = "";
+              updateAgentState("engineer", { output: "" });
+            } else if (event.type === "error") {
+              throw Object.assign(
+                new Error(event.error ?? "Stream error"),
+                { errorCode: event.errorCode ?? "unknown" }
+              );
             }
+          },
+          {
+            tag: `direct:${intent}`,
+            onStall: () => updateSession(project.id, { stallWarning: true }),
           }
-        };
-
-        while (true) {
-          const { done, value } = await directReader.read();
-          directSseBuffer += done
-            ? directDecoder.decode()
-            : directDecoder.decode(value, { stream: true });
-          const lines = directSseBuffer.split("\n");
-          directSseBuffer = done ? "" : (lines.pop() ?? "");
-          processDirectLines(lines);
-          if (done) break;
-        }
-        if (directSseBuffer.trim()) processDirectLines([directSseBuffer]);
+        );
 
         updateAgentState("engineer", { status: "done", output: directOutput });
 
@@ -453,7 +424,7 @@ export function ChatArea({
                   }
                   if (!response.body) throw new Error("No response body");
                   updateSession(project.id, { transitionText: null });
-                  return readEngineerSSE(response.body);
+                  return readEngineerSSE(response.body, `engineer:layer-${layerIdx + 1}`);
                 },
                 abortController.signal
               );
@@ -578,54 +549,37 @@ export function ChatArea({
         updateSession(project.id, { transitionText: null });
         updateAgentState(agentRole, { status: "streaming" });
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
         let agentOutput = "";
-        let sseBuffer = "";
 
-        const processSSELines = (lines: string[]) => {
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const data = line.slice(6).trim();
-            if (!data || data === "[DONE]") continue;
-
-            try {
-              const event = JSON.parse(data) as { type: string; content?: string; code?: string; error?: string; errorCode?: import("@/lib/types").ErrorCode };
-              if (event.type === "chunk") {
-                agentOutput += event.content ?? "";
-                updateAgentState(agentRole, { output: agentOutput });
-              } else if (event.type === "code_complete") {
-                if (event.code) lastCode = event.code;
-              } else if (event.type === "reset") {
-                agentOutput = "";
-                updateAgentState(agentRole, { output: "" });
-              } else if (event.type === "error") {
-                throw Object.assign(
-                  new Error(event.error ?? "Stream error"),
-                  { errorCode: event.errorCode ?? "unknown" }
-                );
-              }
-            } catch (parseErr) {
-              if (parseErr instanceof SyntaxError) continue;
-              throw parseErr;
+        await readSSEBody<{
+          type: string;
+          content?: string;
+          code?: string;
+          error?: string;
+          errorCode?: ErrorCode;
+        }>(
+          response.body,
+          (event) => {
+            if (event.type === "chunk") {
+              agentOutput += event.content ?? "";
+              updateAgentState(agentRole, { output: agentOutput });
+            } else if (event.type === "code_complete") {
+              if (event.code) lastCode = event.code;
+            } else if (event.type === "reset") {
+              agentOutput = "";
+              updateAgentState(agentRole, { output: "" });
+            } else if (event.type === "error") {
+              throw Object.assign(
+                new Error(event.error ?? "Stream error"),
+                { errorCode: event.errorCode ?? "unknown" }
+              );
             }
+          },
+          {
+            tag: agentRole,
+            onStall: () => updateSession(project.id, { stallWarning: true }),
           }
-        };
-
-        while (true) {
-          const { done, value } = await reader.read();
-          sseBuffer += done
-            ? decoder.decode()
-            : decoder.decode(value, { stream: true });
-          const lines = sseBuffer.split("\n");
-          sseBuffer = done ? "" : (lines.pop() ?? "");
-          processSSELines(lines);
-          if (done) break;
-        }
-
-        if (sseBuffer.trim()) {
-          processSSELines([sseBuffer]);
-        }
+        );
 
         outputs[agentRole] = agentOutput;
         if (agentRole === "pm") parsedPm = extractPmOutput(agentOutput);
@@ -698,6 +652,7 @@ export function ChatArea({
         isGenerating: false,
         transitionText: null,
         engineerProgress: null,
+        stallWarning: false,
       });
       onGeneratingChange?.(false);
     }
@@ -781,6 +736,38 @@ export function ChatArea({
           <div className="flex items-center gap-2 text-sm text-gray-400 italic px-2 py-1">
             <span className="text-base">→</span>
             <span>{transitionText}</span>
+          </div>
+        )}
+
+        {isGenerating && session.stallWarning && (
+          <div
+            data-testid="stall-warning"
+            className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg mx-2"
+          >
+            <span className="text-amber-500 text-lg shrink-0">⚠️</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-amber-700 font-medium">超过 30 秒没有收到生成进度</p>
+              <p className="text-xs text-amber-500 mt-0.5">
+                可能是模型响应较慢或连接卡住。
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => updateSession(project.id, { stallWarning: false })}
+                className="text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded hover:bg-amber-200 transition-colors"
+              >
+                继续等待
+              </button>
+              <button
+                onClick={() => {
+                  stopGeneration();
+                  updateSession(project.id, { stallWarning: false });
+                }}
+                className="text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors"
+              >
+                中断重试
+              </button>
+            </div>
           </div>
         )}
 

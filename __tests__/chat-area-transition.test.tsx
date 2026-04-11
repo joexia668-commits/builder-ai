@@ -21,6 +21,8 @@ jest.mock("@/lib/api-client", () => ({
   fetchAPI: jest.fn().mockResolvedValue({
     json: jest.fn().mockResolvedValue({ id: "v1", code: "<h1>hi</h1>", projectId: "p1" }),
   }),
+  // Use real readSSEBody so the mock response body readers work correctly
+  readSSEBody: jest.requireActual("@/lib/api-client").readSSEBody,
 }));
 
 jest.mock("@/components/agent/agent-status-bar", () => ({
