@@ -70,10 +70,12 @@ function createBasePrismaClient() {
   const adapter = new PrismaPg(pool);
   return new PrismaClient({
     adapter,
-    log:
-      process.env.NODE_ENV === "development"
-        ? ["query", "error", "warn"]
-        : ["error"],
+    // Dev: verbose. Prod: silent — transient connection errors are caught
+    // and retried by withConnectionRetry() below, and genuinely fatal
+    // errors propagate up to route handlers which log them. Enabling
+    // Prisma's own "error" stdio stream in prod causes a misleading
+    // double log for every retried connection blip.
+    log: process.env.NODE_ENV === "development" ? ["query", "warn"] : [],
   });
 }
 
@@ -95,14 +97,27 @@ function withConnectionRetry<T extends PrismaClient>(base: T) {
           let lastErr: unknown;
           for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-              return await query(args);
+              const result = await query(args);
+              if (attempt > 1) {
+                console.info(
+                  `[prisma:retry] ${model}.${operation} recovered on attempt ${attempt}/${maxAttempts}`
+                );
+              }
+              return result;
             } catch (err) {
               lastErr = err;
               const msg = err instanceof Error ? err.message : "";
               const isTransient = TRANSIENT_DB_ERROR_RE.test(msg);
-              if (attempt === maxAttempts || !isTransient) throw err;
+              if (attempt === maxAttempts || !isTransient) {
+                if (isTransient) {
+                  console.error(
+                    `[prisma:retry] ${model}.${operation} exhausted ${maxAttempts} attempts — giving up: ${msg}`
+                  );
+                }
+                throw err;
+              }
               console.warn(
-                `[prisma:retry] ${model}.${operation} attempt ${attempt}/${maxAttempts} after transient error: ${msg}`
+                `[prisma:retry] ${model}.${operation} attempt ${attempt}/${maxAttempts} failed: ${msg}`
               );
               const delay =
                 100 * Math.pow(2, attempt - 1) + Math.random() * 50;
