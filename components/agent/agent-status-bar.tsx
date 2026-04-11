@@ -50,21 +50,40 @@ export function AgentStatusBar({
 
             {/* Engineer sub-progress */}
             {role === "engineer" && isActive && engineerProgress && (
-              <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                <span>
-                  第 {engineerProgress.currentLayer}/{engineerProgress.totalLayers} 层
-                </span>
-                <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-500 rounded-full transition-all"
-                    style={{
-                      width: `${(engineerProgress.completedFiles.length / engineerProgress.totalFiles) * 100}%`,
-                    }}
-                  />
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <span>
+                    第 {engineerProgress.currentLayer}/{engineerProgress.totalLayers} 层
+                  </span>
+                  <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all"
+                      style={{
+                        width: `${(engineerProgress.completedFiles.length / engineerProgress.totalFiles) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="text-gray-400">
+                    {engineerProgress.completedFiles.length}/{engineerProgress.totalFiles}
+                  </span>
                 </div>
-                <span className="text-gray-400">
-                  {engineerProgress.completedFiles.length}/{engineerProgress.totalFiles}
-                </span>
+                {engineerProgress.retryInfo && (
+                  <div className="text-[11px] text-amber-600 leading-tight">
+                    Layer {engineerProgress.retryInfo.layerIdx + 1} 重试{" "}
+                    {engineerProgress.retryInfo.attempt}/
+                    {engineerProgress.retryInfo.maxAttempts}
+                    {engineerProgress.retryInfo.reason === "parse_failed" && "（上次输出截断）"}
+                    {engineerProgress.retryInfo.reason === "per_file_fallback" && "（逐文件回退）"}
+                    {engineerProgress.retryInfo.failedSubset.length > 0 && (
+                      <>
+                        ：
+                        {engineerProgress.retryInfo.failedSubset
+                          .map((p) => p.split("/").pop())
+                          .join(", ")}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
