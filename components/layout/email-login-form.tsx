@@ -25,7 +25,7 @@ export function EmailLoginForm() {
         发送登录链接
       </Button>
       <p className="text-[11px] text-[#9ca3af] text-center">
-        📧 域名验证后即可开放使用
+        <span aria-hidden="true">📧</span> 域名验证后即可开放使用
       </p>
     </div>
   );
