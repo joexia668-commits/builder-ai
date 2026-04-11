@@ -27,6 +27,8 @@ const DEFAULT_PROPS = {
   onPreviewVersion: jest.fn(),
   onVersionRestore: jest.fn(),
   latestVersionId: 'v1',
+  liveStreams: {},
+  engineerProgress: null,
 }
 
 describe('PreviewPanel export button', () => {

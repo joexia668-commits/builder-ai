@@ -27,6 +27,8 @@ const defaultProps = {
   onPreviewVersion: jest.fn(),
   onVersionRestore: jest.fn(),
   isGenerating: false,
+  liveStreams: {},
+  engineerProgress: null,
 };
 
 describe("PreviewPanel", () => {

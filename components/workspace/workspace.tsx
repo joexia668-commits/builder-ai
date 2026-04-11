@@ -144,6 +144,8 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
             onPreviewVersion={setPreviewingVersion}
             onVersionRestore={handleRestoreVersion}
             latestVersionId={versions[versions.length - 1]?.id}
+            liveStreams={{}}
+            engineerProgress={null}
           />
         </div>
       </div>

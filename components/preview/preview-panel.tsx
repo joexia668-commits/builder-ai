@@ -3,11 +3,12 @@
 import { useState, useRef, useEffect } from "react";
 import { PreviewFrame } from "@/components/preview/preview-frame";
 import { FileTreeCodeViewer } from "@/components/preview/file-tree-code-viewer";
+import { ActivityPanel } from "@/components/preview/activity-panel";
 import { VersionTimeline } from "@/components/timeline/version-timeline";
 import { fetchAPI } from "@/lib/api-client";
-import type { ProjectVersion } from "@/lib/types";
+import type { ProjectVersion, LiveFileStream, EngineerProgress } from "@/lib/types";
 
-type Tab = "preview" | "code";
+type Tab = "preview" | "code" | "activity";
 type DeployState = "idle" | "building" | "ready" | "error";
 
 interface PreviewPanelProps {
@@ -19,6 +20,8 @@ interface PreviewPanelProps {
   onPreviewVersion: (version: ProjectVersion | null) => void;
   onVersionRestore: (newVersion: ProjectVersion) => void;
   latestVersionId?: string;
+  liveStreams: Record<string, LiveFileStream>;
+  engineerProgress: EngineerProgress | null;
 }
 
 export function PreviewPanel({
@@ -30,6 +33,8 @@ export function PreviewPanel({
   onPreviewVersion,
   onVersionRestore,
   latestVersionId,
+  liveStreams,
+  engineerProgress,
 }: PreviewPanelProps) {
   const [tab, setTab] = useState<Tab>("preview");
   const [isExporting, setIsExporting] = useState(false);
@@ -44,6 +49,26 @@ export function PreviewPanel({
       if (deployPollRef.current) clearInterval(deployPollRef.current);
     };
   }, []);
+
+  const userOverrideRef = useRef(false);
+  const prevGeneratingRef = useRef(isGenerating);
+
+  useEffect(() => {
+    const prev = prevGeneratingRef.current;
+    prevGeneratingRef.current = isGenerating;
+
+    // Rising edge: generation just started — auto-switch to activity unless overridden
+    if (!prev && isGenerating && !userOverrideRef.current) {
+      setTab("activity");
+    }
+    // Falling edge: generation just ended — reset user override so next run auto-switches again
+    if (prev && !isGenerating) {
+      setTimeout(() => {
+        if (!userOverrideRef.current) setTab("preview");
+        userOverrideRef.current = false;
+      }, 2500);
+    }
+  }, [isGenerating]);
 
   async function handleExport() {
     if (!latestVersionId) return;
@@ -110,18 +135,28 @@ export function PreviewPanel({
       {/* Toolbar */}
       <div className="border-b bg-white px-3 py-2 flex items-center justify-between gap-2 shrink-0">
         <div className="flex gap-[1px] bg-[#f3f4f6] p-[2px] rounded-lg">
-          {(["preview", "code"] as Tab[]).map((t) => (
+          {(["preview", "code", "activity"] as Tab[]).map((t) => (
             <button
               key={t}
               data-testid={`tab-${t}`}
-              onClick={() => setTab(t)}
+              onClick={() => {
+                setTab(t);
+                userOverrideRef.current = true;
+              }}
               className={`px-3 py-1 rounded-md text-xs font-medium transition-all duration-150 ${
                 tab === t
                   ? "bg-white text-[#111827] shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
                   : "text-[#6b7280] hover:text-[#374151]"
               }`}
             >
-              {t === "preview" ? "预览" : "代码"}
+              {t === "preview" ? "预览" : t === "code" ? "代码" : (
+                <span className="inline-flex items-center gap-1">
+                  Activity
+                  {isGenerating && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                  )}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -199,8 +234,13 @@ export function PreviewPanel({
               </div>
             )}
           </div>
-        ) : (
+        ) : tab === "code" ? (
           <FileTreeCodeViewer files={files} />
+        ) : (
+          <ActivityPanel
+            liveStreams={liveStreams}
+            engineerProgress={engineerProgress}
+          />
         )}
 
         {versions.length > 0 && (
