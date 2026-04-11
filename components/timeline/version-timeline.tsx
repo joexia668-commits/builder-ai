@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useMounted } from "@/hooks/use-mounted";
 import { cn } from "@/lib/utils";
 import { fetchAPI } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -30,6 +31,7 @@ export function VersionTimeline({
   isGenerating = false,
 }: VersionTimelineProps) {
   const [restoring, setRestoring] = useState(false);
+  const mounted = useMounted();
 
   const currentVersion = versions[versions.length - 1];
 
@@ -122,7 +124,7 @@ export function VersionTimeline({
                     </span>
                   )}
                   <span className="text-[9px] text-gray-300">
-                    {formatTime(version.createdAt)}
+                    {mounted ? formatTime(version.createdAt) : "--:--"}
                   </span>
                 </button>
 

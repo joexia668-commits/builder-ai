@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useMounted } from "@/hooks/use-mounted";
 import Link from "next/link";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import {
@@ -32,6 +33,7 @@ interface ProjectCardProps {
 export function ProjectCard({ project, onDelete, isDeleting = false, onRename, isRenaming = false }: ProjectCardProps) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showRename, setShowRename] = useState(false);
+  const mounted = useMounted();
 
   function handleDeleteClick(e: React.MouseEvent) {
     e.preventDefault();
@@ -85,12 +87,14 @@ export function ProjectCard({ project, onDelete, isDeleting = false, onRename, i
             </p>
           )}
           <p className="text-[11px] text-[#9ca3af]">
-            {new Date(project.updatedAt).toLocaleDateString("zh-CN", {
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            {mounted
+              ? new Date(project.updatedAt).toLocaleDateString("zh-CN", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "\u00a0"}
           </p>
         </Link>
 

@@ -78,7 +78,7 @@ describe("VersionTimeline", () => {
     expect(screen.getByText("描述版本2")).toBeInTheDocument();
   });
 
-  it("VT-01c: renders formatted time (HH:MM) on each node", () => {
+  it("VT-01c: renders formatted time (HH:MM) on each node after mount", async () => {
     render(
       <VersionTimeline
         versions={versions}
@@ -87,9 +87,12 @@ describe("VersionTimeline", () => {
         onRestoreVersion={jest.fn()}
       />
     );
-    // Time formatted as HH:MM — exact value depends on locale/timezone
-    const timeEls = screen.getAllByText(/^\d{2}:\d{2}$/);
-    expect(timeEls.length).toBeGreaterThan(0);
+    // Time is deferred via useMounted to avoid SSR hydration mismatch;
+    // wait for client-side mount to update the DOM.
+    await waitFor(() => {
+      const timeEls = screen.getAllByText(/^\d{2}:\d{2}$/);
+      expect(timeEls.length).toBeGreaterThan(0);
+    });
   });
 
   // VT-02: Clicking history node calls onPreviewVersion (not mutating code directly)

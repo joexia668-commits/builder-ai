@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useMounted } from "@/hooks/use-mounted";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,11 +42,14 @@ export function ProjectList({ projects: initialProjects }: ProjectListProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabFilter>("all");
+  const mounted = useMounted();
 
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const visibleProjects =
-    tab === "recent"
-      ? projects.filter((p) => new Date(p.updatedAt) >= sevenDaysAgo)
+    tab === "recent" && mounted
+      ? (() => {
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+          return projects.filter((p) => new Date(p.updatedAt) >= sevenDaysAgo);
+        })()
       : projects;
 
   async function handleCreate() {

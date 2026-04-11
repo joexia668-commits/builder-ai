@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useMounted } from "@/hooks/use-mounted";
 import Link from "next/link";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,7 @@ export function ProjectItem({
 }: ProjectItemProps) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showRename, setShowRename] = useState(false);
+  const mounted = useMounted();
 
   function handleConfirmDelete() {
     onDelete(project.id);
@@ -104,7 +106,7 @@ export function ProjectItem({
               {project.name}
             </span>
             <span className="block text-[11px] text-[#9ca3af] mt-0.5">
-              {relativeTime(project.updatedAt)}
+              {mounted ? relativeTime(project.updatedAt) : "\u00a0"}
             </span>
           </div>
         </Link>
