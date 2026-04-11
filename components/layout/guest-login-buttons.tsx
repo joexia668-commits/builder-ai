@@ -1,13 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 
 const STORAGE_KEY = "builder_ai_guest_id";
 
 export function GuestLoginButtons() {
+  const router = useRouter();
   const [savedGuestId, setSavedGuestId] = useState<string | null>(null);
+  const [expiredSession, setExpiredSession] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -16,16 +19,12 @@ export function GuestLoginButtons() {
 
   async function handleNewGuest() {
     setIsLoading(true);
+    setExpiredSession(false);
     try {
-      // 1. Create guest user in DB, get the userId
       const res = await fetch("/api/auth/guest", { method: "POST" });
       if (!res.ok) throw new Error("Failed to create guest");
       const { userId } = (await res.json()) as { userId: string };
-
-      // 2. Persist guestId to localStorage for future session restore
       localStorage.setItem(STORAGE_KEY, userId);
-
-      // 3. Sign in with the new guestId
       await signIn("credentials", { guestId: userId, callbackUrl: "/" });
     } catch (err) {
       console.error("[GuestLoginButtons] new guest error:", err);
@@ -38,10 +37,18 @@ export function GuestLoginButtons() {
     if (!savedGuestId) return;
     setIsLoading(true);
     try {
-      await signIn("credentials", {
+      const result = await signIn("credentials", {
         guestId: savedGuestId,
-        callbackUrl: "/",
+        redirect: false,
       });
+      if (result?.error) {
+        // Guest account no longer exists — expired and cleaned up
+        localStorage.removeItem(STORAGE_KEY);
+        setSavedGuestId(null);
+        setExpiredSession(true);
+      } else {
+        router.push("/");
+      }
     } catch (err) {
       console.error("[GuestLoginButtons] restore guest error:", err);
     } finally {
@@ -49,9 +56,16 @@ export function GuestLoginButtons() {
     }
   }
 
+  const showContinue = !!savedGuestId && !expiredSession;
+
   return (
     <div className="flex flex-col gap-2 w-full">
-      {savedGuestId && (
+      {expiredSession && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-[8px] px-3 py-2 text-center">
+          你的访客会话已过期，之前的项目已被清除。
+        </p>
+      )}
+      {showContinue ? (
         <Button
           variant="outline"
           onClick={handleRestoreGuest}
@@ -60,15 +74,16 @@ export function GuestLoginButtons() {
         >
           Continue as Guest
         </Button>
+      ) : (
+        <Button
+          variant="ghost"
+          onClick={handleNewGuest}
+          disabled={isLoading}
+          className="w-full text-muted-foreground hover:text-foreground"
+        >
+          Try as Guest
+        </Button>
       )}
-      <Button
-        variant="ghost"
-        onClick={handleNewGuest}
-        disabled={isLoading}
-        className="w-full text-muted-foreground hover:text-foreground"
-      >
-        Try as Guest
-      </Button>
     </div>
   );
 }
