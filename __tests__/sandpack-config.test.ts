@@ -54,3 +54,61 @@ describe("buildSandpackConfig", () => {
     expect(config.files["/utils/math.js"]).toBeDefined();
   });
 });
+
+describe("normalizeExports (via buildSandpackConfig)", () => {
+  it("adds named re-export when file has only export default function", () => {
+    const files = {
+      "/App.js": `import Btn from '/Btn.jsx'\nexport default function App() { return null; }`,
+      "/Btn.jsx": `export default function Btn() { return <button />; }`,
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    expect(config.files["/Btn.jsx"].code).toContain("export { default as Btn }");
+  });
+
+  it("adds default export when file has only a named export", () => {
+    const files = {
+      "/App.js": `import Btn from '/Btn.jsx'\nexport default function App() { return null; }`,
+      "/Btn.jsx": `export function Btn() { return <button />; }`,
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    expect(config.files["/Btn.jsx"].code).toContain("export default Btn");
+  });
+
+  it("does not modify a file that already has both named and default exports", () => {
+    const original = `export function Btn() { return <button />; }\nexport default Btn;`;
+    const files = {
+      "/App.js": `export default function App() { return null; }`,
+      "/Btn.jsx": original,
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    expect(config.files["/Btn.jsx"].code).toBe(original);
+  });
+
+  it("adds named re-export for identifier-style default export (export default X;)", () => {
+    const files = {
+      "/App.js": `export default function App() { return null; }`,
+      "/Btn.jsx": `const Btn = () => null;\nexport default Btn;`,
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    expect(config.files["/Btn.jsx"].code).toContain("export { default as Btn }");
+  });
+
+  it("adds default using first named export when multiple named exports exist and no default", () => {
+    const files = {
+      "/App.js": `export default function App() { return null; }`,
+      "/utils.js": `export function formatNum(n) { return n; }\nexport function clamp(n) { return n; }`,
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    expect(config.files["/utils.js"].code).toContain("export default formatNum");
+  });
+
+  it("does not add named re-export for anonymous default arrow function", () => {
+    const original = `export default () => null;`;
+    const files = {
+      "/App.js": `export default function App() { return null; }`,
+      "/Btn.jsx": original,
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    expect(config.files["/Btn.jsx"].code).toBe(original);
+  });
+});
