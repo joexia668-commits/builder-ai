@@ -91,17 +91,23 @@ export const supabase = createClient('${url}', '${key}');
 // Auth mock — supabase.auth is non-functional in the Sandpack sandbox.
 // All calls are intercepted and return harmless success responses so that
 // any AI-generated auth code does not permanently block the app's login page.
+// Auth mock — stateful to survive signInWithPassword → getSession round-trips
+const _authState = { session: null };
 supabase.auth = {
-  signInWithPassword: async ({ email }) =>
-    ({ data: { user: { email }, session: { access_token: "demo" } }, error: null }),
+  signInWithPassword: async ({ email }) => {
+    _authState.session = { access_token: "demo" };
+    return { data: { user: { email }, session: _authState.session }, error: null };
+  },
   signUp: async ({ email }) =>
     ({ data: { user: { email }, session: null }, error: null }),
-  signOut: async () =>
-    ({ error: null }),
+  signOut: async () => {
+    _authState.session = null;
+    return { error: null };
+  },
   getSession: async () =>
-    ({ data: { session: null }, error: null }),
+    ({ data: { session: _authState.session }, error: null }),
   onAuthStateChange: () =>
-    ({ data: { subscription: { unsubscribe: () => {} } } }),
+    ({ data: { subscription: { id: "mock", callback: () => {}, unsubscribe: () => {} } } }),
 };`;
 }
 

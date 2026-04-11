@@ -62,9 +62,24 @@ describe("buildSandpackConfig", () => {
     const clientCode = config.files["/supabaseClient.js"].code;
     expect(clientCode).toContain("supabase.auth");
     expect(clientCode).toContain("signInWithPassword");
+    expect(clientCode).toContain("signUp");
     expect(clientCode).toContain("signOut");
     expect(clientCode).toContain("getSession");
     expect(clientCode).toContain("onAuthStateChange");
+  });
+
+  it("supabase.auth mock is stateful — getSession reflects signInWithPassword result", () => {
+    const files = {
+      "/App.js": `export default function App() { return null; }`,
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    const clientCode = config.files["/supabaseClient.js"].code;
+    // The _authState closure must be present in the injected code
+    expect(clientCode).toContain("_authState");
+    // signInWithPassword must update _authState.session
+    expect(clientCode).toContain("_authState.session = { access_token");
+    // getSession must read from _authState
+    expect(clientCode).toContain("_authState.session }, error: null");
   });
 
   it("supabase.auth mock does not overwrite supabase data methods", () => {
