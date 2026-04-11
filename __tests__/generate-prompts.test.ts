@@ -172,17 +172,26 @@ describe("getSystemPrompt", () => {
 
   // GP-AUTH-01: engineer prompt bans supabase.auth methods
   it("GP-AUTH-01: engineer 提示词禁止使用 supabase.auth 方法", () => {
-    const prompt = getSystemPrompt("engineer", "proj-1");
-    expect(prompt).toContain("supabase.auth");
-    expect(prompt).toContain("signInWithPassword");
+    const prompt = getSystemPrompt("engineer", projectId);
+    const forbiddenIdx = prompt.indexOf("绝对禁止使用 supabase.auth");
+    expect(forbiddenIdx).toBeGreaterThanOrEqual(0);
+    const authIdx = prompt.indexOf("supabase.auth");
+    expect(authIdx).toBeGreaterThanOrEqual(forbiddenIdx);
     expect(prompt).toContain("认证限制");
   });
 
   // GP-AUTH-02: engineer prompt provides the DEMO_CREDENTIALS pattern
   it("GP-AUTH-02: engineer 提示词包含 DEMO_CREDENTIALS 本地状态登录示例", () => {
-    const prompt = getSystemPrompt("engineer", "proj-1");
+    const prompt = getSystemPrompt("engineer", projectId);
     expect(prompt).toContain("DEMO_CREDENTIALS");
     expect(prompt).toContain("isLoggedIn");
+  });
+
+  // GP-AUTH-03: architect prompt must NOT contain auth restriction block
+  it("GP-AUTH-03: architect 提示词不包含认证限制块", () => {
+    const prompt = getSystemPrompt("architect", projectId);
+    expect(prompt).not.toContain("认证限制");
+    expect(prompt).not.toContain("DEMO_CREDENTIALS");
   });
 });
 
