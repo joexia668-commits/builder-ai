@@ -102,10 +102,13 @@ describe("Generate Route — engineer user content", () => {
 
 describe("Generate Route — Edge Runtime & auth declarations (EPIC 5)", () => {
   const routePath = path.resolve(__dirname, "../app/api/generate/route.ts");
+  const handlerPath = path.resolve(__dirname, "../app/api/generate/handler.ts");
   let routeContent: string;
+  let handlerContent: string;
 
   beforeAll(() => {
     routeContent = fs.readFileSync(routePath, "utf-8");
+    handlerContent = fs.readFileSync(handlerPath, "utf-8");
   });
 
   // RT-E5-01: route exports runtime = 'edge'
@@ -118,19 +121,19 @@ describe("Generate Route — Edge Runtime & auth declarations (EPIC 5)", () => {
     expect(routeContent).toMatch(/export const maxDuration\s*=\s*300/);
   });
 
-  // RT-E5-03: route uses getToken from next-auth/jwt (not getServerSession)
+  // RT-E5-03: getToken is used in the handler (delegated from route.ts)
   it("RT-E5-03: route.ts 使用 getToken（Edge 兼容）而非 getServerSession", () => {
-    expect(routeContent).toContain("getToken");
-    expect(routeContent).toContain("next-auth/jwt");
+    expect(handlerContent).toContain("getToken");
+    expect(handlerContent).toContain("next-auth/jwt");
     expect(routeContent).not.toContain("getServerSession");
+    expect(handlerContent).not.toContain("getServerSession");
   });
 
-  // RT-E5-04: route returns 401 when token is null/missing
+  // RT-E5-04: auth guard (401) is in the handler (delegated from route.ts)
   it("RT-E5-04: route.ts 在 token 为 null 时返回 401 Unauthorized", () => {
-    expect(routeContent).toContain("401");
-    expect(routeContent).toContain("Unauthorized");
-    // The guard pattern: if (!token) return 401
-    expect(routeContent).toMatch(/if\s*\(\s*!token\s*\)/);
+    expect(handlerContent).toContain("401");
+    expect(handlerContent).toContain("Unauthorized");
+    expect(handlerContent).toMatch(/if\s*\(\s*!token\s*\)/);
   });
 });
 

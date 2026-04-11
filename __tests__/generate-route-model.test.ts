@@ -16,10 +16,13 @@ jest.mock("next-auth/jwt", () => ({
 // ── Mock AI providers to avoid real API calls ──────────────────────────────
 const mockStreamCompletion = jest.fn().mockResolvedValue(undefined);
 jest.mock("@/lib/ai-providers", () => ({
-  resolveModelId: jest.requireActual("@/lib/ai-providers").resolveModelId,
+  // Passthrough: returns the given modelId, or the default when absent.
+  // Isolates the HTTP-layer test from API-key availability in the test env.
+  resolveModelId: jest.fn((id: string | null | undefined) => id ?? "deepseek-chat"),
   createProvider: jest.fn(() => ({
     streamCompletion: mockStreamCompletion,
   })),
+  isRateLimitError: jest.fn().mockReturnValue(false),
 }));
 
 // ── Mock extract-code ──────────────────────────────────────────────────────

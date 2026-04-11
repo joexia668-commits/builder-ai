@@ -130,16 +130,19 @@ describe("resolveModelId — 项目级优先于用户级（EPIC 7 AC-4）", () =
   it("PM-04: 项目 preferredModel 优先于用户 preferredModel", () => {
     const projectModel = "gemini-2.0-flash";
     const userModel = "llama-3.3-70b";
+    // Provide mock env so resolveModelId sees both keys as available
+    const mockEnv = { GOOGLE_GENERATIVE_AI_API_KEY: "fake", GROQ_API_KEY: "fake" };
 
     // requestModelId 为 null（UI 未覆盖），项目级 > 用户级
-    const resolved = resolveModelId(null, projectModel, userModel);
+    const resolved = resolveModelId(null, projectModel, userModel, mockEnv);
     expect(resolved).toBe(projectModel);
   });
 
   it("PM-04b: 项目未设置时使用用户偏好", () => {
     const userModel = "llama-3.3-70b";
+    const mockEnv = { GROQ_API_KEY: "fake" };
 
-    const resolved = resolveModelId(null, null, userModel);
+    const resolved = resolveModelId(null, null, userModel, mockEnv);
     expect(resolved).toBe(userModel);
   });
 });

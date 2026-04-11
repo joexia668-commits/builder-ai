@@ -87,7 +87,8 @@ describe("AI Provider maxOutputTokens configuration", () => {
     await provider.streamCompletion(MESSAGES, () => {});
 
     expect(mockOpenAICreate).toHaveBeenCalledWith(
-      expect.objectContaining({ max_tokens: 16384 })
+      expect.objectContaining({ max_tokens: 16384 }),
+      expect.anything()
     );
   });
 
@@ -99,7 +100,8 @@ describe("AI Provider maxOutputTokens configuration", () => {
     await provider.streamCompletion(MESSAGES, () => {});
 
     expect(mockGroqCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ max_tokens: 16384 })
+      expect.objectContaining({ max_tokens: 16384 }),
+      expect.anything()
     );
   });
 
@@ -193,7 +195,8 @@ describe("AIProvider jsonMode option", () => {
     expect(mockOpenAICreate).toHaveBeenCalledWith(
       expect.objectContaining({
         response_format: { type: "json_object" },
-      })
+      }),
+      expect.anything()
     );
   });
 
@@ -207,7 +210,8 @@ describe("AIProvider jsonMode option", () => {
     expect(mockGroqCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         response_format: { type: "json_object" },
-      })
+      }),
+      expect.anything()
     );
   });
 
@@ -233,32 +237,33 @@ import * as fs from "fs";
 import * as path from "path";
 
 describe("Generate Route — truncation null handling (RT-TRUNC)", () => {
-  let routeContent: string;
+  let handlerContent: string;
 
   beforeAll(() => {
-    routeContent = fs.readFileSync(
-      path.resolve(__dirname, "../app/api/generate/route.ts"),
+    // Logic moved from route.ts to handler.ts when the route was refactored
+    handlerContent = fs.readFileSync(
+      path.resolve(__dirname, "../app/api/generate/handler.ts"),
       "utf-8"
     );
   });
 
   // RT-TRUNC-01: Route checks for null return from extractReactCode
   it("RT-TRUNC-01: route.ts 检查 extractReactCode 返回 null", () => {
-    expect(routeContent).toMatch(/finalCode\s*===\s*null/);
+    expect(handlerContent).toMatch(/finalCode\s*===\s*null/);
   });
 
   // RT-TRUNC-02: Route emits error event with truncation message when null
   it("RT-TRUNC-02: route.ts 对 null 代码发送 error 类型 SSE 事件", () => {
-    expect(routeContent).toContain("生成的代码不完整");
+    expect(handlerContent).toContain("生成的代码不完整");
     // Verify error event structure
-    expect(routeContent).toMatch(/type.*error/);
+    expect(handlerContent).toMatch(/type.*error/);
   });
 
   // RT-TRUNC-03: Route emits code_complete only for non-null code
   it("RT-TRUNC-03: route.ts 仅对非 null 代码发送 code_complete 事件", () => {
     // The code_complete send must be in the else branch (after null check)
-    const nullCheckIdx = routeContent.indexOf("finalCode === null");
-    const codeCompleteIdx = routeContent.indexOf("code_complete");
+    const nullCheckIdx = handlerContent.indexOf("finalCode === null");
+    const codeCompleteIdx = handlerContent.indexOf("code_complete");
     // code_complete should appear after the null check (in else branch)
     expect(nullCheckIdx).toBeGreaterThanOrEqual(0);
     expect(codeCompleteIdx).toBeGreaterThan(nullCheckIdx);
