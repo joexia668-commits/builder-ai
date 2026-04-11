@@ -158,6 +158,12 @@ Versions are **immutable INSERT-only**. New versions store `files: Record<string
 | `lib/version-files.ts` | `getVersionFiles` — backward-compatible reader for `code` / `files` version fields |
 | `lib/sandpack-config.ts` | `buildSandpackConfig(input: string \| Record<string,string>, projectId)` — calls `findMissingLocalImports` and injects Proxy stubs for missing paths |
 | `lib/error-codes.ts` | `ErrorCode` union + `ERROR_DISPLAY` map — user-facing error titles and descriptions (includes `missing_imports`) |
+| `lib/auth.ts` | NextAuth configuration — GitHub OAuth, Email Magic Link (Resend), Demo Mode credentials provider |
+| `lib/resend.ts` | Resend email service singleton for Email Magic Link provider |
+| `lib/demo-bootstrap.ts` | Auto-create demo viewer account on startup if `DEMO_VIEWER_ID` env var is set |
 | `components/workspace/chat-area.tsx` | Core orchestration — intent classification, direct path, PM → Architect → layered Engineer, abort, progress state, missing-import error |
 | `app/api/generate/route.ts` | The only Edge route — auth, model validation, provider selection, SSE stream |
 | `components/workspace/workspace.tsx` | Holds `currentFiles` + `lastPmOutput` state; wires to ChatArea and preview |
+| `components/layout/demo-banner.tsx` | Demo mode indicator banner (amber background, read-only notice) |
+| `components/layout/demo-login-button.tsx` | Quick-login button for demo viewer account (login page) |
+| `components/layout/email-login-form.tsx` | Email Magic Link form (sign-in / sign-up unified flow) |

@@ -24,7 +24,7 @@ BuilderAI 是一个 AI 驱动的代码生成平台。你描述想要什么，系
 - **BaaS 数据持久化** — 生成的应用通过 Supabase Anon Key 直连数据库
 - **版本时间线** — 每次生成自动快照，可浏览历史并一键回滚
 - **多模型支持** — Gemini 2.0 Flash / DeepSeek V3 / Groq Llama 3.3 70B，工作区内随时切换
-- **GitHub OAuth + Guest 登录** — 无需注册即可体验
+- **灵活登录方式** — GitHub OAuth、Email Magic Link、Demo 模式，无需注册即可快速体验
 
 ---
 
@@ -36,7 +36,8 @@ BuilderAI 是一个 AI 驱动的代码生成平台。你描述想要什么，系
 | UI | shadcn/ui |
 | Code Preview | Sandpack (CodeSandbox in-browser), Monaco Editor |
 | AI Providers | Gemini 2.0 Flash / DeepSeek V3 / Groq Llama 3.3 70B |
-| Auth | NextAuth.js v4 (GitHub OAuth + Guest session) |
+| Auth | NextAuth.js v4 (GitHub OAuth, Email Magic Link, Demo Mode) |
+| Email | Resend (Email Magic Link provider) |
 | Database | Supabase (PostgreSQL) via Prisma ORM |
 | Deployment | Vercel |
 | Testing | Jest + React Testing Library, Playwright (E2E) |
@@ -45,7 +46,7 @@ BuilderAI 是一个 AI 驱动的代码生成平台。你描述想要什么，系
 
 ## Quick Start
 
-**前置条件：** Node.js 18+、Supabase 项目、至少一个 AI API Key、GitHub OAuth App
+**前置条件：** Node.js 18+、Supabase 项目、至少一个 AI API Key、GitHub OAuth App（可选）、Resend 账户（用于 Email Magic Link）
 
 ```bash
 git clone <repo-url>
@@ -53,7 +54,7 @@ cd builder-ai
 npm install
 ```
 
-复制 `.env.example` 为 `.env.local`：
+复制 `.env.example` 为 `.env.local`，填入所需的环境变量：
 
 ```env
 # Database
@@ -61,10 +62,16 @@ DATABASE_URL="postgresql://..."        # Supabase 连接池，端口 6543
 DIRECT_URL="postgresql://..."          # 直连，端口 5432（用于 prisma db push）
 
 # Auth
-GITHUB_ID="..."
+GITHUB_ID="..."                        # 可选，GitHub OAuth
 GITHUB_SECRET="..."
+RESEND_API_KEY="re_..."                # Email Magic Link（推荐）
+EMAIL_FROM="BuilderAI <onboarding@resend.dev>"
 NEXTAUTH_SECRET="random-32-char-string"
 NEXTAUTH_URL="http://localhost:3000"
+
+# Demo Mode（可选）
+DEMO_USER_ID="..."                     # 你的 userId（开发者账户）
+DEMO_VIEWER_ID="..."                   # 演示用 userId
 
 # AI（至少配置一个）
 GOOGLE_GENERATIVE_AI_API_KEY="AIza..."
@@ -76,10 +83,36 @@ NEXT_PUBLIC_SUPABASE_URL="https://xxx.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJ..."
 ```
 
+### 环境变量详解
+
+| 变量 | 用途 | 必需 | 说明 |
+|------|------|------|------|
+| `GITHUB_ID` / `GITHUB_SECRET` | GitHub OAuth 登录 | 否 | 在 GitHub Settings 创建 OAuth App |
+| `RESEND_API_KEY` | Email Magic Link 登录 | 是 | 登陆 [resend.com](https://resend.com) 获取 API key |
+| `EMAIL_FROM` | 邮件发件人 | 是 | Demo 模式下可用 `onboarding@resend.dev`，生产环境需验证自己的域名 |
+| `DEMO_USER_ID` | 演示账户开发者 ID | 否 | 设置后，demo 用户只能查看该账户的项目（只读）|
+| `DEMO_VIEWER_ID` | 演示账户用户 ID | 否 | 第一次启动后由系统生成，需手动复制到 `.env.local` |
+
+### 启动项目
+
 ```bash
 npx prisma db push   # 初始化数据库
 npm run dev          # → http://localhost:3000
 ```
+
+### 配置 Demo 模式（可选）
+
+如果要启用演示账户快速登录，需要配置 `DEMO_USER_ID` 和 `DEMO_VIEWER_ID`：
+
+1. **启动项目**（不配 DEMO_VIEWER_ID）：`npm run dev`
+2. **查找 DEMO_VIEWER_ID**：启动日志中会打印自动生成的 demo 用户 ID
+3. **复制 ID**：将日志中的 ID 复制到 `.env.local` 的 `DEMO_VIEWER_ID` 字段
+4. **配置 DEMO_USER_ID**：
+   - 用浏览器登录应用（GitHub 或 Email 均可）
+   - 打开 Prisma Studio：`npx prisma studio`
+   - 在 User 表中找到你的账户，复制 `id` 字段
+   - 将其设置为 `DEMO_USER_ID`
+5. **重启项目**：`npm run dev`，点击登录页的"查看演示项目"按钮即可预览
 
 > 修改 `lib/` 下配置文件后用 `npm run dev:clean` 清除 webpack 缓存重启。
 

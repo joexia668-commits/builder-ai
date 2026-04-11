@@ -11,7 +11,9 @@
 | @shadcn/ui | latest | UI component library |
 | prisma | 5.x | ORM + schema management |
 | @prisma/client | 5.x | Database client |
-| next-auth | 4.x | Authentication (GitHub OAuth) |
+| next-auth | 4.x | Authentication (GitHub OAuth, Email Magic Link, Demo Mode) |
+| resend | latest | Email Magic Link provider via Resend API |
+| nodemailer | latest | Email client library (peer dependency for Resend) |
 | @google/generative-ai | latest | Gemini Flash API |
 | groq-sdk | latest | Groq API (fallback) |
 | @monaco-editor/react | 4.x | Code editor (VS Code engine) |

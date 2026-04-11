@@ -28,7 +28,10 @@ builder-ai/
 │   │
 │   ├── layout/
 │   │   ├── header.tsx                  # Top nav: logo, user avatar, sign out
-│   │   └── auth-guard.tsx              # Redirect to login if not authed
+│   │   ├── auth-guard.tsx              # Redirect to login if not authed
+│   │   ├── demo-banner.tsx             # Demo mode indicator (amber bg, read-only notice)
+│   │   ├── demo-login-button.tsx       # Quick-login for demo viewer account
+│   │   └── email-login-form.tsx        # Email Magic Link form (unified sign-in/sign-up)
 │   │
 │   ├── home/
 │   │   ├── project-card.tsx            # Project list card
@@ -70,7 +73,9 @@ builder-ai/
 │   ├── ai-provider.ts                  # Gemini/Groq abstraction + streaming
 │   ├── agents.ts                       # Agent definitions (roles, prompts, colors)
 │   ├── code-renderer.ts               # CodeRenderer interface + HtmlRenderer
-│   ├── auth.ts                         # NextAuth configuration
+│   ├── auth.ts                         # NextAuth configuration (GitHub, Email, Demo)
+│   ├── resend.ts                       # Resend email service singleton
+│   ├── demo-bootstrap.ts               # Auto-create demo viewer account on startup
 │   ├── prisma.ts                       # Prisma client singleton
 │   └── types.ts                        # Shared TypeScript types
 │
