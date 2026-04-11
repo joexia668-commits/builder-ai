@@ -362,6 +362,7 @@ export function ChatArea({
                 currentFiles: [],
                 completedFiles: [],
                 failedFiles: [],
+                retryInfo: null,
               },
             });
 

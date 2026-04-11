@@ -81,6 +81,7 @@ describe("ChatArea remount resilience", () => {
           currentFiles: ["App.tsx"],
           completedFiles: [],
           failedFiles: [],
+          retryInfo: null,
         },
         agentStates: {
           pm: { role: "pm", status: "done", output: "PRD" },
