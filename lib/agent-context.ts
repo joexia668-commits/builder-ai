@@ -93,6 +93,12 @@ export function buildDirectEngineerContext(
  * Instructs the LLM to output ALL files in FILE separator format so extractMultiFileCode
  * can parse the result. Even unchanged files must be re-emitted verbatim.
  */
+/**
+ * Builds Engineer context for the direct bug-fix / style-change path on multi-file V1 apps.
+ * Instructs the LLM to output ONLY the files it actually modifies.
+ * Unchanged files are NOT re-emitted — the caller merges { ...currentFiles, ...llmOutput }
+ * so unmodified files are preserved automatically without going through the LLM.
+ */
 export function buildDirectMultiFileEngineerContext(
   userPrompt: string,
   currentFiles: Record<string, string>
@@ -105,7 +111,7 @@ export function buildDirectMultiFileEngineerContext(
     .map(([path, code]) => `<source file="${path}">\n${code}\n</source>`)
     .join("\n\n");
 
-  return `你是一位全栈工程师。根据用户反馈，修复以下多文件 React 应用的问题。
+  return `你是一位全栈工程师。根据用户反馈，精准修改以下多文件 React 应用。
 
 用户反馈：${userPrompt}
 
@@ -116,9 +122,9 @@ ${fileList}
 ${filesSection}
 
 输出格式（严格遵守）：
-- 每个文件以分隔符开头：// === FILE: /path ===
-- 紧接着是该文件的完整代码
-- 必须输出全部文件（未修改的文件原样复制，不得省略）
+- 只输出你实际需要修改的文件，未修改的文件不要输出——它们会被自动保留
+- 每个修改的文件以分隔符开头：// === FILE: /path ===
+- 紧接着是该文件的完整修改后代码
 - 不得包含 \`\`\`jsx、\`\`\`js、\`\`\` 等 Markdown 代码围栏
 - 不输出任何解释性文字，代码即全部内容`;
 }
