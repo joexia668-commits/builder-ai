@@ -63,6 +63,12 @@ function getEpochDate(): Date {
   return new Date(0);
 }
 
+// Monotonic counter for stable temp IDs (avoids Date.now() at render level)
+let tempIdCounter = 0;
+function makeTempId(prefix: string): string {
+  return `${prefix}-${++tempIdCounter}`;
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -823,12 +829,12 @@ export function ChatArea({
         updateAgentState(agentRole, { status: "done", output: agentOutput });
 
         const agentMsg: ProjectMessage = {
-          id: `temp-agent-${agentRole}-${Date.now()}`,
+          id: makeTempId(`temp-agent-${agentRole}`),
           projectId: project.id,
           role: agentRole,
           content: agentOutput,
           metadata: null,
-          createdAt: new Date(),
+          createdAt: getEpochDate(),
         };
         currentMessages = [...currentMessages, agentMsg];
         onMessagesChange(currentMessages);

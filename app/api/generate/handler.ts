@@ -85,13 +85,13 @@ export function createHandler(deps: GenerateDeps) {
           let lastTapFlush = Date.now();
           const TAP_FLUSH_INTERVAL_MS = 80;
 
-          function flushTapPending() {
+          const flushTapPending = () => {
             if (pendingTapEvents.length === 0) return;
             const coalesced = coalesceChunks(pendingTapEvents);
             for (const ev of coalesced) send(controller, ev);
             pendingTapEvents = [];
             lastTapFlush = Date.now();
-          }
+          };
 
           const messages: Parameters<typeof provider.streamCompletion>[0] = [
             { role: "system", content: getSystemPrompt(agent, projectId) },
