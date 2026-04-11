@@ -1,3 +1,5 @@
+// __tests__/preview-panel-activity-tab.test.tsx
+
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { PreviewPanel } from "@/components/preview/preview-panel";
@@ -7,7 +9,20 @@ jest.mock("@/components/preview/preview-frame", () => ({
   PreviewFrame: () => <div data-testid="preview-frame" />,
 }));
 jest.mock("@/components/preview/file-tree-code-viewer", () => ({
-  FileTreeCodeViewer: () => <div data-testid="code-viewer" />,
+  FileTreeCodeViewer: (props: {
+    files: Record<string, string>;
+    liveStreams?: Record<string, LiveFileStream>;
+    engineerProgress?: EngineerProgress | null;
+  }) => (
+    <div
+      data-testid="code-viewer"
+      data-has-live-streams={
+        props.liveStreams !== undefined && Object.keys(props.liveStreams).length > 0
+          ? "true"
+          : "false"
+      }
+    />
+  ),
 }));
 jest.mock("@/components/timeline/version-timeline", () => ({
   VersionTimeline: () => null,
@@ -28,29 +43,70 @@ const BASE_PROPS = {
   engineerProgress: null as EngineerProgress | null,
 };
 
-describe("PreviewPanel Activity tab", () => {
-  it("renders the Activity tab button", () => {
+describe("PreviewPanel — code tab auto-switch (activity tab removed)", () => {
+  it("PP-CT-01: does NOT render an activity tab button", () => {
     render(<PreviewPanel {...BASE_PROPS} isGenerating={false} />);
-    expect(screen.getByTestId("tab-activity")).toBeInTheDocument();
+    expect(screen.queryByTestId("tab-activity")).not.toBeInTheDocument();
   });
 
-  it("auto-switches to Activity tab when isGenerating becomes true", () => {
+  it("PP-CT-02: renders preview and code tab buttons", () => {
+    render(<PreviewPanel {...BASE_PROPS} isGenerating={false} />);
+    expect(screen.getByTestId("tab-preview")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-code")).toBeInTheDocument();
+  });
+
+  it("PP-CT-03: auto-switches to code tab when isGenerating becomes true", () => {
     const { rerender } = render(
       <PreviewPanel {...BASE_PROPS} isGenerating={false} />
     );
     rerender(<PreviewPanel {...BASE_PROPS} isGenerating={true} />);
-    expect(screen.getByTestId("activity-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("code-viewer")).toBeInTheDocument();
   });
 
-  it("does not auto-switch back if user has manually clicked Preview mid-generation", () => {
+  it("PP-CT-04: does not auto-switch to code if user overrode tab before generation", () => {
     const { rerender } = render(
       <PreviewPanel {...BASE_PROPS} isGenerating={false} />
     );
-    rerender(<PreviewPanel {...BASE_PROPS} isGenerating={true} />);
-    // user overrides by clicking Preview
     fireEvent.click(screen.getByTestId("tab-preview"));
-    // generation ends — should NOT auto-switch anywhere since user already chose
+    rerender(<PreviewPanel {...BASE_PROPS} isGenerating={true} />);
+    expect(screen.getByTestId("preview-frame")).toBeInTheDocument();
+    expect(screen.queryByTestId("code-viewer")).not.toBeInTheDocument();
+  });
+
+  it("PP-CT-05: does not auto-switch back if user clicked Preview mid-generation", () => {
+    const { rerender } = render(
+      <PreviewPanel {...BASE_PROPS} isGenerating={false} />
+    );
+    rerender(<PreviewPanel {...BASE_PROPS} isGenerating={true} />);
+    expect(screen.getByTestId("code-viewer")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("tab-preview"));
+    expect(screen.getByTestId("preview-frame")).toBeInTheDocument();
     rerender(<PreviewPanel {...BASE_PROPS} isGenerating={false} />);
     expect(screen.getByTestId("preview-frame")).toBeInTheDocument();
+  });
+
+  it("PP-CT-06: passes liveStreams to FileTreeCodeViewer when on code tab", () => {
+    const liveStreams: Record<string, LiveFileStream> = {
+      "/App.js": {
+        path: "/App.js",
+        content: "x",
+        status: "streaming",
+        attempt: 1,
+        failedAttempts: [],
+      },
+    };
+    render(
+      <PreviewPanel {...BASE_PROPS} isGenerating={false} liveStreams={liveStreams} />
+    );
+    fireEvent.click(screen.getByTestId("tab-code"));
+    expect(screen.getByTestId("code-viewer")).toHaveAttribute(
+      "data-has-live-streams",
+      "true"
+    );
+  });
+
+  it("PP-CT-07: does not render activity-panel anywhere in the tree", () => {
+    render(<PreviewPanel {...BASE_PROPS} isGenerating={true} />);
+    expect(screen.queryByTestId("activity-panel")).not.toBeInTheDocument();
   });
 });
