@@ -8,6 +8,7 @@ import { ChatArea } from "@/components/workspace/chat-area";
 import { PreviewPanel } from "@/components/preview/preview-panel";
 import { DemoBanner } from "@/components/layout/demo-banner";
 import { getVersionFiles } from "@/lib/version-files";
+import { useGenerationSession } from "@/hooks/use-generation-session";
 import type { Project, ProjectMessage, ProjectVersion, PmOutput } from "@/lib/types";
 
 interface WorkspaceProps {
@@ -24,6 +25,7 @@ type MobileTab = "chat" | "preview";
 export function Workspace({ project, allProjects, isDemo = false }: WorkspaceProps) {
   const router = useRouter();
   const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
+  const { liveStreams, engineerProgress } = useGenerationSession(project.id);
 
   useEffect(() => {
     function handleOffline() {
@@ -144,8 +146,8 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
             onPreviewVersion={setPreviewingVersion}
             onVersionRestore={handleRestoreVersion}
             latestVersionId={versions[versions.length - 1]?.id}
-            liveStreams={{}}
-            engineerProgress={null}
+            liveStreams={liveStreams}
+            engineerProgress={engineerProgress}
           />
         </div>
       </div>
