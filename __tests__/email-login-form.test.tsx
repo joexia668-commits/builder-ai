@@ -1,43 +1,31 @@
-import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { EmailLoginForm } from "@/components/layout/email-login-form";
 
-const mockSignIn = jest.fn();
 jest.mock("next-auth/react", () => ({
-  signIn: (...args: unknown[]) => mockSignIn(...args),
+  signIn: jest.fn(),
 }));
 
-describe("EmailLoginForm", () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it("renders an email input and submit button", () => {
+describe("EmailLoginForm — unavailable state", () => {
+  it("renders the input as disabled", () => {
     render(<EmailLoginForm />);
-    expect(screen.getByRole("textbox", { name: /邮箱/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /发送登录链接/i })).toBeInTheDocument();
+    const input = screen.getByRole("textbox");
+    expect(input).toBeDisabled();
   });
 
-  it("calls signIn with the entered email on submit", async () => {
-    mockSignIn.mockResolvedValue({ ok: true });
+  it("shows unavailable placeholder text", () => {
     render(<EmailLoginForm />);
-    fireEvent.change(screen.getByRole("textbox", { name: /邮箱/i }), {
-      target: { value: "user@qq.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /发送登录链接/i }));
-    await waitFor(() => {
-      expect(mockSignIn).toHaveBeenCalledWith("email", {
-        email: "user@qq.com",
-        callbackUrl: "/",
-      });
-    });
+    const input = screen.getByRole("textbox");
+    expect(input).toHaveAttribute("placeholder", "邮箱登录暂不可用");
   });
 
-  it("disables the button while submitting", async () => {
-    mockSignIn.mockReturnValue(new Promise(() => {}));
+  it("renders the submit button as disabled", () => {
     render(<EmailLoginForm />);
-    fireEvent.change(screen.getByRole("textbox", { name: /邮箱/i }), {
-      target: { value: "user@163.com" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /发送登录链接/i }));
-    expect(screen.getByRole("button", { name: /发送登录链接/i })).toBeDisabled();
+    const button = screen.getByRole("button", { name: "发送登录链接" });
+    expect(button).toBeDisabled();
+  });
+
+  it("shows the hint text", () => {
+    render(<EmailLoginForm />);
+    expect(screen.getByText("📧 域名验证后即可开放使用")).toBeInTheDocument();
   });
 });

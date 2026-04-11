@@ -1,48 +1,32 @@
 "use client";
 
-import { useState } from "react";
-import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function EmailLoginForm() {
-  const [email, setEmail] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email) return;
-    setIsLoading(true);
-    try {
-      await signIn("email", { email, callbackUrl: "/" });
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-2 w-full">
+    <div className="flex flex-col gap-2 w-full">
       <label htmlFor="email-input" className="sr-only">
         邮箱
       </label>
       <Input
         id="email-input"
         type="email"
-        placeholder="输入邮箱地址（QQ、163 等均可）"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        disabled={isLoading}
+        placeholder="邮箱登录暂不可用"
+        disabled
         className="h-[42px] rounded-[10px] border-[#e5e7eb] text-sm"
-        required
       />
       <Button
-        type="submit"
+        type="button"
         variant="outline"
-        disabled={isLoading || !email}
+        disabled
         className="w-full h-[42px] rounded-[10px] border-[1.5px] border-indigo-200 text-indigo-600 hover:bg-indigo-50 duration-150"
       >
         发送登录链接
       </Button>
-    </form>
+      <p className="text-[11px] text-[#9ca3af] text-center">
+        📧 域名验证后即可开放使用
+      </p>
+    </div>
   );
 }
