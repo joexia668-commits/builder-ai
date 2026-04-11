@@ -130,13 +130,28 @@ export function createHandler(deps: GenerateDeps) {
                 send(controller, { type: "files_complete", files: filesResult });
               }
             } else if (targetFiles && targetFiles.length > 0) {
-              const { extractMultiFileCode } = await import("@/lib/extract-code");
+              const { extractMultiFileCodePartial } = await import("@/lib/extract-code");
               const expectedPaths = targetFiles.map((f) => f.path);
-              const filesResult = extractMultiFileCode(fullContent, expectedPaths);
-              if (filesResult === null) {
-                send(controller, { type: "error", error: "生成的代码不完整，请重试", errorCode: "parse_failed" satisfies ErrorCode });
+              const result = extractMultiFileCodePartial(fullContent, expectedPaths);
+              const okCount = Object.keys(result.ok).length;
+
+              if (okCount === 0) {
+                send(controller, {
+                  type: "error",
+                  error: "生成的代码不完整，请重试",
+                  errorCode: "parse_failed" satisfies ErrorCode,
+                  failedFiles: result.failed,
+                  truncatedTail: result.truncatedTail ?? undefined,
+                });
+              } else if (result.failed.length > 0) {
+                send(controller, {
+                  type: "partial_files_complete",
+                  files: result.ok,
+                  failed: result.failed,
+                  truncatedTail: result.truncatedTail ?? undefined,
+                });
               } else {
-                send(controller, { type: "files_complete", files: filesResult });
+                send(controller, { type: "files_complete", files: result.ok });
               }
             } else {
               const finalCode = extractReactCode(fullContent);

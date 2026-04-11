@@ -93,6 +93,7 @@ export type SSEEventType =
   | "code_chunk"
   | "code_complete"
   | "files_complete"
+  | "partial_files_complete"
   | "reset"
   | "done"
   | "error";
@@ -111,9 +112,46 @@ export interface SSEEvent {
   content?: string;
   code?: string;
   files?: Record<string, string>;
+  failed?: readonly string[];
+  truncatedTail?: string;
+  failedFiles?: readonly string[];
   messageId?: string;
   error?: string;
   errorCode?: ErrorCode;
+}
+
+// ---------------------------------------------------------------
+// Engineer multi-file partial-salvage types (spec 2026-04-11)
+// ---------------------------------------------------------------
+
+export interface PartialExtractResult {
+  readonly ok: Record<string, string>;
+  readonly failed: readonly string[];
+  readonly truncatedTail: string | null;
+}
+
+export interface RequestMeta {
+  readonly attempt: number;        // 1-indexed
+  readonly priorFailed: readonly string[];
+}
+
+export interface RequestResult {
+  readonly files: Record<string, string>;
+  readonly failed: readonly string[];
+}
+
+export type AttemptReason =
+  | "initial"
+  | "parse_failed"
+  | "http_error"
+  | "per_file_fallback";
+
+export interface AttemptInfo {
+  readonly attempt: number;
+  readonly maxAttempts: number;
+  readonly reason: AttemptReason;
+  readonly failedSubset: readonly string[];
+  readonly phase: "layer" | "per_file";
 }
 
 // Structured output schemas for PM and Architect agents
@@ -163,6 +201,14 @@ export interface EngineerProgress {
   readonly currentFiles: readonly string[];
   readonly completedFiles: readonly string[];
   readonly failedFiles: readonly string[];
+  readonly retryInfo: {
+    readonly layerIdx: number;
+    readonly attempt: number;
+    readonly maxAttempts: number;
+    readonly reason: AttemptReason;
+    readonly failedSubset: readonly string[];
+    readonly phase: "layer" | "per_file";
+  } | null;
 }
 
 // CodeRenderer interface — enables future Sandpack extension

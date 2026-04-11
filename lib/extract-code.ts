@@ -1,3 +1,5 @@
+import type { PartialExtractResult } from "@/lib/types";
+
 /**
  * Strip single-line (//) and multi-line (/* *\/) comments from code,
  * while leaving string literals and template literals untouched.
@@ -212,6 +214,63 @@ export function extractMultiFileCode(
   }
 
   return result;
+}
+
+/**
+ * Parse multi-file engineer output and return a partial-salvage result:
+ *   - ok:   files that are present AND have balanced braces
+ *   - failed: expected files that are missing OR brace-unbalanced
+ *   - truncatedTail: last ~200 chars of raw input when any file failed, else null
+ *
+ * Unlike extractMultiFileCode (which returns null on any failure), this keeps
+ * successfully-parsed files so the caller can retry only the failed subset.
+ */
+export function extractMultiFileCodePartial(
+  raw: string,
+  expectedFiles: readonly string[]
+): PartialExtractResult {
+  if (expectedFiles.length === 0) {
+    return { ok: {}, failed: [], truncatedTail: null };
+  }
+
+  const marker = /^\/\/ === FILE: (.+?) ===/;
+  const lines = raw.split("\n");
+  const fileMap: Record<string, string[]> = {};
+  let currentPath: string | null = null;
+
+  for (const line of lines) {
+    const match = line.match(marker);
+    if (match) {
+      currentPath = match[1];
+      fileMap[currentPath] = [];
+    } else if (currentPath !== null) {
+      fileMap[currentPath].push(line);
+    }
+  }
+
+  const ok: Record<string, string> = {};
+  const failed: string[] = [];
+
+  for (const path of expectedFiles) {
+    const codeLines = fileMap[path];
+    if (!codeLines) {
+      failed.push(path);
+      continue;
+    }
+    const code = codeLines.join("\n").trim();
+    if (!isBracesBalanced(code)) {
+      failed.push(path);
+      continue;
+    }
+    ok[path] = code;
+  }
+
+  const truncatedTail =
+    failed.length > 0
+      ? raw.slice(Math.max(0, raw.length - 200))
+      : null;
+
+  return { ok, failed, truncatedTail };
 }
 
 const WHITELISTED_LOCAL = new Set(["/supabaseClient.js"]);

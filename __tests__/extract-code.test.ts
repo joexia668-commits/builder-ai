@@ -5,7 +5,7 @@
  * This utility handles the fallback case where fences slip through.
  */
 
-import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames } from "@/lib/extract-code";
+import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial } from "@/lib/extract-code";
 
 describe("extractReactCode", () => {
   it("extracts code from ```jsx fences", () => {
@@ -312,5 +312,69 @@ describe("extractMultiFileCode", () => {
   it("returns empty object for empty expectedFiles", () => {
     const result = extractMultiFileCode("anything", []);
     expect(result).toEqual({});
+  });
+});
+
+describe("extractMultiFileCodePartial", () => {
+  const expected = ["/A.js", "/B.js", "/C.js"];
+
+  it("returns ok={3}, failed=[], truncatedTail=null when all files are valid", () => {
+    const raw = [
+      "// === FILE: /A.js ===",
+      "export const A = () => { return 1 }",
+      "// === FILE: /B.js ===",
+      "export const B = () => { return 2 }",
+      "// === FILE: /C.js ===",
+      "export const C = () => { return 3 }",
+    ].join("\n");
+    const result = extractMultiFileCodePartial(raw, expected);
+    expect(Object.keys(result.ok)).toEqual(["/A.js", "/B.js", "/C.js"]);
+    expect(result.failed).toEqual([]);
+    expect(result.truncatedTail).toBeNull();
+  });
+
+  it("returns partial ok + failed when one file has unbalanced braces", () => {
+    const raw = [
+      "// === FILE: /A.js ===",
+      "export const A = () => { return 1 }",
+      "// === FILE: /B.js ===",
+      "export const B = () => { return 2 }",
+      "// === FILE: /C.js ===",
+      "export const C = () => { if (true) { return 3 ",
+    ].join("\n");
+    const result = extractMultiFileCodePartial(raw, expected);
+    expect(result.ok["/A.js"]).toContain("return 1");
+    expect(result.ok["/B.js"]).toContain("return 2");
+    expect(result.ok["/C.js"]).toBeUndefined();
+    expect(result.failed).toEqual(["/C.js"]);
+    expect(result.truncatedTail).not.toBeNull();
+    expect(result.truncatedTail!.length).toBeLessThanOrEqual(200);
+    expect(result.truncatedTail).toContain("return 3");
+  });
+
+  it("reports missing files in failed[] without affecting present ones", () => {
+    const raw = [
+      "// === FILE: /A.js ===",
+      "export const A = () => { return 1 }",
+    ].join("\n");
+    const result = extractMultiFileCodePartial(raw, expected);
+    expect(Object.keys(result.ok)).toEqual(["/A.js"]);
+    expect([...result.failed].sort()).toEqual(["/B.js", "/C.js"]);
+    expect(result.truncatedTail).not.toBeNull();
+  });
+
+  it("returns ok={}, failed=all, truncatedTail set when no markers present", () => {
+    const raw = "just some nonsense output from the model";
+    const result = extractMultiFileCodePartial(raw, expected);
+    expect(result.ok).toEqual({});
+    expect([...result.failed].sort()).toEqual(["/A.js", "/B.js", "/C.js"]);
+    expect(result.truncatedTail).toBe("just some nonsense output from the model");
+  });
+
+  it("returns ok={}, failed=[], truncatedTail=null when expectedFiles is empty", () => {
+    const result = extractMultiFileCodePartial("anything", []);
+    expect(result.ok).toEqual({});
+    expect(result.failed).toEqual([]);
+    expect(result.truncatedTail).toBeNull();
   });
 });

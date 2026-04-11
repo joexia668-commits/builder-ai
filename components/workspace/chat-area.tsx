@@ -146,29 +146,50 @@ export function ChatArea({
     abortSession(project.id);
   }
 
+  interface EngineerSSEResult {
+    files: Record<string, string>;
+    failedInResponse: string[];
+    truncatedTail?: string;
+  }
+
   async function readEngineerSSE(
     body: ReadableStream<Uint8Array>,
     tag: string
-  ): Promise<Record<string, string>> {
-    let layerResult: Record<string, string> | null = null;
+  ): Promise<EngineerSSEResult> {
+    let files: Record<string, string> | null = null;
+    let failedInResponse: string[] = [];
+    let truncatedTail: string | undefined;
 
     await readSSEBody<{
       type: string;
       code?: string;
       files?: Record<string, string>;
+      failed?: string[];
+      truncatedTail?: string;
       error?: string;
       errorCode?: ErrorCode;
+      failedFiles?: string[];
     }>(
       body,
       (event) => {
         if (event.type === "files_complete" && event.files) {
-          layerResult = event.files;
+          files = event.files;
+          failedInResponse = [];
+        } else if (event.type === "partial_files_complete" && event.files) {
+          files = event.files;
+          failedInResponse = event.failed ?? [];
+          truncatedTail = event.truncatedTail;
         } else if (event.type === "code_complete" && event.code) {
-          layerResult = { "/App.js": event.code };
+          files = { "/App.js": event.code };
+          failedInResponse = [];
         } else if (event.type === "error") {
           throw Object.assign(
             new Error(event.error ?? "Stream error"),
-            { errorCode: event.errorCode ?? "unknown" }
+            {
+              errorCode: event.errorCode ?? "unknown",
+              failedFiles: event.failedFiles ?? [],
+              truncatedTail: event.truncatedTail,
+            }
           );
         }
       },
@@ -178,8 +199,8 @@ export function ChatArea({
       }
     );
 
-    if (!layerResult) throw new Error("No files received from engineer");
-    return layerResult;
+    if (!files) throw new Error("No files received from engineer");
+    return { files, failedInResponse, truncatedTail };
   }
 
   async function handleSubmit(prompt: string) {
@@ -362,8 +383,11 @@ export function ChatArea({
                 currentFiles: [],
                 completedFiles: [],
                 failedFiles: [],
+                retryInfo: null,
               },
             });
+
+            let lastTruncatedTail: string | undefined;
 
             for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
               const layerPaths = layers[layerIdx];
@@ -391,7 +415,7 @@ export function ChatArea({
 
               const layerResult = await runLayerWithFallback(
                 layerFiles,
-                async (files) => {
+                async (files, meta) => {
                   const engineerPrompt = getMultiFileEngineerPrompt({
                     projectId: project.id,
                     targetFiles: files,
@@ -399,6 +423,14 @@ export function ChatArea({
                     completedFiles: allCompletedFiles,
                     designNotes: scaffold.designNotes,
                     existingFiles: hasExistingCode ? currentFiles : undefined,
+                    retryHint:
+                      meta.attempt > 1
+                        ? {
+                            attempt: meta.attempt,
+                            reason: "parse_failed",
+                            priorTail: lastTruncatedTail,
+                          }
+                        : undefined,
                   });
 
                   const response = await fetch("/api/generate", {
@@ -423,9 +455,37 @@ export function ChatArea({
                   }
                   if (!response.body) throw new Error("No response body");
                   updateSession(project.id, { transitionText: null });
-                  return readEngineerSSE(response.body, `engineer:layer-${layerIdx + 1}`);
+                  const sseResult = await readEngineerSSE(
+                    response.body,
+                    `engineer:layer-${layerIdx + 1}`
+                  );
+                  lastTruncatedTail = sseResult.truncatedTail;
+                  return {
+                    files: sseResult.files,
+                    failed: sseResult.failedInResponse,
+                  };
                 },
-                abortController.signal
+                abortController.signal,
+                (info) => {
+                  const prev = getSession(project.id).engineerProgress;
+                  if (!prev) return;
+                  const isFirstLayerAttempt = info.attempt === 1 && info.phase === "layer";
+                  updateSession(project.id, {
+                    engineerProgress: {
+                      ...prev,
+                      retryInfo: isFirstLayerAttempt
+                        ? null
+                        : {
+                            layerIdx,
+                            attempt: info.attempt,
+                            maxAttempts: info.maxAttempts,
+                            reason: info.reason,
+                            failedSubset: [...info.failedSubset],
+                            phase: info.phase,
+                          },
+                    },
+                  });
+                }
               );
 
               Object.assign(allCompletedFiles, layerResult.files);
@@ -443,6 +503,29 @@ export function ChatArea({
                     },
                   });
                 }
+              }
+
+              // Clear retryInfo once the layer settles
+              {
+                const prev = getSession(project.id).engineerProgress;
+                if (prev) {
+                  updateSession(project.id, {
+                    engineerProgress: { ...prev, retryInfo: null },
+                  });
+                }
+              }
+
+              // Eager Sandpack push: let users see partial progress after each layer
+              if (Object.keys(allCompletedFiles).length > 0) {
+                const syntheticVersion: ProjectVersion = {
+                  id: `layer-${layerIdx + 1}-preview-${Date.now()}`,
+                  projectId: project.id,
+                  versionNumber: -1,
+                  code: "",
+                  description: `layer-${layerIdx + 1} partial preview`,
+                  createdAt: new Date(),
+                };
+                onFilesGenerated({ ...allCompletedFiles }, syntheticVersion);
               }
             }
 

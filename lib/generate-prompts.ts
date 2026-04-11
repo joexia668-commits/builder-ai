@@ -155,10 +155,15 @@ interface MultiFileEngineerPromptInput {
   readonly completedFiles: Record<string, string>;
   readonly designNotes: string;
   readonly existingFiles?: Record<string, string>;
+  readonly retryHint?: {
+    readonly attempt: number;
+    readonly reason: string;
+    readonly priorTail?: string;
+  };
 }
 
 export function getMultiFileEngineerPrompt(input: MultiFileEngineerPromptInput): string {
-  const { projectId, targetFiles, sharedTypes, completedFiles, designNotes, existingFiles } = input;
+  const { projectId, targetFiles, sharedTypes, completedFiles, designNotes, existingFiles, retryHint } = input;
 
   const targetFileList = targetFiles
     .map(
@@ -190,7 +195,24 @@ export function getMultiFileEngineerPrompt(input: MultiFileEngineerPromptInput):
           .join("\n\n")}`
       : "";
 
-  return `你是一位全栈工程师。根据架构师的文件脚手架，实现以下目标文件。
+  const retryBlock = retryHint
+    ? `【重试提示 — 上一次尝试 #${retryHint.attempt} 失败：${retryHint.reason}】
+严格要求：
+1. 只输出下列 ${targetFiles.length} 个文件，其它已生成完毕，不要重复输出
+2. 省略所有注释、示例代码、解释性文本
+3. 每个文件必须以完整的 // === FILE: /path === 块开始
+4. 最后一个文件的大括号必须平衡
+5. 不要输出 markdown 说明文字${retryHint.priorTail ? `
+
+上一次输出末尾片段（供判断截断位置）：
+---
+${retryHint.priorTail}
+---` : ""}
+
+`
+    : "";
+
+  return `${retryBlock}你是一位全栈工程师。根据架构师的文件脚手架，实现以下目标文件。
 
 【严禁包限制 - 违反将导致代码无法运行】
 只允许使用以下外部依赖：
