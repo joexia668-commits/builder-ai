@@ -292,14 +292,43 @@ ${JSON.stringify(VALID_SCAFFOLD_TP)}
     expect(result!.designNotes).toBe("");
   });
 
-  // EJ-TP-08: truncation inside the files array itself (mid-object) —
-  // the files array is NOT salvageable, must return null.
-  it("EJ-TP-08: 截断发生在 files 数组内部时返回 null", () => {
+  // EJ-TP-08: truncation inside files array mid-object — recover
+  // all fully-completed entries, drop the partial one.
+  it("EJ-TP-08: 截断发生在 files 数组内部时抢救已完成的条目", () => {
     const truncated = `<output>
 {
   "files": [
     { "path": "/App.js", "description": "root", "exports": ["App"], "deps": [], "hints": "main" },
     { "path": "/components/Head`;
+    const result = extractScaffoldFromTwoPhase(truncated);
+    expect(result).not.toBeNull();
+    expect(result!.files).toHaveLength(1);
+    expect(result!.files[0].path).toBe("/App.js");
+  });
+
+  // EJ-TP-08b: truncation inside the LAST file's string value — recover
+  // all previous complete entries. Mirrors the real production failure
+  // where architect was cut inside the last file's `hints` string.
+  it("EJ-TP-08b: 截断在最后一个文件的字符串内部时抢救前面完整条目", () => {
+    const truncated = `<output>
+{
+  "files": [
+    { "path": "/App.js", "description": "root", "exports": ["App"], "deps": [], "hints": "main" },
+    { "path": "/Header.js", "description": "nav", "exports": ["Header"], "deps": [], "hints": "lucide" },
+    { "path": "/Footer.js", "description": "foot", "exports": ["Footer"], "deps": [], "hints": "native input[type='checkbox'] with label,`;
+    const result = extractScaffoldFromTwoPhase(truncated);
+    expect(result).not.toBeNull();
+    expect(result!.files).toHaveLength(2);
+    expect(result!.files[0].path).toBe("/App.js");
+    expect(result!.files[1].path).toBe("/Header.js");
+  });
+
+  // EJ-TP-08c: truncation before any complete file — cannot recover anything.
+  it("EJ-TP-08c: 第一个文件就被截断时返回 null", () => {
+    const truncated = `<output>
+{
+  "files": [
+    { "path": "/App.js", "description": "ro`;
     expect(extractScaffoldFromTwoPhase(truncated)).toBeNull();
   });
 

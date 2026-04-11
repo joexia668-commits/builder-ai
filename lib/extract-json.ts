@@ -112,10 +112,17 @@ export function extractScaffold(raw: string): ScaffoldData | null {
 }
 
 /**
- * Locate `"files": [ ... ]` in raw text and return the array's text span.
- * Uses bracket counting with JSON string-literal awareness (handles escaped
- * quotes and brackets inside strings). Returns null if the opening `[` is
- * not found or the matching `]` is not present (truncated mid-array).
+ * Locate `"files": [ ... ]` in raw text and return a parseable array span.
+ *
+ * Walks the text with JSON string-literal awareness and tracks bracket depth.
+ * Two success modes:
+ *   1. Array closes normally — return the full `[...]` slice
+ *   2. Input is truncated — synthesize a closing `]` at the end of the last
+ *      fully-completed top-level object `}` (depth 1→depth 0 inside array),
+ *      dropping any partial tail element.
+ *
+ * Returns null if we cannot locate the opening `[` or not even one top-level
+ * element was fully written before truncation.
  */
 function locateFilesArrayText(raw: string): string | null {
   const keyRe = /"files"\s*:\s*\[/g;
@@ -123,9 +130,12 @@ function locateFilesArrayText(raw: string): string | null {
   if (!keyMatch) return null;
 
   const start = keyRe.lastIndex - 1; // position of `[`
+  // Depth semantics: 0 = before `[`, 1 = inside array between elements,
+  // 2 = inside a top-level file object, >2 = nested.
   let depth = 0;
   let inString = false;
   let escape = false;
+  let lastCompleteElementEnd = -1; // index of the last `}` where depth went 2→1
 
   for (let i = start; i < raw.length; i++) {
     const ch = raw[i];
@@ -142,11 +152,26 @@ function locateFilesArrayText(raw: string): string | null {
       continue;
     }
     if (inString) continue;
-    if (ch === "[") depth++;
-    else if (ch === "]") {
+
+    if (ch === "[" || ch === "{") {
+      depth++;
+    } else if (ch === "]" || ch === "}") {
+      const wasDepth = depth;
       depth--;
-      if (depth === 0) return raw.slice(start, i + 1);
+      if (depth === 0 && ch === "]") {
+        // Array closed cleanly
+        return raw.slice(start, i + 1);
+      }
+      if (wasDepth === 2 && ch === "}" && depth === 1) {
+        // A top-level file object just completed
+        lastCompleteElementEnd = i;
+      }
     }
+  }
+
+  // Truncated: synthesize a closing `]` after the last complete element.
+  if (lastCompleteElementEnd > start) {
+    return raw.slice(start, lastCompleteElementEnd + 1) + "]";
   }
   return null;
 }
