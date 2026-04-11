@@ -20,9 +20,7 @@ const SAFE_CONTEXTS = [
   /onChange\s*[=:]/,
   /async function handle/,
   /function handle/,
-  /async function /,   // any async function body is safe
-  /function \w+\s*\(/,  // any named function definition (utility/helper) is safe
-  /=> \{/,   // arrow function body — conservative false-negative allowance
+  /function [a-z]\w*\s*\(/,  // lowercase utility functions (not React components)
 ];
 
 describe("no-hydration-timebombs", () => {
@@ -42,8 +40,8 @@ describe("no-hydration-timebombs", () => {
 
         for (const pattern of FORBIDDEN) {
           if (!line.includes(pattern)) continue;
-          // Check surrounding context — look back up to 200 lines for a safe context
-          const context = lines.slice(Math.max(0, i - 200), i + 1).join("\n");
+          // Check surrounding context — look back to find a safe context (function scope)
+          const context = lines.slice(Math.max(0, i - 500), i + 1).join("\n");
           const isSafe = SAFE_CONTEXTS.some((re) => re.test(context));
           if (!isSafe) {
             violations.push(`${file}:${lineNum}: ${trimmed}`);

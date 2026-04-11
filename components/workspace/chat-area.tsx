@@ -53,6 +53,11 @@ const TRANSITION_MESSAGES: Partial<Record<AgentRole, string>> = {
   architect: "架构师已将技术方案移交给工程师...",
 };
 
+// Epoch timestamp for UI-only messages (not persisted)
+function getEpochDate(): Date {
+  return new Date(0);
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -725,7 +730,7 @@ export function ChatArea({
                   role,
                   content: state.output,
                   metadata: null,
-                  createdAt: new Date(),
+                  createdAt: getEpochDate(),
                 }}
                 isStreaming={state.status === "streaming"}
                 isThinking={state.status === "thinking"}
