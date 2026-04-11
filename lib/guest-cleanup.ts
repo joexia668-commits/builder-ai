@@ -9,8 +9,7 @@ const STALE_DAYS = 5;
  * @returns number of deleted users
  */
 export async function deleteStaleGuestUsers(): Promise<number> {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - STALE_DAYS);
+  const cutoff = new Date(Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000);
 
   const staleGuests = await prisma.user.findMany({
     where: {
