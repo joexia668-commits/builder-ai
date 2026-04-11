@@ -90,7 +90,7 @@ export interface StreamTapEvent {
 export function createEngineerStreamTap(attempt: number) {
   let buffer = "";
   let currentPath: string | null = null;
-  const FILE_HEADER_RE = /=== FILE: (\/[^\s=]+) ===\n?/;
+  const FILE_HEADER_RE = /^\/\/ === FILE: (\/[^\s=]+) ===\n?/m;
   const SAFE_TAIL = 256;
 
   return {
@@ -143,7 +143,7 @@ export function createEngineerStreamTap(attempt: number) {
 }
 ```
 
-**Why SAFE_TAIL = 256:** prevents a `// === FILE: /path ===` header from being mis-emitted as content when a token boundary cuts it in half. A realistic maximum header is `=== FILE: ` (10) + path (≤ 200) + ` ===\n` (5) ≈ 215 chars. 256 provides comfortable headroom so that even the longest plausible header can sit unflushed in the buffer until the next delta completes it. The tradeoff — a fixed ≤256 char delay on the last chunk of each file — is invisible given the `FLUSH_INTERVAL_MS` cadence and the authoritative `files_complete` overwrite at completion time.
+**Why SAFE_TAIL = 256:** prevents a `// === FILE: /path ===` header from being mis-emitted as content when a token boundary cuts it in half. A realistic maximum header is `// === FILE: ` (13) + path (≤ 200) + ` ===\n` (5) ≈ 218 chars. 256 provides comfortable headroom so that even the longest plausible header can sit unflushed in the buffer until the next delta completes it. The tradeoff — a fixed ≤256 char delay on the last chunk of each file — is invisible given the `FLUSH_INTERVAL_MS` cadence and the authoritative `files_complete` overwrite at completion time.
 
 ### `app/api/generate/handler.ts` changes (engineer multi-file branches)
 
