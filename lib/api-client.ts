@@ -79,6 +79,113 @@ export async function fetchSSE(
   }
 }
 
+function randomId(len: number): string {
+  return Math.random().toString(36).slice(2, 2 + len).padEnd(len, "0");
+}
+
+export interface ReadSSEBodyOptions {
+  /** Milliseconds of silence before calling onStall. Default: 30_000 */
+  stallMs?: number;
+  /** Called once when stall is detected. Does not abort the stream. */
+  onStall?: () => void;
+  /** Tag to include in log prefix (e.g. agent name or file path) */
+  tag?: string;
+}
+
+/**
+ * Reads a ReadableStream of SSE-formatted data, parses each `data:` line as
+ * JSON, and calls onEvent with the parsed object.
+ *
+ * Logs structured events to console.info with a `[sse:<id>]` prefix.
+ * Calls opts.onStall if no events are received for opts.stallMs ms.
+ */
+export async function readSSEBody<T = Record<string, unknown>>(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: T) => void,
+  opts: ReadSSEBodyOptions = {}
+): Promise<void> {
+  const { stallMs = 30_000, onStall, tag } = opts;
+  const reqId = randomId(4);
+  const prefix = tag ? `[sse:${reqId}] (${tag})` : `[sse:${reqId}]`;
+
+  console.info(`${prefix} open`);
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let eventCount = 0;
+  let lastEventAt = Date.now();
+  let stallFired = false;
+
+  const stallInterval = setInterval(() => {
+    if (Date.now() - lastEventAt >= stallMs && !stallFired) {
+      stallFired = true;
+      console.error(`${prefix} stall_detected silent=${stallMs}ms`);
+      onStall?.();
+    }
+  }, Math.min(stallMs, 1000));
+
+  const startedAt = Date.now();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      const chunk = done ? decoder.decode() : decoder.decode(value, { stream: true });
+      buffer += chunk;
+      const lines = buffer.split("\n");
+      buffer = done ? "" : (lines.pop() ?? "");
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6).trim();
+        if (!data || data === "[DONE]") continue;
+        try {
+          const event = JSON.parse(data) as T;
+          lastEventAt = Date.now();
+          stallFired = false;
+          eventCount++;
+          if (eventCount === 1 || eventCount % 10 === 0 || isMilestone(event)) {
+            console.info(`${prefix} event #${eventCount}`, event);
+          }
+          onEvent(event);
+        } catch {
+          // malformed JSON — skip line
+        }
+      }
+
+      if (done) break;
+    }
+
+    if (buffer.trim() && buffer.startsWith("data: ")) {
+      try {
+        const event = JSON.parse(buffer.slice(6).trim()) as T;
+        onEvent(event);
+      } catch { /* ignore */ }
+    }
+
+    console.info(
+      `${prefix} close reason=normal duration=${Date.now() - startedAt}ms events=${eventCount}`
+    );
+  } catch (err) {
+    const reason = err instanceof DOMException && err.name === "AbortError" ? "aborted" : "error";
+    console.error(`${prefix} close reason=${reason} duration=${Date.now() - startedAt}ms`, err);
+    throw err;
+  } finally {
+    clearInterval(stallInterval);
+  }
+}
+
+function isMilestone(event: unknown): boolean {
+  if (typeof event !== "object" || event === null) return false;
+  const type = (event as { type?: string }).type;
+  return (
+    type === "code_complete" ||
+    type === "files_complete" ||
+    type === "error" ||
+    type === "done"
+  );
+}
+
 function dispatchSSEData(
   event: string,
   data: string,
