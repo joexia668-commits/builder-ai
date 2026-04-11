@@ -1,25 +1,27 @@
-# Auth: GitHub Fix + Google OAuth — Design Spec
+# Auth: GitHub Fix + Email Magic Link — Design Spec
 
 **Date:** 2026-04-11  
-**Status:** Approved
+**Status:** Approved (revised — Google OAuth replaced with Email Magic Link)
 
 ## Problem
 
 1. **GitHub login account switching bug**: When the browser already has GitHub Account B logged in, logging into BuilderAI with Account A causes GitHub to prompt for Account B's 2FA verification instead of a clean account selection.
-2. **Missing Google OAuth**: Target users are general Chinese users who may not have GitHub accounts. Google is a widely accessible alternative.
+2. **Low accessibility for non-developer users**: Many target users (general Chinese users) don't have GitHub accounts. Need a universally accessible alternative that works with any email (QQ mail, 163, Outlook, etc.).
 
 ## Goals
 
 - Fix the GitHub account-switching issue with minimal code change
-- Add Google as a second OAuth provider
+- Add Email Magic Link login: user enters any email, receives a login link, clicks to authenticate — no password needed
 - Keep Guest login unchanged
 - Keep existing session/JWT architecture unchanged
+- No database schema changes
 
 ## Out of Scope
 
-- QQ OAuth (decided against — requires Tencent Open Platform approval process)
+- Google OAuth (decided against — requires Google account)
+- QQ OAuth (decided against — requires Tencent Open Platform approval)
 - Phone number / SMS login
-- Email + password login
+- Email + password login (magic link is simpler — no registration flow needed)
 - NextAuth v5 migration
 - Supabase Auth migration
 
@@ -27,7 +29,7 @@
 
 ### 1. GitHub Fix (`lib/auth.ts`)
 
-Add `authorization.params.login: ""` to `GithubProvider`. This forces GitHub to always show the account selection screen, preventing it from auto-using the browser's cached session.
+Add `authorization.params.login: ""` to `GithubProvider`. Forces GitHub to always show the account selection screen, preventing it from auto-using the browser's cached session.
 
 ```ts
 GithubProvider({
@@ -37,37 +39,54 @@ GithubProvider({
 })
 ```
 
-No other changes to GitHub auth flow.
+### 2. Email Magic Link (`lib/auth.ts`)
 
-### 2. Google OAuth (`lib/auth.ts`)
-
-Add `GoogleProvider` from `next-auth/providers/google`. NextAuth's PrismaAdapter will automatically persist Google accounts in the `Account` table — no schema changes needed.
+Add `EmailProvider` from `next-auth/providers/email` with a custom `sendVerificationRequest` using the Resend SDK.
 
 ```ts
-import GoogleProvider from "next-auth/providers/google";
+import EmailProvider from "next-auth/providers/email";
+import { Resend } from "resend";
 
-GoogleProvider({
-  clientId: process.env.GOOGLE_CLIENT_ID!,
-  clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+EmailProvider({
+  from: process.env.EMAIL_FROM!,
+  sendVerificationRequest: async ({ identifier, url, provider }) => {
+    await resend.emails.send({
+      from: provider.from,
+      to: identifier,
+      subject: "登录 BuilderAI",
+      html: `<p>点击下方链接登录 BuilderAI（链接 10 分钟内有效）：</p><p><a href="${url}">立即登录</a></p>`,
+      text: `登录链接：${url}`,
+    });
+  },
 })
 ```
 
+**Why Resend**: Free tier is 3,000 emails/month, modern API, reliable deliverability, no SMTP config needed.
+
 **Required env vars** (add to `.env.example` and Vercel):
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
+- `RESEND_API_KEY` — from resend.com dashboard
+- `EMAIL_FROM` — e.g. `BuilderAI <noreply@yourdomain.com>` (domain must be verified in Resend)
 
-**Google Cloud Console setup** (one-time, done by developer):
-1. Create OAuth 2.0 credentials at console.cloud.google.com
-2. Add authorized redirect URI: `{NEXTAUTH_URL}/api/auth/callback/google`
+**New dependency**: `resend` package (`npm install resend`)
 
-### 3. Login Page UI (`components/layout/login-button.tsx` + `app/login/page.tsx`)
+**Database**: `VerificationToken` model already exists in `prisma/schema.prisma` — no migration needed.
 
-Extract a shared `OAuthLoginButton` component or add a standalone `GoogleLoginButton` component alongside the existing `LoginButton` (GitHub). Both buttons sit above the divider, stacked vertically, consistent styling.
+### 3. Login Page UI
+
+Replace the GitHub-only button area with two sections:
+- GitHub OAuth button (existing `LoginButton`, unchanged)
+- Email input form: text input + submit button → calls `signIn("email", { email, callbackUrl: "/" })`
+
+New component: `components/layout/email-login-form.tsx`
 
 Layout after change:
 ```
 [ GitHub 登录 ]
-[ Google 登录 ]
+─────── 或 ───────
+[ 邮箱输入框        ]
+[ 发送登录链接      ]
 ─────── 或 ───────
 [ Guest 登录 ]
 ```
@@ -77,21 +96,23 @@ Layout after change:
 - `CredentialsProvider` (Guest logic) — no changes
 - Session strategy (`jwt`) — no changes
 - JWT / session callbacks — no changes
-- PrismaAdapter — no schema changes needed
+- PrismaAdapter — no schema changes
 - All API routes using `getServerSession` — no changes
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `lib/auth.ts` | Add `GoogleProvider`, fix GitHub `login` param |
-| `components/layout/login-button.tsx` | Rename/refactor into generic OAuth button, or keep as-is and add `GoogleLoginButton` |
-| `app/login/page.tsx` | Add Google login button to UI |
-| `.env.example` | Add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
+| `lib/auth.ts` | Fix GitHub `login` param; add `EmailProvider` with Resend |
+| `components/layout/email-login-form.tsx` | New: email input + submit button |
+| `app/login/page.tsx` | Add `EmailLoginForm` between GitHub button and Guest section |
+| `.env.example` | Add `RESEND_API_KEY`, `EMAIL_FROM` |
+| `package.json` | Add `resend` dependency |
 
 ## Testing
 
-- [ ] GitHub login: verify that clicking login always shows GitHub account chooser, not Account B's 2FA
-- [ ] Google login: new user creates a DB record; existing user gets same session
+- [ ] GitHub login: clicking login always shows GitHub account chooser, not cached account's 2FA
+- [ ] Email login: entering email sends a magic link email; clicking the link creates a session
+- [ ] Email login: same email address on second login reuses the existing user record (no duplicates)
 - [ ] Guest login: unaffected
-- [ ] Session persistence: both GitHub and Google sessions survive page reload
+- [ ] Session persistence: both GitHub and email sessions survive page reload

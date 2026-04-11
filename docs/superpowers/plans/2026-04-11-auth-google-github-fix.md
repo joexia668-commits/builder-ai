@@ -1,30 +1,69 @@
-# Auth: Google OAuth + GitHub Fix Implementation Plan
+# Auth: Email Magic Link + GitHub Fix Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fix GitHub account-switching bug and add Google OAuth as a second login method.
+**Goal:** Fix GitHub account-switching bug and add Email Magic Link login so any user with any email address can sign in without needing a GitHub account.
 
-**Architecture:** Two config changes to `lib/auth.ts` (one-liner GitHub fix + GoogleProvider), one new component `GoogleLoginButton`, minor update to the login page UI. Guest login is untouched throughout.
+**Architecture:** Add `EmailProvider` (NextAuth built-in) to `lib/auth.ts` using Resend SDK for email delivery. `VerificationToken` model already exists in schema — no DB migration needed. New `EmailLoginForm` component handles email input on the login page. GitHub one-liner fix prevents cached-session account confusion.
 
-**Tech Stack:** NextAuth v4, `next-auth/providers/google` (built-in), React, Tailwind, Jest + Testing Library
+**Tech Stack:** NextAuth v4 `EmailProvider`, `resend` SDK (new dependency), React, Tailwind, Jest + Testing Library
 
 ---
 
 ## File Map
 
-| File | Action | What changes |
-|------|--------|--------------|
-| `lib/auth.ts` | Modify | Add `authorization.params.login: ""` to GitHub; add `GoogleProvider` |
-| `components/layout/google-login-button.tsx` | Create | New Google OAuth button component |
-| `components/layout/login-button.tsx` | No change | GitHub button stays as-is |
-| `app/login/page.tsx` | Modify | Import and render `GoogleLoginButton` below `LoginButton` |
-| `.env.example` | Modify | Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` |
-| `__tests__/auth-config.test.ts` | Create | Unit tests for authOptions providers config |
-| `__tests__/google-login-button.test.tsx` | Create | Component tests for `GoogleLoginButton` |
+| File | Action | Responsibility |
+|------|--------|----------------|
+| `lib/auth.ts` | Modify | Add GitHub `login` param; add `EmailProvider` with Resend `sendVerificationRequest` |
+| `lib/resend.ts` | Create | Resend client singleton (same pattern as `lib/prisma.ts`) |
+| `components/layout/email-login-form.tsx` | Create | Email input form — controlled input + submit → `signIn("email", ...)` |
+| `app/login/page.tsx` | Modify | Add `EmailLoginForm` between GitHub button and Guest section |
+| `.env.example` | Modify | Add `RESEND_API_KEY`, `EMAIL_FROM` |
+| `__tests__/auth-config.test.ts` | Create | Verify authOptions has GitHub fix + email provider |
+| `__tests__/email-login-form.test.tsx` | Create | Component tests for `EmailLoginForm` |
 
 ---
 
-## Task 1: Fix GitHub login + add Google provider to auth config
+## Task 1: Install Resend and create Resend client singleton
+
+**Files:**
+- Modify: `package.json` (via npm install)
+- Create: `lib/resend.ts`
+
+- [ ] **Step 1: Install resend**
+
+```bash
+npm install resend
+```
+
+Expected: `resend` appears in `package.json` dependencies.
+
+- [ ] **Step 2: Create `lib/resend.ts`**
+
+```typescript
+import { Resend } from "resend";
+
+const globalForResend = globalThis as unknown as { resend: Resend };
+
+export const resend =
+  globalForResend.resend ||
+  new Resend(process.env.RESEND_API_KEY);
+
+if (process.env.NODE_ENV !== "production") {
+  globalForResend.resend = resend;
+}
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add package.json package-lock.json lib/resend.ts
+git commit -m "feat: add Resend client singleton for email delivery"
+```
+
+---
+
+## Task 2: Fix GitHub login + add EmailProvider to auth config
 
 **Files:**
 - Modify: `lib/auth.ts`
@@ -32,7 +71,10 @@
 
 ### Context
 
-`lib/auth.ts` currently exports `authOptions` with `GithubProvider` and `CredentialsProvider` (Guest). The GitHub fix adds `authorization.params.login: ""` which forces GitHub to always show account selection. The Google fix adds `GoogleProvider` which NextAuth + PrismaAdapter handles automatically (no schema change needed).
+`lib/auth.ts` currently exports `authOptions` with `GithubProvider` and `CredentialsProvider` (Guest).
+
+- GitHub fix: `authorization: { params: { login: "" } }` — forces GitHub to always show account chooser instead of reusing the browser's active GitHub session.
+- `EmailProvider` uses `sendVerificationRequest` with Resend SDK. NextAuth stores the token in the `VerificationToken` table (already in schema) and redirects user to check their email. When user clicks the link, NextAuth validates the token and creates a JWT session.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -42,21 +84,27 @@ Create `__tests__/auth-config.test.ts`:
 import { authOptions } from "@/lib/auth";
 import type { OAuthConfig } from "next-auth/providers/oauth";
 
+// Prevent Resend from making real network calls during tests
+jest.mock("@/lib/resend", () => ({
+  resend: { emails: { send: jest.fn() } },
+}));
+
 describe("authOptions", () => {
   it("includes a GitHub provider with login param to force account selection", () => {
     const github = authOptions.providers.find(
       (p) => (p as OAuthConfig<unknown>).id === "github"
     ) as OAuthConfig<unknown> | undefined;
     expect(github).toBeDefined();
-    // login: "" forces GitHub to always show account chooser
-    expect((github?.authorization as { params?: { login?: string } })?.params?.login).toBe("");
+    expect(
+      (github?.authorization as { params?: { login?: string } })?.params?.login
+    ).toBe("");
   });
 
-  it("includes a Google provider", () => {
-    const google = authOptions.providers.find(
-      (p) => (p as OAuthConfig<unknown>).id === "google"
+  it("includes an email provider", () => {
+    const email = authOptions.providers.find(
+      (p) => (p as { id?: string }).id === "email"
     );
-    expect(google).toBeDefined();
+    expect(email).toBeDefined();
   });
 
   it("still includes a credentials provider for Guest login", () => {
@@ -74,19 +122,18 @@ describe("authOptions", () => {
 npm test -- --testPathPatterns="auth-config"
 ```
 
-Expected: FAIL — `google` provider not found, GitHub `login` param missing.
+Expected: FAIL — email provider not found, GitHub `login` param missing.
 
 - [ ] **Step 3: Update `lib/auth.ts`**
-
-Replace the full file content:
 
 ```typescript
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { NextAuthOptions } from "next-auth";
 import GithubProvider from "next-auth/providers/github";
-import GoogleProvider from "next-auth/providers/google";
+import EmailProvider from "next-auth/providers/email";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
+import { resend } from "@/lib/resend";
 import { findGuestUser } from "@/app/api/auth/guest/guest-service";
 
 export const authOptions: NextAuthOptions = {
@@ -97,9 +144,17 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GITHUB_SECRET!,
       authorization: { params: { login: "" } },
     }),
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    EmailProvider({
+      from: process.env.EMAIL_FROM!,
+      sendVerificationRequest: async ({ identifier, url, provider }) => {
+        await resend.emails.send({
+          from: provider.from,
+          to: identifier,
+          subject: "登录 BuilderAI",
+          html: `<p>点击下方链接登录 BuilderAI（链接 10 分钟内有效）：</p><p><a href="${url}">立即登录</a></p>`,
+          text: `登录链接：${url}`,
+        });
+      },
     }),
     CredentialsProvider({
       id: "credentials",
@@ -175,51 +230,77 @@ Expected: PASS — all 3 tests green.
 
 ```bash
 git add lib/auth.ts __tests__/auth-config.test.ts
-git commit -m "feat: add Google OAuth provider and fix GitHub account-switching"
+git commit -m "feat: add EmailProvider with Resend and fix GitHub account-switching"
 ```
 
 ---
 
-## Task 2: Create GoogleLoginButton component
+## Task 3: Create EmailLoginForm component
 
 **Files:**
-- Create: `components/layout/google-login-button.tsx`
-- Create: `__tests__/google-login-button.test.tsx`
+- Create: `components/layout/email-login-form.tsx`
+- Create: `__tests__/email-login-form.test.tsx`
 
 ### Context
 
-The existing `components/layout/login-button.tsx` has a `LoginButton` that calls `signIn("github", ...)`. We create a parallel `GoogleLoginButton` that calls `signIn("google", ...)`. Same visual style — full-width, 42px height, rounded-[10px]. The Google button gets a Google "G" SVG icon (same pattern as GitHub's SVG icon in LoginButton).
+Controlled form with a single email `<input>` and a submit button. On submit it calls `signIn("email", { email, callbackUrl: "/" })` from `next-auth/react`. NextAuth handles the redirect to a "check your email" page (`/api/auth/verify-request`). Shows a loading state while submitting to prevent double-submit.
 
 - [ ] **Step 1: Write failing tests**
 
-Create `__tests__/google-login-button.test.tsx`:
+Create `__tests__/email-login-form.test.tsx`:
 
 ```typescript
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { GoogleLoginButton } from "@/components/layout/google-login-button";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { EmailLoginForm } from "@/components/layout/email-login-form";
 
 const mockSignIn = jest.fn();
 jest.mock("next-auth/react", () => ({
   signIn: (...args: unknown[]) => mockSignIn(...args),
 }));
 
-describe("GoogleLoginButton", () => {
+describe("EmailLoginForm", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("renders a button with Google login text", () => {
-    render(<GoogleLoginButton />);
+  it("renders an email input and a submit button", () => {
+    render(<EmailLoginForm />);
+    expect(screen.getByRole("textbox", { name: /邮箱/i })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /google/i })
+      screen.getByRole("button", { name: /发送登录链接/i })
     ).toBeInTheDocument();
   });
 
-  it('calls signIn("google") with callbackUrl "/" on click', () => {
-    render(<GoogleLoginButton />);
-    fireEvent.click(screen.getByRole("button", { name: /google/i }));
-    expect(mockSignIn).toHaveBeenCalledWith("google", { callbackUrl: "/" });
+  it("calls signIn with the entered email on submit", async () => {
+    mockSignIn.mockResolvedValue({ ok: true });
+    render(<EmailLoginForm />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /邮箱/i }), {
+      target: { value: "user@qq.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /发送登录链接/i }));
+
+    await waitFor(() => {
+      expect(mockSignIn).toHaveBeenCalledWith("email", {
+        email: "user@qq.com",
+        callbackUrl: "/",
+      });
+    });
+  });
+
+  it("disables the button while submitting", async () => {
+    mockSignIn.mockReturnValue(new Promise(() => {})); // never resolves
+    render(<EmailLoginForm />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /邮箱/i }), {
+      target: { value: "user@163.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /发送登录链接/i }));
+
+    expect(
+      screen.getByRole("button", { name: /发送登录链接/i })
+    ).toBeDisabled();
   });
 });
 ```
@@ -227,46 +308,60 @@ describe("GoogleLoginButton", () => {
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-npm test -- --testPathPatterns="google-login-button"
+npm test -- --testPathPatterns="email-login-form"
 ```
 
-Expected: FAIL — module `@/components/layout/google-login-button` not found.
+Expected: FAIL — module `@/components/layout/email-login-form` not found.
 
-- [ ] **Step 3: Create `components/layout/google-login-button.tsx`**
+- [ ] **Step 3: Create `components/layout/email-login-form.tsx`**
 
 ```typescript
 "use client";
 
+import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
-export function GoogleLoginButton() {
+export function EmailLoginForm() {
+  const [email, setEmail] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email) return;
+    setIsLoading(true);
+    try {
+      await signIn("email", { email, callbackUrl: "/" });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   return (
-    <Button
-      variant="outline"
-      onClick={() => signIn("google", { callbackUrl: "/" })}
-      className="w-full h-[42px] rounded-[10px] border border-[#e5e7eb] hover:border-[#d1d5db] duration-150 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)]"
-    >
-      <svg className="w-4 h-4" viewBox="0 0 24 24">
-        <path
-          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-          fill="#4285F4"
-        />
-        <path
-          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-          fill="#34A853"
-        />
-        <path
-          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
-          fill="#FBBC05"
-        />
-        <path
-          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-          fill="#EA4335"
-        />
-      </svg>
-      使用 Google 登录
-    </Button>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-2 w-full">
+      <label htmlFor="email-input" className="sr-only">
+        邮箱
+      </label>
+      <Input
+        id="email-input"
+        type="email"
+        placeholder="输入邮箱地址"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        disabled={isLoading}
+        className="h-[42px] rounded-[10px] border-[#e5e7eb] text-sm"
+        required
+      />
+      <Button
+        type="submit"
+        variant="outline"
+        disabled={isLoading || !email}
+        className="w-full h-[42px] rounded-[10px] border-[1.5px] border-indigo-200 text-indigo-600 hover:bg-indigo-50 duration-150"
+      >
+        发送登录链接
+      </Button>
+    </form>
   );
 }
 ```
@@ -274,28 +369,28 @@ export function GoogleLoginButton() {
 - [ ] **Step 4: Run tests to verify they pass**
 
 ```bash
-npm test -- --testPathPatterns="google-login-button"
+npm test -- --testPathPatterns="email-login-form"
 ```
 
-Expected: PASS — both tests green.
+Expected: PASS — all 3 tests green.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add components/layout/google-login-button.tsx __tests__/google-login-button.test.tsx
-git commit -m "feat: add GoogleLoginButton component"
+git add components/layout/email-login-form.tsx __tests__/email-login-form.test.tsx
+git commit -m "feat: add EmailLoginForm component with loading state"
 ```
 
 ---
 
-## Task 3: Update login page to show Google button
+## Task 4: Update login page UI
 
 **Files:**
 - Modify: `app/login/page.tsx`
 
 ### Context
 
-`app/login/page.tsx` currently renders `<LoginButton />` (GitHub) above a divider and `<GuestLoginButtons />` below. Add `<GoogleLoginButton />` directly below `<LoginButton />`, before the divider. No new tests needed — this is a layout-only change to a server component with no logic.
+Add a second divider + `EmailLoginForm` between the GitHub button and the Guest section. The `EmailLoginForm` is a Client Component so the page import is straightforward — Next.js handles the server/client boundary automatically.
 
 - [ ] **Step 1: Update `app/login/page.tsx`**
 
@@ -304,7 +399,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { LoginButton } from "@/components/layout/login-button";
-import { GoogleLoginButton } from "@/components/layout/google-login-button";
+import { EmailLoginForm } from "@/components/layout/email-login-form";
 import { GuestLoginButtons } from "@/components/layout/guest-login-buttons";
 
 const LOGIN_AGENT_CARDS = [
@@ -348,11 +443,21 @@ export default async function LoginPage() {
           ))}
         </div>
 
-        {/* OAuth login buttons */}
-        <div className="flex flex-col gap-2">
-          <LoginButton />
-          <GoogleLoginButton />
+        {/* GitHub login */}
+        <LoginButton />
+
+        {/* Divider */}
+        <div className="relative my-3">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-[#f3f4f6]" />
+          </div>
+          <div className="relative flex justify-center text-xs">
+            <span className="bg-white px-2 text-[#d1d5db]">或</span>
+          </div>
         </div>
+
+        {/* Email magic link */}
+        <EmailLoginForm />
 
         {/* Divider */}
         <div className="relative my-3">
@@ -378,23 +483,23 @@ export default async function LoginPage() {
 npm test
 ```
 
-Expected: All existing tests pass. No new failures.
+Expected: All existing tests pass.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add app/login/page.tsx
-git commit -m "feat: add Google login button to login page"
+git commit -m "feat: add email magic link form to login page"
 ```
 
 ---
 
-## Task 4: Update .env.example
+## Task 5: Update .env.example
 
 **Files:**
 - Modify: `.env.example`
 
-- [ ] **Step 1: Add Google env vars to `.env.example`**
+- [ ] **Step 1: Add email env vars to `.env.example`**
 
 Find the `# --- Auth ---` section and update it:
 
@@ -405,11 +510,11 @@ Find the `# --- Auth ---` section and update it:
 GITHUB_ID=Ov23li...
 GITHUB_SECRET=abc123...
 
-# Google OAuth
-# Setup: console.cloud.google.com → APIs & Services → Credentials → Create OAuth 2.0 Client ID
-# Authorized redirect URI: {NEXTAUTH_URL}/api/auth/callback/google
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
+# Email Magic Link (via Resend)
+# Sign up at resend.com, verify your domain, create an API key
+# EMAIL_FROM format: "BuilderAI <noreply@yourdomain.com>"
+RESEND_API_KEY=re_...
+EMAIL_FROM=BuilderAI <noreply@yourdomain.com>
 
 # NextAuth
 # Generate with: openssl rand -base64 32
@@ -421,7 +526,7 @@ NEXTAUTH_URL=http://localhost:3000
 
 ```bash
 git add .env.example
-git commit -m "docs: add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env.example"
+git commit -m "docs: add RESEND_API_KEY and EMAIL_FROM to .env.example"
 ```
 
 ---
@@ -431,7 +536,7 @@ git commit -m "docs: add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env.examp
 After all tasks complete:
 
 - [ ] `npm test` — all tests pass
-- [ ] `npm run build` — production build succeeds (catches any type errors)
-- [ ] Dev server: GitHub login button → GitHub shows account chooser (not cached account's 2FA)
-- [ ] Dev server: Google login button → redirects to Google sign-in
+- [ ] `npm run build` — production build succeeds
+- [ ] Dev server: GitHub login → GitHub shows account chooser (not cached account's 2FA)
+- [ ] Dev server: Email form → enter QQ/163/Gmail address → email arrives with login link → click link → session created
 - [ ] Dev server: Guest login — unaffected
