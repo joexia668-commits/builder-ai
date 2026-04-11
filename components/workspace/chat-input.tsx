@@ -7,6 +7,7 @@ interface ChatInputProps {
   onSubmit: (prompt: string) => void;
   disabled?: boolean;
   isPreviewingHistory?: boolean;
+  isDemo?: boolean;
   isGenerating?: boolean;
   onStop?: () => void;
   selectedModel?: string;
@@ -18,6 +19,7 @@ export function ChatInput({
   onSubmit,
   disabled,
   isPreviewingHistory = false,
+  isDemo = false,
   isGenerating = false,
   onStop,
   selectedModel,
@@ -29,7 +31,7 @@ export function ChatInput({
 
   function handleSubmit() {
     const trimmed = value.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed || disabled || isDemo) return;
     onSubmit(trimmed);
     setValue("");
   }
@@ -62,13 +64,15 @@ export function ChatInput({
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={
-            isPreviewingHistory
+            isDemo
+              ? "演示模式，无法发送消息"
+              : isPreviewingHistory
               ? "正在预览历史版本，请返回当前版本后再发送"
               : disabled
               ? "AI 正在生成中..."
               : "描述你想要的应用（Enter 发送，Shift+Enter 换行）"
           }
-          disabled={disabled}
+          disabled={disabled || isDemo || isPreviewingHistory}
           rows={2}
           className="flex-1 bg-transparent border-none outline-none resize-none text-sm text-[#111827] placeholder:text-[#9ca3af] font-sans leading-relaxed"
         />
@@ -84,7 +88,7 @@ export function ChatInput({
         ) : (
           <button
             onClick={handleSubmit}
-            disabled={!value.trim() || disabled}
+            disabled={!value.trim() || disabled || isDemo}
             className="shrink-0 w-[30px] h-[30px] rounded-lg bg-[#4f46e5] hover:bg-[#4338ca] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-150"
             aria-label="发送"
           >

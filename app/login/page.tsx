@@ -2,6 +2,8 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { LoginButton } from "@/components/layout/login-button";
+import { EmailLoginForm } from "@/components/layout/email-login-form";
+import { DemoLoginButton } from "@/components/layout/demo-login-button";
 import { GuestLoginButtons } from "@/components/layout/guest-login-buttons";
 
 const LOGIN_AGENT_CARDS = [
@@ -10,12 +12,22 @@ const LOGIN_AGENT_CARDS = [
   { icon: "👨‍💻", role: "Engineer", label: "代码生成" },
 ] as const;
 
+function Divider() {
+  return (
+    <div className="relative my-3">
+      <div className="absolute inset-0 flex items-center">
+        <span className="w-full border-t border-[#f3f4f6]" />
+      </div>
+      <div className="relative flex justify-center text-xs">
+        <span className="bg-white px-2 text-[#d1d5db]">或</span>
+      </div>
+    </div>
+  );
+}
+
 export default async function LoginPage() {
   const session = await getServerSession(authOptions);
-
-  if (session) {
-    redirect("/");
-  }
+  if (session) redirect("/");
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#eef2ff] via-[#ede9fe] to-[#faf5ff]">
@@ -45,20 +57,12 @@ export default async function LoginPage() {
           ))}
         </div>
 
-        {/* GitHub login */}
         <LoginButton />
-
-        {/* Divider */}
-        <div className="relative my-3">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t border-[#f3f4f6]" />
-          </div>
-          <div className="relative flex justify-center text-xs">
-            <span className="bg-white px-2 text-[#d1d5db]">或</span>
-          </div>
-        </div>
-
-        {/* Guest login */}
+        <Divider />
+        <EmailLoginForm />
+        <Divider />
+        <DemoLoginButton />
+        <Divider />
         <GuestLoginButtons />
       </div>
     </div>

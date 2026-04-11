@@ -40,6 +40,7 @@ interface ChatAreaProps {
   onFilesGenerated: (files: Record<string, string>, version: ProjectVersion) => void;
   onGeneratingChange?: (isGenerating: boolean) => void;
   isPreviewingHistory?: boolean;
+  isDemo?: boolean;
   initialModel?: string;
   currentFiles?: Record<string, string>;
   lastPmOutput?: PmOutput | null;
@@ -63,6 +64,7 @@ export function ChatArea({
   onFilesGenerated,
   onGeneratingChange,
   isPreviewingHistory = false,
+  isDemo = false,
   initialModel,
   currentFiles = {},
   lastPmOutput,
@@ -776,6 +778,7 @@ export function ChatArea({
         onSubmit={handleSubmit}
         disabled={isGenerating || isPreviewingHistory}
         isPreviewingHistory={isPreviewingHistory}
+        isDemo={isDemo}
         isGenerating={isGenerating}
         onStop={stopGeneration}
         selectedModel={selectedModel}

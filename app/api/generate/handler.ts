@@ -26,6 +26,9 @@ export function createHandler(deps: GenerateDeps) {
     if (!token) {
       return new Response("Unauthorized", { status: 401 });
     }
+    if (token.isDemo) {
+      return new Response("Forbidden", { status: 403 });
+    }
 
     const body = await req.json();
     const { agent, prompt, context, projectId, modelId, targetFiles } =

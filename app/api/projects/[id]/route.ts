@@ -11,9 +11,17 @@ export async function GET(
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const allowedUserId = session.user.isDemo
+    ? process.env.DEMO_USER_ID ?? null
+    : session.user.id;
+
+  if (!allowedUserId) {
+    return NextResponse.json({ error: "Demo mode not configured" }, { status: 503 });
+  }
+
   const project = await prisma.project.findUnique({ where: { id: params.id } });
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (project.userId !== session.user.id) {
+  if (project.userId !== allowedUserId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -26,6 +34,7 @@ export async function PATCH(
 ) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (session.user.isDemo) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const project = await prisma.project.findUnique({ where: { id: params.id } });
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -64,6 +73,7 @@ export async function DELETE(
 ) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (session.user.isDemo) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const project = await prisma.project.findUnique({ where: { id: params.id } });
   if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });

@@ -15,6 +15,10 @@ export async function GET(req: Request) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
   }
 
+  if (session.user.isDemo) {
+    return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 })
+  }
+
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('projectId')
   const versionId = searchParams.get('versionId')
