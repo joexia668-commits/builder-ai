@@ -3,12 +3,11 @@
 import { useState, useRef, useEffect } from "react";
 import { PreviewFrame } from "@/components/preview/preview-frame";
 import { FileTreeCodeViewer } from "@/components/preview/file-tree-code-viewer";
-import { ActivityPanel } from "@/components/preview/activity-panel";
 import { VersionTimeline } from "@/components/timeline/version-timeline";
 import { fetchAPI } from "@/lib/api-client";
 import type { ProjectVersion, LiveFileStream, EngineerProgress } from "@/lib/types";
 
-type Tab = "preview" | "code" | "activity";
+type Tab = "preview" | "code";
 type DeployState = "idle" | "building" | "ready" | "error";
 
 interface PreviewPanelProps {
@@ -57,9 +56,9 @@ export function PreviewPanel({
     const prev = prevGeneratingRef.current;
     prevGeneratingRef.current = isGenerating;
 
-    // Rising edge: generation just started — auto-switch to activity unless overridden
+    // Rising edge: generation just started — auto-switch to code unless overridden
     if (!prev && isGenerating && !userOverrideRef.current) {
-      setTab("activity");
+      setTab("code");
     }
     // Falling edge: generation just ended — reset user override so next run auto-switches again
     if (prev && !isGenerating) {
@@ -135,7 +134,7 @@ export function PreviewPanel({
       {/* Toolbar */}
       <div className="border-b bg-white px-3 py-2 flex items-center justify-between gap-2 shrink-0">
         <div className="flex gap-[1px] bg-[#f3f4f6] p-[2px] rounded-lg">
-          {(["preview", "code", "activity"] as Tab[]).map((t) => (
+          {(["preview", "code"] as Tab[]).map((t) => (
             <button
               key={t}
               data-testid={`tab-${t}`}
@@ -149,14 +148,7 @@ export function PreviewPanel({
                   : "text-[#6b7280] hover:text-[#374151]"
               }`}
             >
-              {t === "preview" ? "预览" : t === "code" ? "代码" : (
-                <span className="inline-flex items-center gap-1">
-                  Activity
-                  {isGenerating && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                  )}
-                </span>
-              )}
+              {t === "preview" ? "预览" : "代码"}
             </button>
           ))}
         </div>
@@ -234,10 +226,9 @@ export function PreviewPanel({
               </div>
             )}
           </div>
-        ) : tab === "code" ? (
-          <FileTreeCodeViewer files={files} />
         ) : (
-          <ActivityPanel
+          <FileTreeCodeViewer
+            files={files}
             liveStreams={liveStreams}
             engineerProgress={engineerProgress}
           />
