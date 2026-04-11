@@ -342,6 +342,64 @@ describe("snipCompletedFiles", () => {
   });
 });
 
+import { getMultiFileEngineerPrompt as _getMultiFileEngineerPrompt } from "@/lib/generate-prompts";
+
+const FILE: ScaffoldFile = {
+  path: "/App.js",
+  description: "root",
+  exports: ["App"],
+  deps: [],
+  hints: "",
+};
+
+describe("getMultiFileEngineerPrompt retryHint", () => {
+  const baseInput = {
+    projectId: "test-proj",
+    targetFiles: [FILE],
+    sharedTypes: "",
+    completedFiles: {},
+    designNotes: "",
+  };
+
+  it("omits retry block when retryHint is undefined", () => {
+    const prompt = _getMultiFileEngineerPrompt(baseInput);
+    expect(prompt).not.toContain("【重试提示");
+  });
+
+  it("prepends retry block when retryHint is provided", () => {
+    const prompt = _getMultiFileEngineerPrompt({
+      ...baseInput,
+      retryHint: { attempt: 2, reason: "parse_failed" },
+    });
+    expect(prompt).toContain("【重试提示");
+    expect(prompt).toContain("尝试 #2");
+    expect(prompt).toContain("parse_failed");
+  });
+
+  it("includes priorTail when provided", () => {
+    const prompt = _getMultiFileEngineerPrompt({
+      ...baseInput,
+      retryHint: {
+        attempt: 2,
+        reason: "parse_failed",
+        priorTail: "const unclosed = { field:",
+      },
+    });
+    expect(prompt).toContain("const unclosed = { field:");
+  });
+
+  it("retry block appears before 【严禁包限制", () => {
+    const prompt = _getMultiFileEngineerPrompt({
+      ...baseInput,
+      retryHint: { attempt: 2, reason: "parse_failed" },
+    });
+    const retryIdx = prompt.indexOf("【重试提示");
+    const banIdx = prompt.indexOf("【严禁包限制");
+    expect(retryIdx).toBeGreaterThanOrEqual(0);
+    expect(banIdx).toBeGreaterThan(retryIdx);
+  });
+});
+
 describe("architect two-phase prompt", () => {
   // GP-TP-01: architect prompt instructs <thinking> + <output> structure
   it("GP-TP-01: architect 提示词包含双阶段 <thinking>/<output> 结构指令", () => {
