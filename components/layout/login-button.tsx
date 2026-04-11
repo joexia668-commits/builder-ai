@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 export function LoginButton() {
   return (
     <Button
-      onClick={() => signIn("github", { callbackUrl: "/" })}
+      onClick={() => signIn("github", { callbackUrl: "/" }, { login: "" })}
       className="w-full h-[42px] rounded-[10px] duration-150 hover:shadow-[0_4px_16px_rgba(79,70,229,0.3)]"
     >
       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">

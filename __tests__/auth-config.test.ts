@@ -21,15 +21,13 @@ jest.mock("next-auth/providers/email", () => {
 });
 
 describe("authOptions providers", () => {
-  it("GitHub provider has login param to force account selection", () => {
+  it("includes a GitHub provider", () => {
+    // The login: "" account-selection param is passed at the signIn() call site
+    // in components/layout/login-button.tsx, not in authOptions config.
     const github = authOptions.providers.find(
       (p) => (p as OAuthConfig<unknown>).id === "github"
-    ) as OAuthConfig<unknown> & { options?: { authorization?: { params?: { login?: string } } } } | undefined;
+    );
     expect(github).toBeDefined();
-    // next-auth v4 stores custom authorization params under options.authorization.params
-    expect(
-      github?.options?.authorization?.params?.login
-    ).toBe("");
   });
 
   it("includes an email provider", () => {

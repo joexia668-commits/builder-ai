@@ -17,18 +17,22 @@ export const authOptions: NextAuthOptions = {
     GithubProvider({
       clientId: process.env.GITHUB_ID!,
       clientSecret: process.env.GITHUB_SECRET!,
-      authorization: { params: { login: "" } },
     }),
     EmailProvider({
       from: process.env.EMAIL_FROM!,
       sendVerificationRequest: async ({ identifier, url, provider }) => {
-        await resend.emails.send({
-          from: provider.from,
-          to: identifier,
-          subject: "登录 BuilderAI",
-          html: `<p>点击下方链接登录 BuilderAI（链接 10 分钟内有效）：</p><p><a href="${url}">立即登录</a></p>`,
-          text: `登录链接：${url}`,
-        });
+        try {
+          await resend.emails.send({
+            from: provider.from,
+            to: identifier,
+            subject: "登录 BuilderAI",
+            html: `<p>点击下方链接登录 BuilderAI（链接 10 分钟内有效）：</p><p><a href="${url}">立即登录</a></p>`,
+            text: `登录链接：${url}`,
+          });
+        } catch (error) {
+          console.error("[auth] Failed to send verification email to", identifier, error);
+          throw new Error("Failed to send verification email");
+        }
       },
     }),
     CredentialsProvider({
@@ -74,8 +78,8 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string;
+      if (session.user && token.id) {
+        session.user.id = token.id;
         session.user.isDemo = (token.isDemo as boolean) ?? false;
       }
       return session;
@@ -93,7 +97,7 @@ declare module "next-auth" {
       name?: string | null;
       email?: string | null;
       image?: string | null;
-      isDemo?: boolean;
+      isDemo: boolean;
     };
   }
 }
