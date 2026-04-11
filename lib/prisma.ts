@@ -31,12 +31,6 @@ function createBasePrismaClient() {
     url.searchParams.delete("connection_limit");
     url.searchParams.delete("pool_timeout");
     connectionString = url.toString();
-    // Diagnostic: print which host:port this Prisma client is talking to,
-    // so prod logs unambiguously show whether the Vercel env var update
-    // took effect (e.g. 5432=session vs 6543=transaction pooler mode).
-    console.log(
-      `[prisma:diag] DATABASE_URL host=${url.hostname} port=${url.port || "<default>"}`
-    );
   } catch {
     // malformed URL — use as-is
   }
