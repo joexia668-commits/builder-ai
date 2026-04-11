@@ -14,7 +14,6 @@ interface PreviewPanelProps {
   files: Record<string, string>;
   projectId: string;
   isGenerating: boolean;
-  onFilesChange: (files: Record<string, string>) => void;
   versions: ProjectVersion[];
   previewingVersion: ProjectVersion | null;
   onPreviewVersion: (version: ProjectVersion | null) => void;
@@ -26,7 +25,6 @@ export function PreviewPanel({
   files,
   projectId,
   isGenerating,
-  onFilesChange,
   versions,
   previewingVersion,
   onPreviewVersion,

@@ -22,7 +22,6 @@ const APP_CODE = "export default function App() {}";
 const defaultProps = {
   files: { "/App.js": APP_CODE },
   projectId: "proj-123",
-  onFilesChange: jest.fn(),
   versions: [],
   previewingVersion: null,
   onPreviewVersion: jest.fn(),

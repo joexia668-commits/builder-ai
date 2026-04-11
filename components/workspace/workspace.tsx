@@ -135,7 +135,6 @@ export function Workspace({ project, allProjects }: WorkspaceProps) {
             files={displayFiles}
             projectId={project.id}
             isGenerating={isGenerating}
-            onFilesChange={setCurrentFiles}
             versions={versions}
             previewingVersion={previewingVersion}
             onPreviewVersion={setPreviewingVersion}
