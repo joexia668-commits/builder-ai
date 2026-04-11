@@ -5,7 +5,7 @@
  * This utility handles the fallback case where fences slip through.
  */
 
-import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial } from "@/lib/extract-code";
+import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport } from "@/lib/extract-code";
 
 describe("extractReactCode", () => {
   it("extracts code from ```jsx fences", () => {
@@ -376,5 +376,57 @@ describe("extractMultiFileCodePartial", () => {
     expect(result.ok).toEqual({});
     expect(result.failed).toEqual([]);
     expect(result.truncatedTail).toBeNull();
+  });
+
+  it("deduplicates double default export in a file — keeps only the last one", () => {
+    const raw = [
+      "// === FILE: /utils/dataHelpers.js ===",
+      "export function filterStudentsByClass(students, className) {",
+      "  return students.filter(s => s.className === className);",
+      "}",
+      "export default filterStudentsByClass;",
+      "export function validateStudent(student) {",
+      "  return student.name.length > 0;",
+      "}",
+      "export default filterStudentsByClass;",
+    ].join("\n");
+    const result = extractMultiFileCodePartial(raw, ["/utils/dataHelpers.js"]);
+    expect(result.failed).toEqual([]);
+    const code = result.ok["/utils/dataHelpers.js"];
+    const defaultCount = (code.match(/^export default /gm) ?? []).length;
+    expect(defaultCount).toBe(1);
+    // The last occurrence is preserved
+    expect(code.endsWith("export default filterStudentsByClass;")).toBe(true);
+  });
+});
+
+describe("deduplicateDefaultExport", () => {
+  it("returns code unchanged when there is only one default export", () => {
+    const code = "export function foo() {}\nexport default foo;";
+    expect(deduplicateDefaultExport(code)).toBe(code);
+  });
+
+  it("removes earlier duplicate bare re-export lines, keeps last", () => {
+    const code = [
+      "export function foo() {}",
+      "export default foo;",
+      "export function bar() {}",
+      "export default foo;",
+    ].join("\n");
+    const result = deduplicateDefaultExport(code);
+    const count = (result.match(/^export default /gm) ?? []).length;
+    expect(count).toBe(1);
+    expect(result).toContain("export function foo");
+    expect(result).toContain("export function bar");
+  });
+
+  it("does not touch export default function declarations", () => {
+    const code = "export default function App() { return null; }";
+    expect(deduplicateDefaultExport(code)).toBe(code);
+  });
+
+  it("returns code unchanged when no default export present", () => {
+    const code = "export function foo() {}";
+    expect(deduplicateDefaultExport(code)).toBe(code);
   });
 });

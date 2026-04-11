@@ -47,6 +47,28 @@ export function stripComments(code: string): string {
   return result;
 }
 
+/**
+ * If a generated JS/TS file contains more than one bare `export default X;`
+ * re-export line, keep only the last one and remove the earlier ones.
+ *
+ * This fixes a common feature_add artifact where the Engineer copies the
+ * original file's trailing `export default X;` into the middle of the new
+ * output, then also emits a new default export at the end.
+ */
+export function deduplicateDefaultExport(code: string): string {
+  // Matches standalone re-export lines: `export default identifier;`
+  const re = /^export default \w+;[ \t]*\n?/gm;
+  const matches = [...code.matchAll(re)];
+  if (matches.length <= 1) return code;
+
+  let seen = 0;
+  const total = matches.length;
+  return code.replace(re, (match) => {
+    seen++;
+    return seen < total ? "" : match;
+  });
+}
+
 /** Check curly braces are balanced (open count === close count). */
 function isBracesBalanced(code: string): boolean {
   let depth = 0;
@@ -158,7 +180,7 @@ export function extractAnyMultiFileCode(
 
   const result: Record<string, string> = {};
   for (const [path, codeLines] of Object.entries(fileMap)) {
-    const code = codeLines.join("\n").trim();
+    const code = deduplicateDefaultExport(codeLines.join("\n").trim());
     if (!isBracesBalanced(code)) return null;
     result[path] = code;
   }
@@ -206,7 +228,7 @@ export function extractMultiFileCode(
     const codeLines = fileMap[path];
     if (!codeLines) return null;
 
-    const code = codeLines.join("\n").trim();
+    const code = deduplicateDefaultExport(codeLines.join("\n").trim());
     // For multi-file: only check brace balance (individual files don't need export default)
     if (!isBracesBalanced(code)) return null;
 
@@ -257,7 +279,7 @@ export function extractMultiFileCodePartial(
       failed.push(path);
       continue;
     }
-    const code = codeLines.join("\n").trim();
+    const code = deduplicateDefaultExport(codeLines.join("\n").trim());
     if (!isBracesBalanced(code)) {
       failed.push(path);
       continue;
