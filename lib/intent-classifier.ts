@@ -10,12 +10,27 @@ const STYLE_KEYWORDS = [
   "颜色", "字体", "样式", "布局", "ui", "美化", "主题",
   "color", "font", "style", "layout", "theme", "dark mode", "深色",
   "background", "背景", "间距", "padding", "margin", "设计",
+  "圆角", "阴影", "shadow", "border-radius", "加粗", "字号",
 ] as const;
 
 const NEW_PROJECT_KEYWORDS = [
   "重新做", "重新设计", "全新", "new project", "start over",
   "重做", "从头", "推倒重来",
 ] as const;
+
+// Matches any Chinese color word ending in 色 (黄色, 红色, 底色, 背景色…)
+const CHINESE_COLOR_RE = /[\u4e00-\u9fa5]{0,4}色/;
+
+// Matches CSS hex or rgb color values
+const CSS_COLOR_RE = /#[0-9a-fA-F]{3,6}|rgb\(|rgba\(/i;
+
+/**
+ * Returns true if the prompt contains a color-related expression that indicates
+ * a style change intent (color word, hex value, rgb value).
+ */
+function hasColorIntent(lower: string): boolean {
+  return CHINESE_COLOR_RE.test(lower) || CSS_COLOR_RE.test(lower);
+}
 
 /**
  * Classifies the intent of a user prompt based on keywords and context.
@@ -31,6 +46,7 @@ export function classifyIntent(
 
   if (BUG_KEYWORDS.some((kw) => lower.includes(kw))) return "bug_fix";
   if (STYLE_KEYWORDS.some((kw) => lower.includes(kw))) return "style_change";
+  if (hasColorIntent(lower)) return "style_change";
   if (NEW_PROJECT_KEYWORDS.some((kw) => lower.includes(kw))) return "new_project";
 
   return "feature_add";
