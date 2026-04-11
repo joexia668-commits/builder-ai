@@ -248,70 +248,95 @@ export function ChatArea({
         // Multi-file V1: use FILE separator format so the server can parse with
         // extractMultiFileCode. Single-file V1: keep the merged single-file path.
         const isMultiFileV1 = Object.keys(currentFiles).length > 1;
-        const directContext = isMultiFileV1
+        const baseDirectContext = isMultiFileV1
           ? buildDirectMultiFileEngineerContext(prompt, currentFiles)
           : buildDirectEngineerContext(prompt, currentFiles);
 
-        const directResponse = await fetch("/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: project.id,
-            prompt,
-            agent: "engineer",
-            context: directContext,
-            modelId: selectedModel,
-            // Multi-file direct path: LLM only emits modified files; server extracts
-            // whatever FILE blocks are present and client merges with currentFiles.
-            ...(isMultiFileV1 ? { partialMultiFile: true } : {}),
-          }),
-          signal: abortController.signal,
-        });
-
-        if (!directResponse.ok) {
-          const errorText = await directResponse.text();
-          throw new Error(`HTTP ${directResponse.status}: ${errorText.slice(0, 200)}`);
-        }
-        if (!directResponse.body) throw new Error("No response body");
-
-        updateAgentState("engineer", { status: "streaming" });
-
+        const MAX_DIRECT_ATTEMPTS = 2;
+        const DIRECT_RETRY_PREFIX =
+          "【重试提示 — 上一次输出被截断】严格要求：省略所有注释和解释性文字，最小化代码体积，确保所有大括号平衡。\n\n";
         let directOutput = "";
         let directCode = "";
         let directFiles: Record<string, string> | null = null;
 
-        await readSSEBody<{
-          type: string;
-          content?: string;
-          code?: string;
-          files?: Record<string, string>;
-          error?: string;
-          errorCode?: ErrorCode;
-        }>(
-          directResponse.body,
-          (event) => {
-            if (event.type === "chunk") {
-              directOutput += event.content ?? "";
-              updateAgentState("engineer", { output: directOutput });
-            } else if (event.type === "code_complete") {
-              if (event.code) directCode = event.code;
-            } else if (event.type === "files_complete" && event.files) {
-              directFiles = event.files;
-            } else if (event.type === "reset") {
-              directOutput = "";
-              updateAgentState("engineer", { output: "" });
-            } else if (event.type === "error") {
-              throw Object.assign(
-                new Error(event.error ?? "Stream error"),
-                { errorCode: event.errorCode ?? "unknown" }
-              );
-            }
-          },
-          {
-            tag: `direct:${intent}`,
-            onStall: () => updateSession(project.id, { stallWarning: true }),
+        for (let attempt = 1; attempt <= MAX_DIRECT_ATTEMPTS; attempt++) {
+          directOutput = "";
+          directCode = "";
+          directFiles = null;
+
+          // On retry, prepend conciseness hint directly into context (retryHint in the
+          // request body is ignored by the server — context is the only injected field).
+          const directContext =
+            attempt > 1 ? DIRECT_RETRY_PREFIX + baseDirectContext : baseDirectContext;
+
+          const directResponse = await fetch("/api/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectId: project.id,
+              prompt,
+              agent: "engineer",
+              context: directContext,
+              modelId: selectedModel,
+              // Multi-file direct path: LLM only emits modified files; server extracts
+              // whatever FILE blocks are present and client merges with currentFiles.
+              ...(isMultiFileV1 ? { partialMultiFile: true } : {}),
+            }),
+            signal: abortController.signal,
+          });
+
+          if (!directResponse.ok) {
+            const errorText = await directResponse.text();
+            throw new Error(`HTTP ${directResponse.status}: ${errorText.slice(0, 200)}`);
           }
-        );
+          if (!directResponse.body) throw new Error("No response body");
+
+          updateAgentState("engineer", { status: "streaming" });
+
+          try {
+            await readSSEBody<{
+              type: string;
+              content?: string;
+              code?: string;
+              files?: Record<string, string>;
+              error?: string;
+              errorCode?: ErrorCode;
+            }>(
+              directResponse.body,
+              (event) => {
+                if (event.type === "chunk") {
+                  directOutput += event.content ?? "";
+                  updateAgentState("engineer", { output: directOutput });
+                } else if (event.type === "code_complete") {
+                  if (event.code) directCode = event.code;
+                } else if (event.type === "files_complete" && event.files) {
+                  directFiles = event.files;
+                } else if (event.type === "reset") {
+                  directOutput = "";
+                  updateAgentState("engineer", { output: "" });
+                } else if (event.type === "error") {
+                  throw Object.assign(
+                    new Error(event.error ?? "Stream error"),
+                    { errorCode: event.errorCode ?? "unknown" }
+                  );
+                }
+              },
+              {
+                tag: `direct:${intent}:attempt${attempt}`,
+                onStall: () => updateSession(project.id, { stallWarning: true }),
+              }
+            );
+            break; // success — exit retry loop
+          } catch (err: unknown) {
+            const code = (err as { errorCode?: string }).errorCode;
+            if (code === "parse_failed" && attempt < MAX_DIRECT_ATTEMPTS) {
+              // Truncation is probabilistic — retry with a conciseness hint.
+              updateAgentState("engineer", { status: "thinking", output: "" });
+              continue;
+            }
+            throw err;
+          }
+        }
 
         updateAgentState("engineer", { status: "done", output: directOutput });
 
