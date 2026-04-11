@@ -58,10 +58,14 @@ ChatArea
       └── POST /api/generate  { agent: "architect", context: pmOutput }
             └── <thinking>推理</thinking><output>JSON ScaffoldData</output>  →  extractScaffoldFromTwoPhase()  →  topologicalSort()  →  layers[][]
       └── for each layer (sequential):
-            for each file in layer (parallel):
-              POST /api/generate  { agent: "engineer", targetFile, scaffold,
-                                    existingFiles?: currentFiles (feature_add only) }
-                    └── files_complete / code_complete event
+            runLayerWithFallback(layerFiles, requestFn, signal, onAttempt)
+              ├─ Attempt 1: all files in layer → POST /api/generate (parallel per file)
+              │     ├── files_complete          → all ok
+              │     ├── partial_files_complete  → accumulate ok, retry only failed subset
+              │     └── error (parse_failed)    → treat all files as failed this attempt
+              ├─ Attempt 2: only prior failed files (prompt carries retryHint)
+              └─ Per-file fallback (up to 2 attempts each, circuit-breaker at 3 consecutive failures)
+            onAttempt callback → updates engineerProgress.retryInfo → UI retry banner
       └── allFiles merged  →  findMissingLocalImports()  →  stub 注入 / missing_imports 错误
                            →  buildSandpackConfig(files, projectId)  →  Sandpack
                            →  POST /api/versions  { code, files }  (immutable snapshot)
@@ -121,13 +125,14 @@ No global store. State lives in hooks and components:
 ```
 data: {"type":"thinking","content":"pm 正在分析..."}
 data: {"type":"chunk","content":"..."}
-data: {"type":"code_complete","code":"..."}          // engineer single-file fallback
-data: {"type":"files_complete","files":{...}}        // engineer multi-file output
+data: {"type":"code_complete","code":"..."}                                      // engineer single-file fallback
+data: {"type":"files_complete","files":{...}}                                    // engineer multi-file, all ok
+data: {"type":"partial_files_complete","files":{...},"failed":[...],"truncatedTail":"..."}  // partial salvage
+data: {"type":"error","error":"...","errorCode":"parse_failed","failedFiles":[...],"truncatedTail":"..."}
 data: {"type":"done"}
-data: {"type":"error","error":"..."}
 ```
 
-`fetchSSE` in `api-client.ts` parses this and dispatches to typed handlers.
+`readEngineerSSE` in `chat-area.tsx` handles all three success/partial/error variants and returns `{ files, failedInResponse, truncatedTail }` to `runLayerWithFallback`.
 
 ### Version system
 
@@ -145,15 +150,15 @@ Versions are **immutable INSERT-only**. New versions store `files: Record<string
 
 | File | Why |
 |------|-----|
-| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput` |
+| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress` (incl. `retryInfo`), `PmOutput`, `ArchOutput`, `PartialExtractResult`, `RequestMeta`, `RequestResult`, `AttemptInfo` |
 | `lib/intent-classifier.ts` | `classifyIntent(prompt, hasExistingCode)` — keyword router that selects pipeline path |
 | `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildEngineerContextFromStructured`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildPmIterationContext` |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
 | `lib/model-registry.ts` | `MODEL_REGISTRY`, `getModelById`, `getAvailableModels`, `isValidModelId` |
 | `lib/extract-json.ts` | `extractPmOutput`, `extractScaffold`, `extractScaffoldFromTwoPhase` — JSON parsing; two-phase extracts from `<output>` block with fallback |
-| `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` (Snip compression) + `getMultiFileEngineerPrompt()` (includes `【本地文件导入限制】` rule) |
-| `lib/extract-code.ts` | Multi-layer code extraction strategy + `findMissingLocalImports(files)` — detects hallucinated local imports across all generated files |
-| `lib/engineer-circuit.ts` | `retryWithBackoff<T>` + `runLayerWithFallback()` — full-layer retry → per-file fallback → circuit breaker |
+| `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` (Snip compression) + `getMultiFileEngineerPrompt()` (includes `【本地文件导入限制】` rule + optional `retryHint` for adaptive retry) |
+| `lib/extract-code.ts` | Multi-layer code extraction + `extractMultiFileCodePartial()` (partial salvage) + `deduplicateDefaultExport()` (removes duplicate `export default X;` lines) + `findMissingLocalImports()` |
+| `lib/engineer-circuit.ts` | `runLayerWithFallback(layerFiles, requestFn, signal?, onAttempt?)` — 2 layer attempts → 2 per-file attempts → circuit breaker (3 consecutive failures); `requestFn` receives `RequestMeta { attempt, priorFailed }` |
 | `lib/topo-sort.ts` | `topologicalSort` — groups scaffold files into dependency layers for parallel generation |
 | `lib/version-files.ts` | `getVersionFiles` — backward-compatible reader for `code` / `files` version fields |
 | `lib/sandpack-config.ts` | `buildSandpackConfig(input: string \| Record<string,string>, projectId)` — calls `findMissingLocalImports` and injects Proxy stubs for missing paths |
