@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { buildFileTree } from "@/lib/file-tree";
 import type { TreeNode } from "@/lib/file-tree";
@@ -101,13 +101,19 @@ function FileTree({
 }
 
 export function FileTreeCodeViewer({ files }: FileTreeCodeViewerProps) {
-  const paths = Object.keys(files);
-  const tree = buildFileTree(paths);
+  const paths = useMemo(() => Object.keys(files), [files]);
+  const tree = useMemo(() => buildFileTree(paths), [paths]);
 
   // Default to App.js or first file
-  const defaultPath = paths.find((p) => p === "/App.js") ?? paths[0] ?? "";
+  const defaultPath = useMemo(
+    () => paths.find((p) => p === "/App.js") ?? paths[0] ?? "",
+    [paths]
+  );
 
   const [activePath, setActivePath] = useState(defaultPath);
+
+  // Clamp activePath to current file set — handles files prop replacement
+  const resolvedActive = paths.includes(activePath) ? activePath : defaultPath;
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set());
 
   function handleDirClick(dirPath: string) {
@@ -136,7 +142,7 @@ export function FileTreeCodeViewer({ files }: FileTreeCodeViewerProps) {
       <div className="w-[200px] shrink-0 bg-[#252526] border-r border-[#1e1e1e] overflow-y-auto">
         <FileTree
           nodes={tree}
-          activePath={activePath}
+          activePath={resolvedActive}
           collapsedDirs={collapsedDirs}
           onFileClick={setActivePath}
           onDirClick={handleDirClick}
@@ -147,9 +153,9 @@ export function FileTreeCodeViewer({ files }: FileTreeCodeViewerProps) {
       <div className="flex-1 overflow-hidden">
         <MonacoEditor
           height="100%"
-          language={inferLanguage(activePath)}
+          language={inferLanguage(resolvedActive)}
           theme="vs-dark"
-          value={files[activePath] ?? ""}
+          value={files[resolvedActive] ?? ""}
           options={{
             readOnly: true,
             minimap: { enabled: false },

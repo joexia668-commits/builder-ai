@@ -69,7 +69,6 @@ describe("FileTreeCodeViewer", () => {
 
   it("infers css language for .css files", () => {
     render(<FileTreeCodeViewer files={{ "/styles.css": "body {}" }} />);
-    fireEvent.click(screen.getByText("styles.css"));
     const editor = screen.getByTestId("monaco-editor");
     expect(editor).toHaveAttribute("data-language", "css");
   });
