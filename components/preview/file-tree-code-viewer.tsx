@@ -223,9 +223,9 @@ export function FileTreeCodeViewer({
     });
   }
 
-  // Generating but no files streaming yet — show walking cat.
-  // Checked before tree rendering so it fires even when old files are present (feature_add).
-  if (isGenerating && Object.keys(liveStreams).length === 0) {
+  // Generating, no files streaming yet, AND no existing files to show —
+  // only show the walking cat for new projects (feature_add keeps the current code visible).
+  if (isGenerating && Object.keys(liveStreams).length === 0 && Object.keys(files).length === 0) {
     return <WalkingCat />;
   }
 

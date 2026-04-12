@@ -59,13 +59,17 @@ export function PreviewPanel({
     // Rising edge: generation just started — auto-switch to code unless overridden
     if (!prev && isGenerating && !userOverrideRef.current) {
       setTab("code");
+      return;
     }
-    // Falling edge: generation just ended — reset user override so next run auto-switches again
+
+    // Falling edge: generation just ended — switch back to preview after a short
+    // delay. Return cleanup so the timer is cancelled if generation restarts first.
     if (prev && !isGenerating) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (!userOverrideRef.current) setTab("preview");
         userOverrideRef.current = false;
-      }, 2500);
+      }, 1500);
+      return () => clearTimeout(timer);
     }
   }, [isGenerating]);
 
