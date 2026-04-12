@@ -26,6 +26,7 @@ BuilderAI 是一个 AI 驱动的代码生成平台。你描述想要什么，系
 - **Sandpack 沙箱预览** — 多文件 React 应用在浏览器内编译运行，零服务器开销
 - **BaaS 数据持久化** — 生成的应用通过 Supabase Anon Key 直连数据库
 - **版本时间线** — 每次生成自动快照，可浏览历史并一键回滚
+- **代码实时流式预览** — 生成期间代码标签页自动切换并跟随当前写入文件，暗色 `<pre>` 展示流式输出与光标；文件生成完毕后无缝切换回 Monaco 编辑器；文件树同步显示绿色脉冲 / 灰色勾 / 红色叉状态指示器
 - **多模型支持** — Gemini 2.0 Flash / DeepSeek V3 / Groq Llama 3.3 70B，工作区内随时切换
 - **灵活登录方式** — GitHub OAuth、Email Magic Link、Demo 模式，无需注册即可快速体验
 
@@ -163,7 +164,7 @@ builder-ai/
 │
 ├── components/
 │   ├── agent/                        # AgentStatusBar、AgentCard、AgentMessage
-│   ├── preview/                      # PreviewPanel、MultiFileEditor、设备切换
+│   ├── preview/                      # PreviewPanel、FileTreeCodeViewer（含流式）、设备切换
 │   ├── timeline/                     # 版本时间线
 │   ├── workspace/                    # ChatArea（核心编排）、ChatInput、Workspace
 │   └── ui/                           # shadcn/ui（勿手动编辑）
@@ -174,6 +175,9 @@ builder-ai/
 │   ├── generate-prompts.ts           # Agent 系统提示词 + Snip 压缩
 │   ├── extract-code.ts               # 代码提取 + findMissingLocalImports()
 │   ├── engineer-circuit.ts           # 三级容错重试
+│   ├── engineer-stream-tap.ts        # SSE 流观测 tap：检测 FILE 边界，emit file_start/chunk/end 事件
+│   ├── coalesce-chunks.ts            # 合并同一文件的连续 file_chunk 事件（降低 SSE 频率）
+│   ├── generation-session.ts         # 跨组件 liveStreams 状态（模块级存储，非 useState）
 │   ├── topo-sort.ts                  # 拓扑排序分层
 │   ├── sandpack-config.ts            # Sandpack 配置 + 缺失模块 stub 注入
 │   ├── ai-providers.ts               # AIProvider 接口 + 三个 Provider 实现
@@ -207,6 +211,7 @@ builder-ai/
 | Scaffold 尾部截断抢救 | Architect 输出被截断时，`extractScaffoldFromTwoPhase` 从不完整 JSON 里逐元素救回已写完的 files 条目。避免 chat-area 静默 fall-through 到 legacy 单文件 Engineer 形成级联失败 |
 | Prisma `$extends` 透明重试 | Supavisor 瞬态 drop socket 和冷启动 stale TCP 是 Vercel + Supabase 组合的已知脆弱点；client 层对 `Connection terminated/ECONNRESET` 类错误做指数退避重试（100→200→400ms），真正不可恢复的错误透传 |
 | 缺失模块三层防御 | 提示词限制 + 生成后检测 + Sandpack Proxy stub，防止幻觉导入白屏 |
+| SSE 流纯观测 tap | `createEngineerStreamTap()` 旁路监听 Engineer SSE 流，检测 `// === FILE: /path ===` 边界并 emit `file_start/file_chunk/file_end` 事件，完全不碰授权解析路径；SAFE_TAIL=256 防止标记头被 token 切割；服务端 80ms 限流；客户端 `liveStreams` 在 `files_complete` 到达时被授权数据覆盖（自愈）|
 | Guest 创建真实 User 记录 | 刷新后项目数据可持久化，固定 email 格式防重复创建 |
 | 向后兼容版本读取 | `getVersionFiles()` 统一封装新旧格式，UI 无感知历史数据差异 |
 
