@@ -163,7 +163,7 @@ describe("FileTreeCodeViewer — streaming mode", () => {
     expect(screen.queryByTestId("streaming-pre")).not.toBeInTheDocument();
   });
 
-  it("FTCV-S-07: renders Monaco when active file is in authoritative files (self-heal priority)", () => {
+  it("FTCV-S-07: shows streaming <pre> even when file already exists in authoritative files (feature_add)", () => {
     const liveStreams = {
       "/App.js": makeStream({
         path: "/App.js",
@@ -173,13 +173,14 @@ describe("FileTreeCodeViewer — streaming mode", () => {
     };
     render(
       <FileTreeCodeViewer
-        files={{ "/App.js": "final content" }}
+        files={{ "/App.js": "old content" }}
         liveStreams={liveStreams}
         engineerProgress={EMPTY_PROGRESS}
       />
     );
-    expect(screen.getByTestId("monaco-editor")).toBeInTheDocument();
-    expect(screen.queryByTestId("streaming-pre")).not.toBeInTheDocument();
+    // Streaming wins while status is "streaming"; Monaco takes over once status is "done"
+    expect(screen.getByTestId("streaming-pre")).toBeInTheDocument();
+    expect(screen.queryByTestId("monaco-editor")).not.toBeInTheDocument();
   });
 
   it("FTCV-S-08: auto-follows the first streaming path (activates it in tree)", () => {

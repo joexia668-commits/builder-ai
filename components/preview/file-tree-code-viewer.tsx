@@ -237,11 +237,11 @@ export function FileTreeCodeViewer({
     );
   }
 
-  // Authoritative files wins over streaming; only show <pre> when file is
-  // genuinely mid-stream and not yet in the settled files map.
+  // Show the streaming <pre> whenever the active file is mid-stream.
+  // Self-heal still works: when files_complete arrives the stream status flips to
+  // "done", showStreamingPre becomes false, and Monaco takes over with final content.
   const activeStream = liveStreams[resolvedActive];
   const showStreamingPre =
-    !(resolvedActive in files) &&
     activeStream !== undefined &&
     activeStream.status === "streaming";
 
