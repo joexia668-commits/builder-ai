@@ -21,6 +21,7 @@ interface FileTreeCodeViewerProps {
   files: Record<string, string>;
   liveStreams?: Record<string, LiveFileStream>;
   engineerProgress?: EngineerProgress | null;
+  isGenerating?: boolean;
 }
 
 function inferLanguage(path: string): string {
@@ -162,7 +163,8 @@ function StreamingView({ content }: { content: string }) {
 export function FileTreeCodeViewer({
   files,
   liveStreams: liveStreamsProp,
-  engineerProgress,
+  engineerProgress: _engineerProgress,
+  isGenerating,
 }: FileTreeCodeViewerProps) {
   const liveStreams: Record<string, LiveFileStream> = liveStreamsProp ?? {};
 
@@ -221,11 +223,13 @@ export function FileTreeCodeViewer({
     });
   }
 
+  // Generating but no files streaming yet — show walking cat.
+  // Checked before tree rendering so it fires even when old files are present (feature_add).
+  if (isGenerating && Object.keys(liveStreams).length === 0) {
+    return <WalkingCat />;
+  }
+
   if (mergedPaths.length === 0) {
-    // Engineer is running but no files have started streaming yet — show walking cat
-    if (engineerProgress !== null && engineerProgress !== undefined) {
-      return <WalkingCat />;
-    }
     return (
       <div className="flex-1 flex items-center justify-center text-gray-400 text-sm bg-[#1e1e1e]">
         选择文件以查看代码

@@ -231,6 +231,7 @@ export function PreviewPanel({
             files={files}
             liveStreams={liveStreams}
             engineerProgress={engineerProgress}
+            isGenerating={isGenerating}
           />
         )}
 
