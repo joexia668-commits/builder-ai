@@ -48,6 +48,100 @@ BuilderAI 是一个 AI 驱动的代码生成平台。你描述想要什么，系
 
 ---
 
+## Project Structure
+
+```
+builder-ai/
+├── app/
+│   ├── page.tsx                      # 首页：项目列表 / Landing
+│   ├── api/
+│   │   ├── auth/                     # NextAuth + Guest 登录
+│   │   ├── generate/                 # SSE AI 生成（Edge Runtime）
+│   │   ├── messages/                 # 消息 CRUD
+│   │   ├── projects/                 # 项目 CRUD
+│   │   ├── versions/                 # 版本快照 + 回滚
+│   │   ├── user/preferences/         # 用户偏好
+│   │   ├── export/                   # ZIP 导出
+│   │   └── deploy/                   # Vercel 部署
+│   └── project/[id]/page.tsx         # 工作区页面
+│
+├── components/
+│   ├── agent/                        # AgentStatusBar、AgentCard、AgentMessage
+│   ├── preview/                      # PreviewPanel、FileTreeCodeViewer（含流式）、设备切换
+│   ├── timeline/                     # 版本时间线
+│   ├── workspace/                    # ChatArea（核心编排）、ChatInput、Workspace
+│   └── ui/                           # shadcn/ui（勿手动编辑）
+│
+├── lib/
+│   ├── intent-classifier.ts          # classifyIntent()：关键词路由
+│   ├── agent-context.ts              # 各路径上下文拼装
+│   ├── generate-prompts.ts           # Agent 系统提示词 + Snip 压缩
+│   ├── extract-code.ts               # 代码提取 + findMissingLocalImports()
+│   ├── engineer-circuit.ts           # 三级容错重试
+│   ├── engineer-stream-tap.ts        # SSE 流观测 tap：检测 FILE 边界，emit file_start/chunk/end 事件
+│   ├── coalesce-chunks.ts            # 合并同一文件的连续 file_chunk 事件（降低 SSE 频率）
+│   ├── generation-session.ts         # 跨组件 liveStreams 状态（模块级存储，非 useState）
+│   ├── topo-sort.ts                  # 拓扑排序分层
+│   ├── sandpack-config.ts            # Sandpack 配置 + 缺失模块 stub 注入
+│   ├── ai-providers.ts               # AIProvider 接口 + 三个 Provider 实现
+│   ├── version-files.ts              # 向后兼容版本读取
+│   ├── error-codes.ts                # ErrorCode 枚举与用户可见文案
+│   └── api-client.ts                 # fetchAPI / fetchSSE 统一抽象
+│
+├── __tests__/                        # Jest 单元 + 集成测试
+├── e2e/                              # Playwright E2E 测试
+└── prisma/schema.prisma              # 数据库 Schema
+```
+
+→ **[完整 API Routes](docs/examples/api-routes.md)**  
+→ **[Database Schema 详情](docs/examples/database-schema.md)**
+
+---
+
+## Multi-Agent Orchestration
+
+系统按意图将请求路由到不同编排路径：
+
+| 意图 | 触发条件 | Agent 路径 | 典型耗时 |
+|------|---------|-----------|---------|
+| `bug_fix` | "修复/bug/报错" 等关键词 | Engineer only | ~20s |
+| `style_change` | "颜色/样式/dark mode" 等关键词 | Engineer only | ~20s |
+| `new_project` | 无现有代码，或"重新做"关键词 | PM → Architect → Engineer × N | ~60s |
+| `feature_add` | 默认（有现有代码） | PM → Architect → Engineer × N（含 V1 上下文） | ~60s |
+
+全流程路径中，Engineer 按文件依赖关系**分层串行、层内并行**生成：同层文件并发调用 `/api/generate`，层间严格有序，每层完成后才进入下一层。
+
+内置三级容错：局部解析保留 → 仅失败文件重试（最多 2 次全层 + 2 次逐文件）→ 熔断（已完成文件正常渲染）。重试期间 UI 显示进度横幅，自适应 Prompt 仅请求失败文件并附加截断上下文。
+
+Architect scaffold 解析也有独立的抢救路径：当 JSON 被流超时截断时，`extractScaffoldFromTwoPhase` 会用括号匹配定位 `"files": [...]` 数组，逐元素识别已写完的 top-level 对象，合成出一个只含完整条目的部分 scaffold。即便 architect 输出在第 N 个文件的字符串中间被砍，前 N-1 个文件仍能进入 Engineer 层级路径。
+
+→ **[完整流程图、场景示例、容错详情](docs/examples/agent-orchestration.md)**
+
+---
+
+## Key Engineering Decisions
+
+| 决策 | 原因 |
+|------|------|
+| Sandpack 而非 WebContainer | Vercel Hobby 不支持 COOP/COEP 响应头，WebContainer 无法部署 |
+| 一次性渲染而非流式更新 Sandpack | 频繁 remount 产生闪烁，且会触发 ChunkLoadError（webpack chunk URL 解析为 undefined），稳定性优先 |
+| 提取层自动去重 `export default` | `feature_add` 合并时 Engineer 常复制原文件尾部的 re-export 行，导致双 default export 语法错误；在 `extractMultiFileCodePartial` 等提取函数中统一后处理，无需改 Prompt |
+| `normalizeExports` 用 `export { X }` 而非 `export { default as X }` | Sandpack 内置 Babel 不支持 `export { default as X }` 语法（"Unexpected keyword 'default'"），改为直接导出模块作用域内的标识符，语义等价且完全兼容 |
+| 版本只 INSERT 不 UPDATE | 最低代价实现完整时间线，零数据丢失 |
+| 多 Provider 工厂模式 | 统一接口，Gemini 限速时自动 fallback 到 Groq |
+| 拓扑排序分层并行 | 绕过单次请求 token 上限，最大化并发 |
+| Snip 上下文压缩 | 非直接依赖文件只注入 export 签名，大幅降低后期层的 prompt 长度 |
+| Composer-layer 阈值防御 | target 文件 direct deps > 5 时也把直接依赖压缩为 signatures。针对"单文件 composer 独占一层"引发的 prompt 爆炸失败（MainLayout/App.js 类），常规场景零改动 |
+| Architect 两阶段输出 | `<thinking>` 自由推理 + `<output>` 纯 JSON，避免 jsonMode 阻断思考链 |
+| Scaffold 尾部截断抢救 | Architect 输出被截断时，`extractScaffoldFromTwoPhase` 从不完整 JSON 里逐元素救回已写完的 files 条目。避免 chat-area 静默 fall-through 到 legacy 单文件 Engineer 形成级联失败 |
+| Prisma `$extends` 透明重试 | Supavisor 瞬态 drop socket 和冷启动 stale TCP 是 Vercel + Supabase 组合的已知脆弱点；client 层对 `Connection terminated/ECONNRESET` 类错误做指数退避重试（100→200→400ms），真正不可恢复的错误透传 |
+| 缺失模块三层防御 | 提示词限制 + 生成后检测 + Sandpack Proxy stub，防止幻觉导入白屏 |
+| SSE 流纯观测 tap | `createEngineerStreamTap()` 旁路监听 Engineer SSE 流，检测 `// === FILE: /path ===` 边界并 emit `file_start/file_chunk/file_end` 事件，完全不碰授权解析路径；SAFE_TAIL=256 防止标记头被 token 切割；服务端 80ms 限流；客户端 `liveStreams` 在 `files_complete` 到达时被授权数据覆盖（自愈）|
+| Guest 创建真实 User 记录 | 刷新后项目数据可持久化，固定 email 格式防重复创建 |
+| 向后兼容版本读取 | `getVersionFiles()` 统一封装新旧格式，UI 无感知历史数据差异 |
+
+---
+
 ## Quick Start
 
 **前置条件：** Node.js 18+、Supabase 项目、至少一个 AI API Key、GitHub OAuth App（可选）、Resend 账户（用于 Email Magic Link）
@@ -121,100 +215,6 @@ npm run dev          # → http://localhost:3000
 5. **重启项目**：`npm run dev`，点击登录页的"查看演示项目"按钮即可预览
 
 > 修改 `lib/` 下配置文件后用 `npm run dev:clean` 清除 webpack 缓存重启。
-
----
-
-## Multi-Agent Orchestration
-
-系统按意图将请求路由到不同编排路径：
-
-| 意图 | 触发条件 | Agent 路径 | 典型耗时 |
-|------|---------|-----------|---------|
-| `bug_fix` | "修复/bug/报错" 等关键词 | Engineer only | ~20s |
-| `style_change` | "颜色/样式/dark mode" 等关键词 | Engineer only | ~20s |
-| `new_project` | 无现有代码，或"重新做"关键词 | PM → Architect → Engineer × N | ~60s |
-| `feature_add` | 默认（有现有代码） | PM → Architect → Engineer × N（含 V1 上下文） | ~60s |
-
-全流程路径中，Engineer 按文件依赖关系**分层串行、层内并行**生成：同层文件并发调用 `/api/generate`，层间严格有序，每层完成后才进入下一层。
-
-内置三级容错：局部解析保留 → 仅失败文件重试（最多 2 次全层 + 2 次逐文件）→ 熔断（已完成文件正常渲染）。重试期间 UI 显示进度横幅，自适应 Prompt 仅请求失败文件并附加截断上下文。
-
-Architect scaffold 解析也有独立的抢救路径：当 JSON 被流超时截断时，`extractScaffoldFromTwoPhase` 会用括号匹配定位 `"files": [...]` 数组，逐元素识别已写完的 top-level 对象，合成出一个只含完整条目的部分 scaffold。即便 architect 输出在第 N 个文件的字符串中间被砍，前 N-1 个文件仍能进入 Engineer 层级路径。
-
-→ **[完整流程图、场景示例、容错详情](docs/examples/agent-orchestration.md)**
-
----
-
-## Project Structure
-
-```
-builder-ai/
-├── app/
-│   ├── page.tsx                      # 首页：项目列表 / Landing
-│   ├── api/
-│   │   ├── auth/                     # NextAuth + Guest 登录
-│   │   ├── generate/                 # SSE AI 生成（Edge Runtime）
-│   │   ├── messages/                 # 消息 CRUD
-│   │   ├── projects/                 # 项目 CRUD
-│   │   ├── versions/                 # 版本快照 + 回滚
-│   │   ├── user/preferences/         # 用户偏好
-│   │   ├── export/                   # ZIP 导出
-│   │   └── deploy/                   # Vercel 部署
-│   └── project/[id]/page.tsx         # 工作区页面
-│
-├── components/
-│   ├── agent/                        # AgentStatusBar、AgentCard、AgentMessage
-│   ├── preview/                      # PreviewPanel、FileTreeCodeViewer（含流式）、设备切换
-│   ├── timeline/                     # 版本时间线
-│   ├── workspace/                    # ChatArea（核心编排）、ChatInput、Workspace
-│   └── ui/                           # shadcn/ui（勿手动编辑）
-│
-├── lib/
-│   ├── intent-classifier.ts          # classifyIntent()：关键词路由
-│   ├── agent-context.ts              # 各路径上下文拼装
-│   ├── generate-prompts.ts           # Agent 系统提示词 + Snip 压缩
-│   ├── extract-code.ts               # 代码提取 + findMissingLocalImports()
-│   ├── engineer-circuit.ts           # 三级容错重试
-│   ├── engineer-stream-tap.ts        # SSE 流观测 tap：检测 FILE 边界，emit file_start/chunk/end 事件
-│   ├── coalesce-chunks.ts            # 合并同一文件的连续 file_chunk 事件（降低 SSE 频率）
-│   ├── generation-session.ts         # 跨组件 liveStreams 状态（模块级存储，非 useState）
-│   ├── topo-sort.ts                  # 拓扑排序分层
-│   ├── sandpack-config.ts            # Sandpack 配置 + 缺失模块 stub 注入
-│   ├── ai-providers.ts               # AIProvider 接口 + 三个 Provider 实现
-│   ├── version-files.ts              # 向后兼容版本读取
-│   ├── error-codes.ts                # ErrorCode 枚举与用户可见文案
-│   └── api-client.ts                 # fetchAPI / fetchSSE 统一抽象
-│
-├── __tests__/                        # Jest 单元 + 集成测试
-├── e2e/                              # Playwright E2E 测试
-└── prisma/schema.prisma              # 数据库 Schema
-```
-
-→ **[完整 API Routes](docs/examples/api-routes.md)**  
-→ **[Database Schema 详情](docs/examples/database-schema.md)**
-
----
-
-## Key Engineering Decisions
-
-| 决策 | 原因 |
-|------|------|
-| Sandpack 而非 WebContainer | Vercel Hobby 不支持 COOP/COEP 响应头，WebContainer 无法部署 |
-| 一次性渲染而非流式更新 Sandpack | 频繁 remount 产生闪烁，且会触发 ChunkLoadError（webpack chunk URL 解析为 undefined），稳定性优先 |
-| 提取层自动去重 `export default` | `feature_add` 合并时 Engineer 常复制原文件尾部的 re-export 行，导致双 default export 语法错误；在 `extractMultiFileCodePartial` 等提取函数中统一后处理，无需改 Prompt |
-| `normalizeExports` 用 `export { X }` 而非 `export { default as X }` | Sandpack 内置 Babel 不支持 `export { default as X }` 语法（"Unexpected keyword 'default'"），改为直接导出模块作用域内的标识符，语义等价且完全兼容 |
-| 版本只 INSERT 不 UPDATE | 最低代价实现完整时间线，零数据丢失 |
-| 多 Provider 工厂模式 | 统一接口，Gemini 限速时自动 fallback 到 Groq |
-| 拓扑排序分层并行 | 绕过单次请求 token 上限，最大化并发 |
-| Snip 上下文压缩 | 非直接依赖文件只注入 export 签名，大幅降低后期层的 prompt 长度 |
-| Composer-layer 阈值防御 | target 文件 direct deps > 5 时也把直接依赖压缩为 signatures。针对"单文件 composer 独占一层"引发的 prompt 爆炸失败（MainLayout/App.js 类），常规场景零改动 |
-| Architect 两阶段输出 | `<thinking>` 自由推理 + `<output>` 纯 JSON，避免 jsonMode 阻断思考链 |
-| Scaffold 尾部截断抢救 | Architect 输出被截断时，`extractScaffoldFromTwoPhase` 从不完整 JSON 里逐元素救回已写完的 files 条目。避免 chat-area 静默 fall-through 到 legacy 单文件 Engineer 形成级联失败 |
-| Prisma `$extends` 透明重试 | Supavisor 瞬态 drop socket 和冷启动 stale TCP 是 Vercel + Supabase 组合的已知脆弱点；client 层对 `Connection terminated/ECONNRESET` 类错误做指数退避重试（100→200→400ms），真正不可恢复的错误透传 |
-| 缺失模块三层防御 | 提示词限制 + 生成后检测 + Sandpack Proxy stub，防止幻觉导入白屏 |
-| SSE 流纯观测 tap | `createEngineerStreamTap()` 旁路监听 Engineer SSE 流，检测 `// === FILE: /path ===` 边界并 emit `file_start/file_chunk/file_end` 事件，完全不碰授权解析路径；SAFE_TAIL=256 防止标记头被 token 切割；服务端 80ms 限流；客户端 `liveStreams` 在 `files_complete` 到达时被授权数据覆盖（自愈）|
-| Guest 创建真实 User 记录 | 刷新后项目数据可持久化，固定 email 格式防重复创建 |
-| 向后兼容版本读取 | `getVersionFiles()` 统一封装新旧格式，UI 无感知历史数据差异 |
 
 ---
 
