@@ -202,6 +202,7 @@ builder-ai/
 | Sandpack 而非 WebContainer | Vercel Hobby 不支持 COOP/COEP 响应头，WebContainer 无法部署 |
 | 一次性渲染而非流式更新 Sandpack | 频繁 remount 产生闪烁，且会触发 ChunkLoadError（webpack chunk URL 解析为 undefined），稳定性优先 |
 | 提取层自动去重 `export default` | `feature_add` 合并时 Engineer 常复制原文件尾部的 re-export 行，导致双 default export 语法错误；在 `extractMultiFileCodePartial` 等提取函数中统一后处理，无需改 Prompt |
+| `normalizeExports` 用 `export { X }` 而非 `export { default as X }` | Sandpack 内置 Babel 不支持 `export { default as X }` 语法（"Unexpected keyword 'default'"），改为直接导出模块作用域内的标识符，语义等价且完全兼容 |
 | 版本只 INSERT 不 UPDATE | 最低代价实现完整时间线，零数据丢失 |
 | 多 Provider 工厂模式 | 统一接口，Gemini 限速时自动 fallback 到 Groq |
 | 拓扑排序分层并行 | 绕过单次请求 token 上限，最大化并发 |

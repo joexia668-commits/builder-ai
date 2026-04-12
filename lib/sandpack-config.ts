@@ -57,9 +57,12 @@ function normalizeExports(
     }
 
     // 3. Bidirectional normalization
-    // Default with a name but no matching named export → add named re-export
+    // Default with a name but no matching named export → add named re-export.
+    // Use `export { X }` rather than `export { default as X }` — the latter
+    // uses the `default` keyword inside export braces which older Babel configs
+    // (including Sandpack's) reject with "Unexpected keyword 'default'".
     if (defaultName && !namedSet.has(defaultName)) {
-      additions.push(`export { default as ${defaultName} };`);
+      additions.push(`export { ${defaultName} };`);
     }
     // Named exports exist but no default → promote first named to default
     if (!hasDefault && namedSet.size > 0) {

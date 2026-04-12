@@ -104,7 +104,7 @@ describe("normalizeExports (via buildSandpackConfig)", () => {
       "/Btn.jsx": `export default function Btn() { return <button />; }`,
     };
     const config = buildSandpackConfig(files, "proj-1");
-    expect(config.files["/Btn.jsx"].code).toContain("export { default as Btn }");
+    expect(config.files["/Btn.jsx"].code).toContain("export { Btn }");
   });
 
   it("adds default export when file has only a named export", () => {
@@ -132,7 +132,7 @@ describe("normalizeExports (via buildSandpackConfig)", () => {
       "/Btn.jsx": `const Btn = () => null;\nexport default Btn;`,
     };
     const config = buildSandpackConfig(files, "proj-1");
-    expect(config.files["/Btn.jsx"].code).toContain("export { default as Btn }");
+    expect(config.files["/Btn.jsx"].code).toContain("export { Btn }");
   });
 
   it("adds default using first named export when multiple named exports exist and no default", () => {
