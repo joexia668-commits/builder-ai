@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { buildFileTree } from "@/lib/file-tree";
 import type { TreeNode } from "@/lib/file-tree";
 import { useAutoScrollToBottom } from "@/hooks/use-auto-scroll-to-bottom";
+import { WalkingCat } from "@/components/preview/walking-cat";
 import type { LiveFileStream, EngineerProgress } from "@/lib/types";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
@@ -161,7 +162,7 @@ function StreamingView({ content }: { content: string }) {
 export function FileTreeCodeViewer({
   files,
   liveStreams: liveStreamsProp,
-  engineerProgress: _engineerProgress,
+  engineerProgress,
 }: FileTreeCodeViewerProps) {
   const liveStreams: Record<string, LiveFileStream> = liveStreamsProp ?? {};
 
@@ -221,6 +222,10 @@ export function FileTreeCodeViewer({
   }
 
   if (mergedPaths.length === 0) {
+    // Engineer is running but no files have started streaming yet — show walking cat
+    if (engineerProgress !== null && engineerProgress !== undefined) {
+      return <WalkingCat />;
+    }
     return (
       <div className="flex-1 flex items-center justify-center text-gray-400 text-sm bg-[#1e1e1e]">
         选择文件以查看代码
