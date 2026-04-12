@@ -163,10 +163,12 @@ function StreamingView({ content }: { content: string }) {
 export function FileTreeCodeViewer({
   files,
   liveStreams: liveStreamsProp,
-  engineerProgress: _engineerProgress,
   isGenerating,
 }: FileTreeCodeViewerProps) {
-  const liveStreams: Record<string, LiveFileStream> = liveStreamsProp ?? {};
+  const liveStreams: Record<string, LiveFileStream> = useMemo(
+    () => liveStreamsProp ?? {},
+    [liveStreamsProp]
+  );
 
   const mergedPaths = useMemo(() => {
     return Array.from(new Set([...Object.keys(files), ...Object.keys(liveStreams)]));
