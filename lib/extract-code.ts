@@ -91,6 +91,10 @@ export function isDelimitersBalanced(code: string): boolean {
  * Uses a character-level state machine mirroring stripComments().
  * Returns true if the code contains an unterminated literal — indicating
  * the LLM output was truncated mid-string or mid-comment.
+ *
+ * Note: template literal `${...}` expression nesting is not tracked — deeply
+ * nested backticks inside `${}` may produce false negatives in pathological cases.
+ * For LLM truncation detection (the primary use case), this is acceptable.
  */
 export function hasUnterminatedLiteral(code: string): boolean {
   let i = 0;
@@ -116,11 +120,11 @@ export function hasUnterminatedLiteral(code: string): boolean {
     if (ch === "'" || ch === '"') {
       const quote = ch;
       i++;
-      while (i < code.length && code[i] !== quote) {
+      while (i < code.length && code[i] !== quote && code[i] !== "\n") {
         if (code[i] === "\\") i++;
         i++;
       }
-      if (i >= code.length) return true;
+      if (i >= code.length || code[i] === "\n") return true;
       i++;
       continue;
     }

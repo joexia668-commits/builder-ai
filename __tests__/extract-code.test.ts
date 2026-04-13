@@ -493,4 +493,8 @@ describe("hasUnterminatedLiteral", () => {
   it("returns false for properly closed multi-line comment", () => {
     expect(hasUnterminatedLiteral("/* comment */ const x = 1;")).toBe(false);
   });
+
+  it("returns true for string truncated at newline (followed by more code)", () => {
+    expect(hasUnterminatedLiteral("import { X } from 'lucide\nconst foo = 'bar';")).toBe(true);
+  });
 });
