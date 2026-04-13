@@ -69,14 +69,20 @@ export function deduplicateDefaultExport(code: string): string {
   });
 }
 
-/** Check curly braces are balanced (open count === close count). */
-function isBracesBalanced(code: string): boolean {
-  let depth = 0;
+/** Check that all three delimiter pairs are balanced. */
+export function isDelimitersBalanced(code: string): boolean {
+  let braces = 0;
+  let parens = 0;
+  let brackets = 0;
   for (const ch of code) {
-    if (ch === "{") depth++;
-    else if (ch === "}") depth--;
+    if (ch === "{") braces++;
+    else if (ch === "}") braces--;
+    else if (ch === "(") parens++;
+    else if (ch === ")") parens--;
+    else if (ch === "[") brackets++;
+    else if (ch === "]") brackets--;
   }
-  return depth === 0;
+  return braces === 0 && parens === 0 && brackets === 0;
 }
 
 /**
@@ -88,7 +94,7 @@ function isBracesBalanced(code: string): boolean {
  */
 function isCodeComplete(code: string): boolean {
   if (!code.includes("export default")) return false;
-  return isBracesBalanced(code);
+  return isDelimitersBalanced(code);
 }
 
 /**
@@ -181,7 +187,7 @@ export function extractAnyMultiFileCode(
   const result: Record<string, string> = {};
   for (const [path, codeLines] of Object.entries(fileMap)) {
     const code = deduplicateDefaultExport(codeLines.join("\n").trim());
-    if (!isBracesBalanced(code)) return null;
+    if (!isDelimitersBalanced(code)) return null;
     result[path] = code;
   }
 
@@ -230,7 +236,7 @@ export function extractMultiFileCode(
 
     const code = deduplicateDefaultExport(codeLines.join("\n").trim());
     // For multi-file: only check brace balance (individual files don't need export default)
-    if (!isBracesBalanced(code)) return null;
+    if (!isDelimitersBalanced(code)) return null;
 
     result[path] = code;
   }
@@ -280,7 +286,7 @@ export function extractMultiFileCodePartial(
       continue;
     }
     const code = deduplicateDefaultExport(codeLines.join("\n").trim());
-    if (!isBracesBalanced(code)) {
+    if (!isDelimitersBalanced(code)) {
       failed.push(path);
       continue;
     }

@@ -5,7 +5,7 @@
  * This utility handles the fallback case where fences slip through.
  */
 
-import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport } from "@/lib/extract-code";
+import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced } from "@/lib/extract-code";
 
 describe("extractReactCode", () => {
   it("extracts code from ```jsx fences", () => {
@@ -428,5 +428,31 @@ describe("deduplicateDefaultExport", () => {
   it("returns code unchanged when no default export present", () => {
     const code = "export function foo() {}";
     expect(deduplicateDefaultExport(code)).toBe(code);
+  });
+});
+
+describe("isDelimitersBalanced", () => {
+  it("returns true when all three delimiter pairs are balanced", () => {
+    expect(isDelimitersBalanced("fn([{x: 1}])")).toBe(true);
+  });
+
+  it("returns true for code with no delimiters", () => {
+    expect(isDelimitersBalanced("const x = 1")).toBe(true);
+  });
+
+  it("returns false for unbalanced braces", () => {
+    expect(isDelimitersBalanced("function App() { return 1;")).toBe(false);
+  });
+
+  it("returns false for unbalanced parens", () => {
+    expect(isDelimitersBalanced("function App(")).toBe(false);
+  });
+
+  it("returns false for unbalanced brackets", () => {
+    expect(isDelimitersBalanced("const arr = [1, 2,")).toBe(false);
+  });
+
+  it("returns false when only parens are unbalanced but braces are balanced", () => {
+    expect(isDelimitersBalanced("export default function App() { return foo(1, 2; }")).toBe(false);
   });
 });
