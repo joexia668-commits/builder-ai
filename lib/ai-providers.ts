@@ -18,8 +18,8 @@ export interface AIProvider {
 }
 
 // Per-agent stream timeout: bail out cleanly rather than burning the full 300s
-// Vercel maxDuration. 90s is generous for even the slowest model responses.
-const STREAM_TIMEOUT_MS = 90_000;
+// Vercel maxDuration. DeepSeek can be slow on large files; 150s gives headroom.
+const STREAM_TIMEOUT_MS = 150_000;
 
 // ── Rate-limit retry helpers ───────────────────────────────────────────────
 
