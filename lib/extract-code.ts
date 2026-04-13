@@ -87,6 +87,62 @@ export function isDelimitersBalanced(code: string): boolean {
 }
 
 /**
+ * Detect unclosed string literals (' " `) or unclosed multi-line comments.
+ * Uses a character-level state machine mirroring stripComments().
+ * Returns true if the code contains an unterminated literal — indicating
+ * the LLM output was truncated mid-string or mid-comment.
+ */
+export function hasUnterminatedLiteral(code: string): boolean {
+  let i = 0;
+  while (i < code.length) {
+    const ch = code[i];
+
+    // Single-line comment — skip to end of line
+    if (ch === "/" && code[i + 1] === "/") {
+      while (i < code.length && code[i] !== "\n") i++;
+      continue;
+    }
+
+    // Multi-line comment — skip to */
+    if (ch === "/" && code[i + 1] === "*") {
+      i += 2;
+      while (i < code.length && !(code[i] === "*" && code[i + 1] === "/")) i++;
+      if (i >= code.length) return true;
+      i += 2;
+      continue;
+    }
+
+    // Single/double-quoted string
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      i++;
+      while (i < code.length && code[i] !== quote) {
+        if (code[i] === "\\") i++;
+        i++;
+      }
+      if (i >= code.length) return true;
+      i++;
+      continue;
+    }
+
+    // Template literal
+    if (ch === "`") {
+      i++;
+      while (i < code.length && code[i] !== "`") {
+        if (code[i] === "\\") i++;
+        i++;
+      }
+      if (i >= code.length) return true;
+      i++;
+      continue;
+    }
+
+    i++;
+  }
+  return false;
+}
+
+/**
  * Check whether extracted code is structurally complete:
  *   1. Contains `export default` (present naturally or appended by caller)
  *   2. All delimiter pairs are balanced — `{}` `()` `[]` open count === close count

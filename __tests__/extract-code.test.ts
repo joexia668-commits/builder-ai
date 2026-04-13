@@ -5,7 +5,7 @@
  * This utility handles the fallback case where fences slip through.
  */
 
-import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced } from "@/lib/extract-code";
+import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced, hasUnterminatedLiteral } from "@/lib/extract-code";
 
 describe("extractReactCode", () => {
   it("extracts code from ```jsx fences", () => {
@@ -458,5 +458,39 @@ describe("isDelimitersBalanced", () => {
 
   it("returns false when close appears before matching open", () => {
     expect(isDelimitersBalanced(")(")).toBe(false);
+  });
+});
+
+describe("hasUnterminatedLiteral", () => {
+  it("returns false for normal code with closed strings", () => {
+    expect(hasUnterminatedLiteral("import { X } from 'react';\nconst y = \"ok\";")).toBe(false);
+  });
+
+  it("returns true for unterminated single-quoted string", () => {
+    expect(hasUnterminatedLiteral("import { X } from 'lucide")).toBe(true);
+  });
+
+  it("returns true for unterminated double-quoted string", () => {
+    expect(hasUnterminatedLiteral('import { X } from "lucide')).toBe(true);
+  });
+
+  it("returns true for unterminated template literal", () => {
+    expect(hasUnterminatedLiteral("const x = `hello ${")).toBe(true);
+  });
+
+  it("returns false for escaped quote inside string", () => {
+    expect(hasUnterminatedLiteral("const x = 'it\\'s fine';")).toBe(false);
+  });
+
+  it("returns false for quote inside single-line comment", () => {
+    expect(hasUnterminatedLiteral("// don't touch\nconst x = 1;")).toBe(false);
+  });
+
+  it("returns true for unterminated multi-line comment", () => {
+    expect(hasUnterminatedLiteral("/* TODO: fix this")).toBe(true);
+  });
+
+  it("returns false for properly closed multi-line comment", () => {
+    expect(hasUnterminatedLiteral("/* comment */ const x = 1;")).toBe(false);
   });
 });
