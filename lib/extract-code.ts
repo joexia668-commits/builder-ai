@@ -307,8 +307,8 @@ export function extractMultiFileCode(
 
 /**
  * Parse multi-file engineer output and return a partial-salvage result:
- *   - ok:   files that are present AND have balanced braces
- *   - failed: expected files that are missing OR brace-unbalanced
+ *   - ok:   files that are present, have balanced delimiters, and no unterminated literals
+ *   - failed: expected files that are missing, delimiter-unbalanced, or have unterminated literals
  *   - truncatedTail: last ~200 chars of raw input when any file failed, else null
  *
  * Unlike extractMultiFileCode (which returns null on any failure), this keeps
