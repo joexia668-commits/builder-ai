@@ -1001,7 +1001,9 @@ export function ChatArea({
         fetchAPI(`/api/projects/${project.id}`, {
           method: "PATCH",
           body: JSON.stringify({ iterationContext: updated }),
-        }).catch(() => {});
+        }).catch((err: unknown) => {
+          console.error("[iterationContext] PATCH failed — context may lag DB:", err);
+        });
       }
     } catch (err) {
       const isAbort =
