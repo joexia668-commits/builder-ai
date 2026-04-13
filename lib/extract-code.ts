@@ -1,4 +1,4 @@
-import type { PartialExtractResult } from "@/lib/types";
+import type { PartialExtractResult, ImportExportMismatch } from "@/lib/types";
 
 /**
  * Strip single-line (//) and multi-line (/* *\/) comments from code,
@@ -521,4 +521,44 @@ export function extractFileImports(
   }
 
   return Array.from(byPath.entries()).map(([path, v]) => ({ path, ...v }));
+}
+
+/**
+ * Cross-file import/export consistency check.
+ *
+ * For every file in `files`, scans its local imports and verifies that
+ * the target file actually exports what is being imported (named or default).
+ *
+ * Files that are missing entirely from `files` are skipped — they are
+ * already handled by findMissingLocalImports / findMissingLocalImportsWithNames.
+ *
+ * Returns one ImportExportMismatch per (importer, exporter) pair that has
+ * at least one missing named export or a missing default export.
+ */
+export function checkImportExportConsistency(
+  files: Readonly<Record<string, string>>
+): ImportExportMismatch[] {
+  const mismatches: ImportExportMismatch[] = [];
+
+  for (const [importerPath, code] of Object.entries(files)) {
+    for (const imp of extractFileImports(code)) {
+      const targetCode = files[imp.path];
+      if (targetCode === undefined) continue; // missing file handled elsewhere
+
+      const exports = extractFileExports(targetCode);
+      const missingNamed = imp.named.filter((n) => !exports.named.has(n));
+      const missingDefault = imp.hasDefault && !exports.hasDefault;
+
+      if (missingNamed.length > 0 || missingDefault) {
+        mismatches.push({
+          importerPath,
+          exporterPath: imp.path,
+          missingNamed,
+          missingDefault,
+        });
+      }
+    }
+  }
+
+  return mismatches;
 }

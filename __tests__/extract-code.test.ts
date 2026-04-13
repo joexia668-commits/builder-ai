@@ -5,7 +5,7 @@
  * This utility handles the fallback case where fences slip through.
  */
 
-import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced, hasUnterminatedLiteral, extractFileExports, extractFileImports } from "@/lib/extract-code";
+import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced, hasUnterminatedLiteral, extractFileExports, extractFileImports, checkImportExportConsistency } from "@/lib/extract-code";
 
 describe("extractReactCode", () => {
   it("extracts code from ```jsx fences", () => {
@@ -655,5 +655,67 @@ describe("extractFileImports", () => {
     const paths = result.map((r) => r.path);
     expect(paths).toContain("/a.js");
     expect(paths).toContain("/b.js");
+  });
+});
+
+describe("checkImportExportConsistency", () => {
+  it("returns empty array when all imports match exports", () => {
+    const files = {
+      "/App.js":
+        "import { Button } from '/Button.js'; export default function App() {}",
+      "/Button.js": "export function Button() {}\nexport default Button;",
+    };
+    expect(checkImportExportConsistency(files)).toHaveLength(0);
+  });
+
+  it("detects named import with no matching named export", () => {
+    const files = {
+      "/App.js": "import { Button } from '/Button.js';",
+      "/Button.js": "export default function Button() {}",
+    };
+    const result = checkImportExportConsistency(files);
+    expect(result).toHaveLength(1);
+    expect(result[0].importerPath).toBe("/App.js");
+    expect(result[0].exporterPath).toBe("/Button.js");
+    expect(result[0].missingNamed).toContain("Button");
+    expect(result[0].missingDefault).toBe(false);
+  });
+
+  it("detects default import with no matching default export", () => {
+    const files = {
+      "/App.js": "import Layout from '/Layout.js';",
+      "/Layout.js": "export function Layout() {}",
+    };
+    const result = checkImportExportConsistency(files);
+    expect(result).toHaveLength(1);
+    expect(result[0].missingDefault).toBe(true);
+    expect(result[0].missingNamed).toHaveLength(0);
+  });
+
+  it("skips files missing from the files map (handled by findMissingLocalImports)", () => {
+    const files = {
+      "/App.js": "import { Foo } from '/Missing.js';",
+    };
+    expect(checkImportExportConsistency(files)).toHaveLength(0);
+  });
+
+  it("returns multiple mismatches across different file pairs", () => {
+    const files = {
+      "/A.js": "import { X } from '/B.js';",
+      "/B.js": "export default function X() {}",
+      "/C.js": "import Y from '/D.js';",
+      "/D.js": "export function Y() {}",
+    };
+    const result = checkImportExportConsistency(files);
+    expect(result).toHaveLength(2);
+  });
+
+  it("does not report mismatches for external packages", () => {
+    const files = {
+      "/App.js":
+        "import React from 'react'; import { useState } from 'react'; import { X } from '/X.js';",
+      "/X.js": "export function X() {}\nexport default X;",
+    };
+    expect(checkImportExportConsistency(files)).toHaveLength(0);
   });
 });
