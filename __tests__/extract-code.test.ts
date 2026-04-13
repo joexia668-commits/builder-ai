@@ -455,4 +455,8 @@ describe("isDelimitersBalanced", () => {
   it("returns false when only parens are unbalanced but braces are balanced", () => {
     expect(isDelimitersBalanced("export default function App() { return foo(1, 2; }")).toBe(false);
   });
+
+  it("returns false when close appears before matching open", () => {
+    expect(isDelimitersBalanced(")(")).toBe(false);
+  });
 });

@@ -81,6 +81,7 @@ export function isDelimitersBalanced(code: string): boolean {
     else if (ch === ")") parens--;
     else if (ch === "[") brackets++;
     else if (ch === "]") brackets--;
+    if (braces < 0 || parens < 0 || brackets < 0) return false;
   }
   return braces === 0 && parens === 0 && brackets === 0;
 }
@@ -88,7 +89,7 @@ export function isDelimitersBalanced(code: string): boolean {
 /**
  * Check whether extracted code is structurally complete:
  *   1. Contains `export default` (present naturally or appended by caller)
- *   2. Curly braces are balanced — open count === close count
+ *   2. All delimiter pairs are balanced — `{}` `()` `[]` open count === close count
  *
  * Returns false when the LLM output was truncated mid-generation.
  */
@@ -235,7 +236,7 @@ export function extractMultiFileCode(
     if (!codeLines) return null;
 
     const code = deduplicateDefaultExport(codeLines.join("\n").trim());
-    // For multi-file: only check brace balance (individual files don't need export default)
+    // For multi-file: check all delimiter balance (individual files don't need export default)
     if (!isDelimitersBalanced(code)) return null;
 
     result[path] = code;
