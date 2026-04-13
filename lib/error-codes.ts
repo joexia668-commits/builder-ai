@@ -39,6 +39,11 @@ export const ERROR_DISPLAY: Record<ErrorCode, ErrorDisplay> = {
     title: "部分模块未生成",
     description: "AI 生成的代码引用了未创建的文件，预览已用占位符替代，建议重新生成",
   },
+  scaffold_warning: {
+    icon: "🔧",
+    title: "脚手架已自动修正",
+    description: "检测到依赖问题并已自动修复，生成将继续",
+  },
   unknown: {
     icon: "❌",
     title: "生成失败",

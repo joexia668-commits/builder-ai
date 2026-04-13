@@ -108,6 +108,7 @@ export type ErrorCode =
   | "generation_timeout"
   | "parse_failed"
   | "missing_imports"
+  | "scaffold_warning"
   | "unknown";
 
 export interface SSEEvent {
@@ -198,6 +199,11 @@ export interface ScaffoldData {
   readonly files: readonly ScaffoldFile[];
   readonly sharedTypes: string;
   readonly designNotes: string;
+}
+
+export interface ScaffoldValidationResult {
+  readonly scaffold: ScaffoldData;
+  readonly warnings: readonly string[];
 }
 
 // Engineer multi-file generation progress
