@@ -153,6 +153,7 @@ export interface RequestResult {
 export type AttemptReason =
   | "initial"
   | "parse_failed"
+  | "string_truncated"
   | "http_error"
   | "per_file_fallback";
 

@@ -654,7 +654,7 @@ export function ChatArea({
                       meta.attempt > 1
                         ? {
                             attempt: meta.attempt,
-                            reason: "parse_failed",
+                            reason: "string_truncated",
                             priorTail: lastTruncatedTail,
                           }
                         : undefined,

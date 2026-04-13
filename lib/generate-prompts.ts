@@ -254,7 +254,7 @@ export function getMultiFileEngineerPrompt(input: MultiFileEngineerPromptInput):
 1. 只输出下列 ${targetFiles.length} 个文件，其它已生成完毕，不要重复输出
 2. 省略所有注释、示例代码、解释性文本
 3. 每个文件必须以完整的 // === FILE: /path === 块开始
-4. 最后一个文件的大括号必须平衡
+4. 确保所有字符串闭合、所有括号/方括号/花括号配对、注释块完整
 5. 不要输出 markdown 说明文字${retryHint.priorTail ? `
 
 上一次输出末尾片段（供判断截断位置）：
