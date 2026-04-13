@@ -64,9 +64,9 @@ ChatArea
   │           └── files_complete  →  merge with V1  →  onFilesGenerated(mergedFiles)
   │
   └─ FULL PIPELINE  (new_project | feature_add)
-      └── POST /api/generate  { agent: "pm", prompt, context?: buildPmIterationContext(lastPmOutput) }
+      └── POST /api/generate  { agent: "pm", prompt, context?: buildPmHistoryContext(rounds) }
             └── JSON PmOutput  →  extractPmOutput()  →  onPmOutputGenerated(parsedPm)
-      └── POST /api/generate  { agent: "architect", context: pmOutput }
+      └── POST /api/generate  { agent: "architect", context: resolveArchContext(rounds, pmOutput) }
             └── <thinking>推理</thinking><output>JSON ScaffoldData</output>  →  extractScaffoldFromTwoPhase()  →  validateScaffold()  →  topologicalSort()  →  layers[][]
       └── for each layer (sequential):
             runLayerWithFallback(layerFiles, requestFn, signal, onAttempt)
@@ -94,17 +94,18 @@ The AbortController ref is replaced at the start of each generation; calling `ab
 | Intent | Trigger | Pipeline |
 |--------|---------|----------|
 | `new_project` | no existing code, or "重新做/start over" keywords | Full PM → Architect → Engineer |
-| `feature_add` | default when code exists | Full pipeline + V1 code injected into Engineer, PM sees `lastPmOutput` summary |
+| `feature_add` | default when code exists | Full pipeline + V1 code injected into Engineer, PM sees multi-round history, Architect sees last arch decisions |
 | `bug_fix` | "修复/bug/报错/没有反应…" keywords | Direct to Engineer only |
 | `style_change` | "颜色/样式/dark mode/UI…" keywords | Direct to Engineer only |
 
 Context injected per path:
-- **PM** (`feature_add`): `buildPmIterationContext(lastPmOutput)` — structured feature summary so PM writes a delta PRD instead of a full-rebuild PRD
+- **PM** (`feature_add`): `buildPmHistoryContext(rounds)` — formats up to 5 past rounds (userPrompt, intent summary, pmSummary, archDecisions) so PM writes a delta PRD
+- **Architect** (full pipeline): `resolveArchContext(rounds, pmOutput)` — finds last round with non-null `archDecisions`, prepends arch summary (file count, component tree, state strategy, key decisions) to PM output so Architect modifies incrementally
 - **Engineer** (`feature_add`): `existingFiles: currentFiles` appended to `getMultiFileEngineerPrompt` as `// === EXISTING FILE: /path ===` blocks
 - **Engineer** (direct, single-file V1): `buildDirectEngineerContext` with `<source file="…">` XML tags
 - **Engineer** (direct, multi-file V1): `buildDirectMultiFileEngineerContext` with `targetFiles` = V1 paths → `extractMultiFileCode` on server
 
-`lastPmOutput` and `currentFiles` are held in `Workspace` state and passed down to `ChatArea` as props.
+`iterationContext` is loaded from `Project.iterationContext` (Json? column, FIFO max 5 rounds) at page load and held in `Workspace` state. After each generation (both direct and full pipeline), a new `IterationRound` is appended and fire-and-forget PATCHed to `/api/projects/[id]`. `extractArchDecisions(scaffold)` deterministically extracts `ArchDecisions` from `ScaffoldData` without an extra LLM call.
 
 ### Model selection priority chain
 
@@ -129,7 +130,7 @@ No global store. State lives in hooks and components:
 - `ChatArea` — orchestrates the full multi-phase generation (PM → Architect → layered Engineer), holds `AgentState[]`, `isGenerating`, `engineerProgress`, abort logic; replaced `useAgentStream` hook
 - `useVersions` — version list, selected version for timeline preview, restore action
 - `useProject` — single project data fetch + optimistic preferredModel update
-- `Workspace` — holds `currentFiles: Record<string, string>` (replaces the old `currentCode: string`)
+- `Workspace` — holds `currentFiles: Record<string, string>` and `iterationContext: IterationContext | null` (loaded from project DB row, passed to ChatArea)
 
 ### SSE event protocol
 
@@ -162,9 +163,10 @@ Versions are **immutable INSERT-only**. New versions store `files: Record<string
 
 | File | Why |
 |------|-----|
-| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `ScaffoldValidationResult`, `EngineerProgress` (incl. `retryInfo`), `PmOutput`, `ArchOutput`, `PartialExtractResult`, `RequestMeta`, `RequestResult`, `AttemptInfo` |
+| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `ScaffoldValidationResult`, `EngineerProgress` (incl. `retryInfo`), `PmOutput`, `ArchOutput`, `PartialExtractResult`, `RequestMeta`, `RequestResult`, `AttemptInfo`, `IterationContext`, `IterationRound`, `ArchDecisions` |
 | `lib/intent-classifier.ts` | `classifyIntent(prompt, hasExistingCode)` — keyword router that selects pipeline path |
-| `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildEngineerContextFromStructured`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildPmIterationContext` |
+| `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildEngineerContextFromStructured`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildPmHistoryContext`, `buildArchIterationContext` |
+| `lib/extract-arch-decisions.ts` | `extractArchDecisions(scaffold)` — deterministic extraction of `ArchDecisions` from `ScaffoldData` (no LLM call) |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
 | `lib/model-registry.ts` | `MODEL_REGISTRY`, `getModelById`, `getAvailableModels`, `isValidModelId` |
 | `lib/extract-json.ts` | `extractPmOutput`, `extractScaffold`, `extractScaffoldFromTwoPhase` — JSON parsing; two-phase extracts from `<output>` block with fallback |
