@@ -47,7 +47,7 @@ export function createEngineerStreamTap(): EngineerStreamTap {
         if (currentPath) {
           events.push({ type: "file_end", path: currentPath });
         }
-        currentPath = match[1];
+        currentPath = match[1].trim();
         events.push({ type: "file_start", path: currentPath });
         buffer = buffer.slice(match.index + match[0].length);
       }

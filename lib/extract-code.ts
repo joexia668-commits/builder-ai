@@ -248,7 +248,7 @@ function extractAnyMultiFileCodeByMarker(
   for (const line of lines) {
     const match = line.match(marker);
     if (match) {
-      currentPath = match[1];
+      currentPath = match[1].trim();
       fileMap[currentPath] = [];
     } else if (currentPath !== null) {
       fileMap[currentPath].push(line);
@@ -326,7 +326,7 @@ export function extractMultiFileCode(
   for (const line of lines) {
     const match = line.match(marker);
     if (match) {
-      currentPath = match[1];
+      currentPath = match[1].trim();
       fileMap[currentPath] = [];
     } else if (currentPath !== null) {
       fileMap[currentPath].push(line);
@@ -374,7 +374,7 @@ export function extractMultiFileCodePartial(
   for (const line of lines) {
     const match = line.match(marker);
     if (match) {
-      currentPath = match[1];
+      currentPath = match[1].trim();
       fileMap[currentPath] = [];
     } else if (currentPath !== null) {
       fileMap[currentPath].push(line);
