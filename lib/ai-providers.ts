@@ -72,7 +72,7 @@ export class GeminiProvider implements AIProvider {
     const model = genAI.getGenerativeModel({
       model: this.providerModel,
       generationConfig: {
-        maxOutputTokens: this.maxOutputTokens,
+        maxOutputTokens: options?.maxOutputTokens ?? this.maxOutputTokens,
         ...(options?.jsonMode ? { responseMimeType: "application/json" } : {}),
       },
     });
@@ -143,7 +143,7 @@ export class DeepSeekProvider implements AIProvider {
         model: this.providerModel,
         messages,
         stream: true,
-        max_tokens: this.maxOutputTokens,
+        max_tokens: options?.maxOutputTokens ?? this.maxOutputTokens,
         ...(options?.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
       }, { signal: abortController.signal });
 
@@ -195,7 +195,7 @@ export class GroqProvider implements AIProvider {
         model: this.providerModel,
         messages,
         stream: true,
-        max_tokens: this.maxOutputTokens,
+        max_tokens: options?.maxOutputTokens ?? this.maxOutputTokens,
         ...(options?.jsonMode ? { response_format: { type: "json_object" as const } } : {}),
       }, { signal: abortController.signal });
 

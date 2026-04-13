@@ -33,7 +33,7 @@ export function createHandler(deps: GenerateDeps) {
     }
 
     const body = await req.json();
-    const { agent, prompt, context, projectId, modelId, targetFiles, partialMultiFile } =
+    const { agent, prompt, context, projectId, modelId, targetFiles, partialMultiFile, triageMode } =
       body as {
         projectId: string;
         prompt: string;
@@ -41,6 +41,7 @@ export function createHandler(deps: GenerateDeps) {
         context?: string;
         modelId?: string;
         partialMultiFile?: boolean;
+        triageMode?: boolean;
         targetFiles?: Array<{
           path: string;
           description: string;
@@ -113,7 +114,11 @@ export function createHandler(deps: GenerateDeps) {
           // PM outputs bare JSON — enable JSON mode. Architect uses two-phase <thinking>/<output>
           // format, so JSON mode must be OFF to allow the thinking block to appear.
           const completionOptions: CompletionOptions =
-            agent === "pm" ? { jsonMode: true } : {};
+            triageMode
+              ? { jsonMode: true, maxOutputTokens: 512 }
+              : agent === "pm"
+                ? { jsonMode: true }
+                : {};
 
           try {
             await provider.streamCompletion(messages, onChunk, completionOptions);
@@ -153,7 +158,7 @@ export function createHandler(deps: GenerateDeps) {
             flushTapPending();
           }
 
-          if (agent === "engineer") {
+          if (agent === "engineer" && !triageMode) {
             if (partialMultiFile) {
               // Direct bug-fix / style-change path: LLM only emits modified files.
               // Extract whatever FILE blocks are present; caller merges with existing files.

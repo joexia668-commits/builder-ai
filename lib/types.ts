@@ -196,6 +196,7 @@ export interface ArchOutput {
 // Options passed to AIProvider.streamCompletion
 export interface CompletionOptions {
   readonly jsonMode?: boolean;
+  readonly maxOutputTokens?: number;
 }
 
 // Intent of a user's follow-up prompt — drives pipeline routing
