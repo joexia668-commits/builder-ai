@@ -1,4 +1,4 @@
-import type { PartialExtractResult, ImportExportMismatch } from "@/lib/types";
+import type { PartialExtractResult, ImportExportMismatch, DisallowedImport } from "@/lib/types";
 
 /**
  * Strip single-line (//) and multi-line (/* *\/) comments from code,
@@ -566,4 +566,38 @@ export function checkImportExportConsistency(
   }
 
   return mismatches;
+}
+
+// Packages the Sandpack environment provides. Everything else is disallowed.
+const ALLOWED_EXTERNAL_PACKAGES = new Set(["react", "react-dom", "lucide-react"]);
+
+/**
+ * Scan generated files for imports of external packages not available in Sandpack.
+ * Skips local paths (starting with '/' or '.') and `import type` declarations.
+ *
+ * Returns one entry per (file, package) violation found.
+ */
+export function checkDisallowedImports(
+  files: Readonly<Record<string, string>>
+): DisallowedImport[] {
+  const violations: DisallowedImport[] = [];
+
+  for (const [filePath, code] of Object.entries(files)) {
+    // Match: import ... from 'pkg' — external packages only (no leading / or .)
+    const importRe =
+      /\bimport\s+(?!type\b)[^'"]*from\s+['"]([^./'"'][^'"]*)['"]/g;
+    let m: RegExpExecArray | null;
+    while ((m = importRe.exec(code)) !== null) {
+      const fullPkg = m[1];
+      // Resolve base package name (scoped: @scope/pkg → @scope/pkg; else first segment)
+      const basePkg = fullPkg.startsWith("@")
+        ? fullPkg.split("/").slice(0, 2).join("/")
+        : fullPkg.split("/")[0];
+      if (!ALLOWED_EXTERNAL_PACKAGES.has(basePkg)) {
+        violations.push({ filePath, packageName: fullPkg });
+      }
+    }
+  }
+
+  return violations;
 }

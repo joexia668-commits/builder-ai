@@ -1,4 +1,4 @@
-import type { AgentRole, AttemptReason, ScaffoldFile, ImportExportMismatch } from "@/lib/types";
+import type { AgentRole, AttemptReason, ScaffoldFile, ImportExportMismatch, DisallowedImport } from "@/lib/types";
 
 export function getSystemPrompt(agent: AgentRole, projectId: string): string {
   const prompts: Record<AgentRole, string> = {
@@ -481,6 +481,59 @@ ${contextEntries}
 3. 每个组件文件同时提供具名导出和默认导出，避免未来不一致：
    export function ComponentName(props) { ... }
    export default ComponentName;
+
+输出格式（严格遵守）：
+- 每个文件以分隔符开头：// === FILE: /path ===
+- 紧接着是该文件的完整代码
+- 不得包含 \`\`\`jsx、\`\`\`js、\`\`\` 等 Markdown 代码围栏
+- 不输出任何解释性文字，代码即全部内容`;
+}
+
+/**
+ * Build a prompt for the engineer to fix files that import disallowed external packages.
+ *
+ * @param filePaths  - Paths of files to regenerate
+ * @param allFiles   - All generated files (for context)
+ * @param violations - List of detected disallowed imports
+ * @param projectId  - Sandpack project ID for the Supabase appId binding
+ */
+export function buildDisallowedImportsEngineerPrompt(
+  filePaths: string[],
+  allFiles: Readonly<Record<string, string>>,
+  violations: DisallowedImport[],
+  projectId: string
+): string {
+  const violationDesc = violations
+    .map((v) => `- ${v.filePath} 使用了不支持的包 '${v.packageName}'`)
+    .join("\n");
+
+  const fileBlocks = filePaths
+    .filter((p) => allFiles[p])
+    .map((p) => `// === EXISTING FILE: ${p} ===\n${allFiles[p]}`)
+    .join("\n\n");
+
+  return `以下文件引用了 Sandpack 沙箱环境中不存在的外部包，请重新生成并修复：
+
+违规详情：
+${violationDesc}
+
+【允许的外部依赖（仅限这些）】
+- react / react-dom
+- lucide-react（图标）
+- /supabaseClient.js（数据库，使用 DynamicAppData 表，appId 固定为 '${projectId}'）
+
+【常见替换方案】
+- react-router-dom → 用 useState 控制当前视图：
+  const [view, setView] = useState('home')
+  {view === 'home' && <HomeView onNavigate={setView} />}
+  {view === 'form' && <FormView onNavigate={setView} />}
+- axios / fetch 库 → 原生 fetch API
+- date-fns / moment → 原生 Date 对象
+- recharts / chart.js → 纯 CSS 或 SVG 绘制
+
+请重新生成这些文件，移除所有不支持包的引用：
+
+${fileBlocks}
 
 输出格式（严格遵守）：
 - 每个文件以分隔符开头：// === FILE: /path ===

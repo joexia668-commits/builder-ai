@@ -16,7 +16,7 @@ import { topologicalSort } from "@/lib/topo-sort";
 import { validateScaffold } from "@/lib/validate-scaffold";
 import { extractPmOutput, extractScaffoldFromTwoPhase } from "@/lib/extract-json";
 import { runLayerWithFallback } from "@/lib/engineer-circuit";
-import { getMultiFileEngineerPrompt, buildMissingFileEngineerPrompt, buildMismatchedFilesEngineerPrompt } from "@/lib/generate-prompts";
+import { getMultiFileEngineerPrompt, buildMissingFileEngineerPrompt, buildMismatchedFilesEngineerPrompt, buildDisallowedImportsEngineerPrompt } from "@/lib/generate-prompts";
 import {
   buildEngineerContext,
   buildEngineerContextFromStructured,
@@ -27,7 +27,7 @@ import {
 } from "@/lib/agent-context";
 import { extractArchDecisions } from "@/lib/extract-arch-decisions";
 import { classifyIntent } from "@/lib/intent-classifier";
-import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency } from "@/lib/extract-code";
+import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency, checkDisallowedImports } from "@/lib/extract-code";
 import { ERROR_DISPLAY } from "@/lib/error-codes";
 import type { ErrorCode } from "@/lib/types";
 import type {
@@ -887,6 +887,47 @@ export function ChatArea({
                       const fixSSE = await readEngineerSSE(
                         fixResponse.body,
                         "engineer:fix-imports"
+                      );
+                      Object.assign(allCompletedFiles, fixSSE.files);
+                    }
+                  } catch {
+                    // Fix failed — fall through to Sandpack with current files
+                  }
+                  updateAgentState("engineer", { status: "done", output: summaryOutput });
+                }
+              }
+              // Check for disallowed external package imports and retry affected files (≤ MAX_PATCH_FILES)
+              const pkgViolations = checkDisallowedImports(allCompletedFiles);
+              if (pkgViolations.length > 0) {
+                const violatedPaths = [...new Set(pkgViolations.map((v) => v.filePath))];
+                if (violatedPaths.length <= MAX_PATCH_FILES) {
+                  updateAgentState("engineer", {
+                    status: "streaming",
+                    output: `正在修复禁止包引用: ${violatedPaths.map((p) => p.split("/").pop()).join(", ")}`,
+                  });
+                  try {
+                    const fixPrompt = buildDisallowedImportsEngineerPrompt(
+                      violatedPaths,
+                      allCompletedFiles,
+                      pkgViolations,
+                      project.id
+                    );
+                    const fixResponse = await fetchAPI("/api/generate", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        projectId: project.id,
+                        prompt: "修复禁止包引用",
+                        agent: "engineer",
+                        context: fixPrompt,
+                        modelId: selectedModel,
+                      }),
+                      signal: abortController.signal,
+                    });
+                    if (fixResponse.body) {
+                      const fixSSE = await readEngineerSSE(
+                        fixResponse.body,
+                        "engineer:fix-packages"
                       );
                       Object.assign(allCompletedFiles, fixSSE.files);
                     }

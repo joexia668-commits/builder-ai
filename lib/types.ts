@@ -172,6 +172,11 @@ export interface ImportExportMismatch {
   readonly missingDefault: boolean;  // default import with no default export
 }
 
+export interface DisallowedImport {
+  readonly filePath: string;
+  readonly packageName: string;
+}
+
 // Structured output schemas for PM and Architect agents
 export interface PmOutput {
   readonly intent: string;
