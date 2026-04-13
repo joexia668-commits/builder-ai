@@ -1,4 +1,4 @@
-import type { PartialExtractResult } from "@/lib/types";
+import type { PartialExtractResult, ImportExportMismatch } from "@/lib/types";
 
 /**
  * Strip single-line (//) and multi-line (/* *\/) comments from code,
@@ -438,4 +438,132 @@ export function findMissingLocalImports(
   }
 
   return Array.from(missing);
+}
+
+/**
+ * Extract all named and default exports from a JS/TS code string.
+ * Skips `export type` declarations — TypeScript type-only, no runtime effect.
+ *
+ * Named exports detected:
+ *   export function/async function/class/const/let/var Name
+ *   export { Foo }
+ *   export { Foo as Bar }  → captures external name Bar
+ *
+ * Default export detected:
+ *   export default ... (any form)
+ */
+export function extractFileExports(code: string): { named: Set<string>; hasDefault: boolean } {
+  const named = new Set<string>();
+  let hasDefault = false;
+
+  // export default (any form)
+  if (/\bexport\s+default\b/.test(code)) hasDefault = true;
+
+  // export function/async function*/class/const/let/var Name — skip "export type ..."
+  const declRe = /\bexport\s+(?!type\b)(?:async\s+)?(?:function\*?|class|const|let|var)\s+([$\w]+)/g;
+  let dm: RegExpExecArray | null;
+  while ((dm = declRe.exec(code)) !== null) named.add(dm[1]);
+
+  // export { Foo, Bar as Baz } — skip export type { ... }
+  const braceRe = /\bexport\s+(type\s+)?\{([^}]*)\}/g;
+  let bm: RegExpExecArray | null;
+  while ((bm = braceRe.exec(code)) !== null) {
+    const m = bm;
+    if (m[1]) continue; // type-only export, skip
+    for (const token of m[2].split(",")) {
+      const raw = token.trim();
+      if (!raw) continue;
+      // "Foo as Bar" → external name is Bar
+      const parts = raw.split(/\s+as\s+/);
+      const external = (parts.length > 1 ? parts[1] : parts[0]).trim();
+      if (external && /^[$\w]+$/.test(external)) named.add(external);
+    }
+  }
+
+  return { named, hasDefault };
+}
+
+/**
+ * Extract all imports of local paths (starting with '/') from a JS/TS code string.
+ * Skips `import type` declarations and external packages.
+ *
+ * Returns one entry per local path with:
+ *   - named: external names being imported (the name as exported by the source file)
+ *            e.g. `import { Foo as F }` → named contains "Foo"
+ *   - hasDefault: true if there is a default import from that path
+ */
+export function extractFileImports(
+  code: string
+): Array<{ path: string; named: string[]; hasDefault: boolean }> {
+  const byPath = new Map<string, { named: string[]; hasDefault: boolean }>();
+
+  const ensure = (path: string) => {
+    if (!byPath.has(path)) byPath.set(path, { named: [], hasDefault: false });
+    return byPath.get(path)!;
+  };
+
+  // import [Default,] { Named } from '/path' — skip "import type ..."
+  const namedRe =
+    /\bimport\s+(?!type\b)(?:([$\w]+)\s*,\s*)?\{([^}]*)\}\s+from\s+['"](\/.+?)['"]/g;
+  let nm: RegExpExecArray | null;
+  while ((nm = namedRe.exec(code)) !== null) {
+    const entry = ensure(nm[3]);
+    if (nm[1]) entry.hasDefault = true; // "Default," prefix present
+    for (const token of nm[2].split(",")) {
+      const raw = token.trim();
+      if (!raw) continue;
+      // "Foo as Bar" → external name from the source is "Foo"
+      const name = raw.split(/\s+as\s+/)[0].trim();
+      if (name && /^[$\w]+$/.test(name)) entry.named.push(name);
+    }
+  }
+
+  // import Default from '/path' (no braces — default-only import)
+  const defaultRe = /\bimport\s+(?!type\b)([$\w]+)\s+from\s+['"](\/.+?)['"]/g;
+  let dfm: RegExpExecArray | null;
+  while ((dfm = defaultRe.exec(code)) !== null) {
+    ensure(dfm[2]).hasDefault = true;
+  }
+
+  return Array.from(byPath.entries()).map(([path, v]) => ({ path, ...v }));
+}
+
+/**
+ * Cross-file import/export consistency check.
+ *
+ * For every file in `files`, scans its local imports and verifies that
+ * the target file actually exports what is being imported (named or default).
+ *
+ * Files that are missing entirely from `files` are skipped — they are
+ * already handled by findMissingLocalImports / findMissingLocalImportsWithNames.
+ *
+ * Returns one ImportExportMismatch per (importer, exporter) pair that has
+ * at least one missing named export or a missing default export.
+ */
+export function checkImportExportConsistency(
+  files: Readonly<Record<string, string>>
+): ImportExportMismatch[] {
+  const mismatches: ImportExportMismatch[] = [];
+
+  for (const [importerPath, code] of Object.entries(files)) {
+    for (const imp of extractFileImports(code)) {
+      const targetCode = files[imp.path];
+      if (targetCode === undefined) continue; // missing file handled elsewhere
+
+      const exports = extractFileExports(targetCode);
+      const missingNamed = imp.named.filter((n) => !exports.named.has(n));
+      const missingDefault = imp.hasDefault && !exports.hasDefault;
+
+      if (missingNamed.length > 0 || missingDefault) {
+        mismatches.push({
+          importerPath,
+          exporterPath: imp.path,
+          missingNamed,
+          missingDefault,
+        });
+      }
+    }
+  }
+
+  return mismatches;
 }

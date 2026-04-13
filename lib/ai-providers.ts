@@ -18,8 +18,8 @@ export interface AIProvider {
 }
 
 // Per-agent stream timeout: bail out cleanly rather than burning the full 300s
-// Vercel maxDuration. 90s is generous for even the slowest model responses.
-const STREAM_TIMEOUT_MS = 90_000;
+// Vercel maxDuration. DeepSeek can be slow on large files; 150s gives headroom.
+const STREAM_TIMEOUT_MS = 150_000;
 
 // ── Rate-limit retry helpers ───────────────────────────────────────────────
 
@@ -102,6 +102,9 @@ export class GeminiProvider implements AIProvider {
         const text = chunk.text();
         if (text) onChunk(text);
       }
+    } catch (err) {
+      if (abortController.signal.aborted) throw new Error("stream timeout");
+      throw err;
     } finally {
       clearTimeout(timeoutId);
     }
@@ -153,6 +156,7 @@ export class DeepSeekProvider implements AIProvider {
       }
     } catch (err) {
       if (err instanceof Error && err.message === "max_tokens_exceeded") throw err;
+      if (abortController.signal.aborted) throw new Error("stream timeout");
       throw new Error(`DeepSeek stream error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       clearTimeout(timeoutId);
@@ -204,6 +208,7 @@ export class GroqProvider implements AIProvider {
       }
     } catch (err) {
       if (err instanceof Error && err.message === "max_tokens_exceeded") throw err;
+      if (abortController.signal.aborted) throw new Error("stream timeout");
       throw new Error(`Groq stream error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       clearTimeout(timeoutId);

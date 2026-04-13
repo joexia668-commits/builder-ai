@@ -5,7 +5,7 @@
  * This utility handles the fallback case where fences slip through.
  */
 
-import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced, hasUnterminatedLiteral } from "@/lib/extract-code";
+import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced, hasUnterminatedLiteral, extractFileExports, extractFileImports, checkImportExportConsistency } from "@/lib/extract-code";
 
 describe("extractReactCode", () => {
   it("extracts code from ```jsx fences", () => {
@@ -544,5 +544,180 @@ describe("hasUnterminatedLiteral", () => {
 
   it("returns true for string truncated at newline (followed by more code)", () => {
     expect(hasUnterminatedLiteral("import { X } from 'lucide\nconst foo = 'bar';")).toBe(true);
+  });
+});
+
+describe("extractFileExports", () => {
+  it("returns named export from function declaration", () => {
+    const result = extractFileExports("export function Foo() {}");
+    expect(result.named.has("Foo")).toBe(true);
+    expect(result.hasDefault).toBe(false);
+  });
+
+  it("returns named export from const declaration", () => {
+    const result = extractFileExports("export const BAR = 42;");
+    expect(result.named.has("BAR")).toBe(true);
+  });
+
+  it("returns named export from class declaration", () => {
+    const result = extractFileExports("export class MyClass {}");
+    expect(result.named.has("MyClass")).toBe(true);
+  });
+
+  it("returns named export from export { Foo }", () => {
+    const result = extractFileExports("function Foo() {}\nexport { Foo };");
+    expect(result.named.has("Foo")).toBe(true);
+  });
+
+  it("returns external name from export { Foo as Bar }", () => {
+    const result = extractFileExports("export { internalFoo as Bar };");
+    expect(result.named.has("Bar")).toBe(true);
+    expect(result.named.has("internalFoo")).toBe(false);
+  });
+
+  it("detects export default function", () => {
+    const result = extractFileExports("export default function App() {}");
+    expect(result.hasDefault).toBe(true);
+  });
+
+  it("detects export default identifier", () => {
+    const result = extractFileExports("function App() {}\nexport default App;");
+    expect(result.hasDefault).toBe(true);
+  });
+
+  it("skips export type { Foo }", () => {
+    const result = extractFileExports("export type { Foo };");
+    expect(result.named.has("Foo")).toBe(false);
+    expect(result.hasDefault).toBe(false);
+  });
+
+  it("returns both named and default for typical component file", () => {
+    const code = "export function Button() {}\nexport default Button;";
+    const result = extractFileExports(code);
+    expect(result.named.has("Button")).toBe(true);
+    expect(result.hasDefault).toBe(true);
+  });
+});
+
+describe("extractFileImports", () => {
+  it("returns named imports from local path", () => {
+    const result = extractFileImports("import { Foo, Bar } from '/components/Foo.js';");
+    expect(result).toHaveLength(1);
+    expect(result[0].path).toBe("/components/Foo.js");
+    expect(result[0].named).toEqual(expect.arrayContaining(["Foo", "Bar"]));
+    expect(result[0].hasDefault).toBe(false);
+  });
+
+  it("returns default import from local path", () => {
+    const result = extractFileImports("import Foo from '/components/Foo.js';");
+    expect(result).toHaveLength(1);
+    expect(result[0].hasDefault).toBe(true);
+    expect(result[0].named).toHaveLength(0);
+  });
+
+  it("returns both default and named for mixed import", () => {
+    const result = extractFileImports("import Foo, { Bar } from '/x.js';");
+    expect(result).toHaveLength(1);
+    expect(result[0].hasDefault).toBe(true);
+    expect(result[0].named).toContain("Bar");
+  });
+
+  it("captures external name for aliased import (import { Foo as F })", () => {
+    const result = extractFileImports("import { Foo as F } from '/x.js';");
+    expect(result[0].named).toContain("Foo");
+    expect(result[0].named).not.toContain("F");
+  });
+
+  it("skips external packages (non-slash paths)", () => {
+    const result = extractFileImports(
+      "import React from 'react'; import { X } from 'lucide-react';"
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it("skips import type declarations", () => {
+    const result = extractFileImports("import type { Foo } from '/x.js';");
+    expect(result).toHaveLength(0);
+  });
+
+  it("merges multiple imports from same path into one entry", () => {
+    const code = "import Foo from '/x.js';\nimport { Bar } from '/x.js';";
+    const result = extractFileImports(code);
+    expect(result).toHaveLength(1);
+    expect(result[0].hasDefault).toBe(true);
+    expect(result[0].named).toContain("Bar");
+  });
+
+  it("handles multiple different local paths", () => {
+    const code = "import { A } from '/a.js';\nimport B from '/b.js';";
+    const result = extractFileImports(code);
+    expect(result).toHaveLength(2);
+    const paths = result.map((r) => r.path);
+    expect(paths).toContain("/a.js");
+    expect(paths).toContain("/b.js");
+  });
+});
+
+describe("checkImportExportConsistency", () => {
+  it("returns empty array when all imports match exports", () => {
+    const files = {
+      "/App.js":
+        "import { Button } from '/Button.js'; export default function App() {}",
+      "/Button.js": "export function Button() {}\nexport default Button;",
+    };
+    expect(checkImportExportConsistency(files)).toHaveLength(0);
+  });
+
+  it("detects named import with no matching named export", () => {
+    const files = {
+      "/App.js": "import { Button } from '/Button.js';",
+      "/Button.js": "export default function Button() {}",
+    };
+    const result = checkImportExportConsistency(files);
+    expect(result).toHaveLength(1);
+    expect(result[0].importerPath).toBe("/App.js");
+    expect(result[0].exporterPath).toBe("/Button.js");
+    expect(result[0].missingNamed).toContain("Button");
+    expect(result[0].missingDefault).toBe(false);
+  });
+
+  it("detects default import with no matching default export", () => {
+    const files = {
+      "/App.js": "import Layout from '/Layout.js';",
+      "/Layout.js": "export function Layout() {}",
+    };
+    const result = checkImportExportConsistency(files);
+    expect(result).toHaveLength(1);
+    expect(result[0].missingDefault).toBe(true);
+    expect(result[0].missingNamed).toHaveLength(0);
+  });
+
+  it("skips files missing from the files map (handled by findMissingLocalImports)", () => {
+    const files = {
+      "/App.js": "import { Foo } from '/Missing.js';",
+    };
+    expect(checkImportExportConsistency(files)).toHaveLength(0);
+  });
+
+  it("returns multiple mismatches across different file pairs", () => {
+    const files = {
+      "/A.js": "import { X } from '/B.js';",
+      "/B.js": "export default function X() {}",
+      "/C.js": "import Y from '/D.js';",
+      "/D.js": "export function Y() {}",
+    };
+    const result = checkImportExportConsistency(files);
+    expect(result).toHaveLength(2);
+    expect(result.some((r) => r.importerPath === "/A.js" && r.exporterPath === "/B.js" && r.missingNamed.includes("X"))).toBe(true);
+    expect(result.some((r) => r.importerPath === "/C.js" && r.exporterPath === "/D.js" && r.missingDefault === true)).toBe(true);
+  });
+
+  it("does not report mismatches for external packages", () => {
+    const files = {
+      "/App.js":
+        "import React from 'react'; import { useState } from 'react'; import { X } from '/X.js';",
+      "/X.js": "export function X() {}\nexport default X;",
+    };
+    expect(checkImportExportConsistency(files)).toHaveLength(0);
   });
 });
