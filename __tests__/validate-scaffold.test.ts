@@ -108,4 +108,82 @@ describe("validateScaffold", () => {
       expect(warnings).toHaveLength(0);
     });
   });
+
+  describe("Rule 3: cycle detection & breaking", () => {
+    it("breaks direct cycle A↔B using reverse-flow heuristic", () => {
+      // /a.js has in-degree 3 (from /c.js, /d.js, /e.js)
+      // /b.js has in-degree 1 (from /a.js)
+      // cycle: /a.js → /b.js → /a.js
+      // reverse-flow edge: /a.js(inDeg=3) → /b.js(inDeg=1), weight=2 ← highest, remove this
+      const input = makeScaffold([
+        { path: "/a.js", deps: ["/b.js"] },
+        { path: "/b.js", deps: ["/a.js"] },
+        { path: "/c.js", deps: ["/a.js"] },
+        { path: "/d.js", deps: ["/a.js"] },
+        { path: "/e.js", deps: ["/a.js"] },
+      ]);
+      const { scaffold, warnings } = validateScaffold(input);
+      const fileA = scaffold.files.find((f) => f.path === "/a.js")!;
+      const fileB = scaffold.files.find((f) => f.path === "/b.js")!;
+      // /a.js is foundational (high in-degree), should not depend on /b.js
+      expect(fileA.deps).not.toContain("/b.js");
+      // /b.js → /a.js is preserved (high-level depends on base)
+      expect(fileB.deps).toContain("/a.js");
+      expect(warnings).toContainEqual(expect.stringContaining("断开循环依赖"));
+    });
+
+    it("breaks three-node cycle", () => {
+      const input = makeScaffold([
+        { path: "/a.js", deps: ["/b.js"] },
+        { path: "/b.js", deps: ["/c.js"] },
+        { path: "/c.js", deps: ["/a.js"] },
+        { path: "/d.js", deps: ["/a.js"] },
+      ]);
+      const { scaffold, warnings } = validateScaffold(input);
+      // After breaking, topologicalSort should succeed
+      const { topologicalSort } = require("@/lib/topo-sort");
+      expect(() => topologicalSort(scaffold.files)).not.toThrow();
+      expect(warnings).toContainEqual(expect.stringContaining("断开循环依赖"));
+    });
+
+    it("uses deps-length tiebreaker when in-degrees are equal", () => {
+      // a→b, b→a — both in-degree 1 (from each other)
+      // /a.js has more deps total → it's "higher-level"
+      // so /a.js → /b.js should be removed
+      const input = makeScaffold([
+        { path: "/a.js", deps: ["/b.js", "/c.js", "/d.js"] },
+        { path: "/b.js", deps: ["/a.js"] },
+        { path: "/c.js", deps: [] },
+        { path: "/d.js", deps: [] },
+      ]);
+      const { scaffold } = validateScaffold(input);
+      const fileA = scaffold.files.find((f) => f.path === "/a.js")!;
+      expect(fileA.deps).not.toContain("/b.js");
+    });
+
+    it("does not modify acyclic graph", () => {
+      const input = makeScaffold([
+        { path: "/a.js", deps: ["/b.js"] },
+        { path: "/b.js", deps: ["/c.js"] },
+        { path: "/c.js", deps: [] },
+      ]);
+      const { scaffold, warnings } = validateScaffold(input);
+      expect(scaffold.files).toEqual(input.files);
+      expect(warnings).toHaveLength(0);
+    });
+
+    it("resolves multiple independent cycles", () => {
+      const input = makeScaffold([
+        { path: "/a.js", deps: ["/b.js"] },
+        { path: "/b.js", deps: ["/a.js"] },
+        { path: "/c.js", deps: ["/d.js"] },
+        { path: "/d.js", deps: ["/c.js"] },
+      ]);
+      const { scaffold, warnings } = validateScaffold(input);
+      const { topologicalSort } = require("@/lib/topo-sort");
+      expect(() => topologicalSort(scaffold.files)).not.toThrow();
+      const cycleWarnings = warnings.filter((w) => w.includes("断开循环依赖"));
+      expect(cycleWarnings.length).toBeGreaterThanOrEqual(2);
+    });
+  });
 });
