@@ -1,4 +1,4 @@
-import type { AgentRole, AttemptReason, ScaffoldFile } from "@/lib/types";
+import type { AgentRole, AttemptReason, ScaffoldFile, ImportExportMismatch } from "@/lib/types";
 
 export function getSystemPrompt(agent: AgentRole, projectId: string): string {
   const prompts: Record<AgentRole, string> = {
@@ -403,6 +403,84 @@ ${missingEntries.join("\n")}
 每个文件必须同时提供具名导出和默认导出：
   export function ComponentName(props) { ... }
   export default ComponentName;
+
+输出格式（严格遵守）：
+- 每个文件以分隔符开头：// === FILE: /path ===
+- 紧接着是该文件的完整代码
+- 不得包含 \`\`\`jsx、\`\`\`js、\`\`\` 等 Markdown 代码围栏
+- 不输出任何解释性文字，代码即全部内容`;
+}
+
+/**
+ * Build a prompt for the engineer to fix import/export inconsistencies.
+ * Includes both the importer and exporter files so the LLM can decide
+ * which side to fix (it generated both and knows its intent).
+ *
+ * @param filePaths   - Paths of files to regenerate (both importer and exporter sides)
+ * @param allFiles    - All generated files (provides the current code as context)
+ * @param mismatches  - List of detected mismatches (used to build the description)
+ * @param projectId   - Sandpack project ID for the Supabase appId binding
+ */
+export function buildMismatchedFilesEngineerPrompt(
+  filePaths: string[],
+  allFiles: Readonly<Record<string, string>>,
+  mismatches: readonly ImportExportMismatch[],
+  projectId: string
+): string {
+  const mismatchLines = mismatches.flatMap((m) => {
+    const lines: string[] = [];
+    if (m.missingNamed.length > 0) {
+      lines.push(
+        `- ${m.importerPath} 用 import { ${m.missingNamed.join(", ")} } from '${m.exporterPath}'，` +
+        `但 ${m.exporterPath} 没有对应的具名导出`
+      );
+    }
+    if (m.missingDefault) {
+      lines.push(
+        `- ${m.importerPath} 用默认导入 from '${m.exporterPath}'，` +
+        `但 ${m.exporterPath} 没有 export default`
+      );
+    }
+    return lines;
+  });
+
+  const contextEntries = filePaths
+    .map((path) => `// === EXISTING FILE: ${path} ===\n${allFiles[path] ?? ""}`)
+    .join("\n\n");
+
+  return `你是一位全栈工程师。以下文件存在 import/export 不一致，请重新生成并修复。
+
+【严禁包限制 - 违反将导致代码无法运行】
+只允许使用以下外部依赖：
+- lucide-react（图标库，已安装）
+- /supabaseClient.js（数据库客户端，已注入）
+- react 和 react-dom（已安装）
+
+绝对禁止引入任何其他 npm 包，包括但不限于：
+recharts, react-router-dom, axios, lodash, date-fns,
+framer-motion, styled-components, react-query, zustand,
+@radix-ui/*, @headlessui/*, classnames 等。
+
+UI 样式只使用 Tailwind CSS class。
+图标只使用 lucide-react。
+HTTP 请求只使用原生 fetch API。
+
+如需数据持久化，使用沙箱预置的 Supabase 客户端：
+import { supabase } from '/supabaseClient.js'
+// 使用 dynamic_app_data 表，appId 固定为 '${projectId}'
+
+【不一致详情】
+${mismatchLines.join("\n")}
+
+【需要修复的文件（当前版本）】
+${contextEntries}
+
+【修复要求】
+1. named import { X } 对应目标文件必须有 export function/const/class X 或 export { X }
+2. default import X from '/path' 对应目标文件必须有 export default
+3. 每个组件文件同时提供具名导出和默认导出，避免未来不一致：
+   export function ComponentName(props) { ... }
+   export default ComponentName;
 
 输出格式（严格遵守）：
 - 每个文件以分隔符开头：// === FILE: /path ===

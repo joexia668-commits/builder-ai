@@ -16,7 +16,7 @@ import { topologicalSort } from "@/lib/topo-sort";
 import { validateScaffold } from "@/lib/validate-scaffold";
 import { extractPmOutput, extractScaffoldFromTwoPhase } from "@/lib/extract-json";
 import { runLayerWithFallback } from "@/lib/engineer-circuit";
-import { getMultiFileEngineerPrompt, buildMissingFileEngineerPrompt } from "@/lib/generate-prompts";
+import { getMultiFileEngineerPrompt, buildMissingFileEngineerPrompt, buildMismatchedFilesEngineerPrompt } from "@/lib/generate-prompts";
 import {
   buildEngineerContext,
   buildEngineerContextFromStructured,
@@ -27,7 +27,7 @@ import {
 } from "@/lib/agent-context";
 import { extractArchDecisions } from "@/lib/extract-arch-decisions";
 import { classifyIntent } from "@/lib/intent-classifier";
-import { findMissingLocalImports, findMissingLocalImportsWithNames } from "@/lib/extract-code";
+import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency } from "@/lib/extract-code";
 import { ERROR_DISPLAY } from "@/lib/error-codes";
 import type { ErrorCode } from "@/lib/types";
 import type {
@@ -849,6 +849,52 @@ export function ChatArea({
                 });
                 // Intentionally do NOT return here — stubs were injected by buildSandpackConfig
                 // so the preview renders with partial functionality instead of a blank screen.
+              }
+              // Check import/export consistency and retry mismatched files (≤ MAX_PATCH_FILES)
+              const importMismatches = checkImportExportConsistency(allCompletedFiles);
+              if (importMismatches.length > 0) {
+                const involvedPaths = new Set<string>();
+                importMismatches.forEach((m) => {
+                  involvedPaths.add(m.importerPath);
+                  involvedPaths.add(m.exporterPath);
+                });
+                if (involvedPaths.size <= MAX_PATCH_FILES) {
+                  const involvedPathsArray = Array.from(involvedPaths);
+                  updateAgentState("engineer", {
+                    status: "streaming",
+                    output: `正在修复 import/export 不一致: ${involvedPathsArray.map((p) => p.split("/").pop()).join(", ")}`,
+                  });
+                  try {
+                    const fixPrompt = buildMismatchedFilesEngineerPrompt(
+                      involvedPathsArray,
+                      allCompletedFiles,
+                      importMismatches,
+                      project.id
+                    );
+                    const fixResponse = await fetchAPI("/api/generate", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        projectId: project.id,
+                        prompt: "修复 import/export 不一致",
+                        agent: "engineer",
+                        context: fixPrompt,
+                        modelId: selectedModel,
+                      }),
+                      signal: abortController.signal,
+                    });
+                    if (fixResponse.body) {
+                      const fixSSE = await readEngineerSSE(
+                        fixResponse.body,
+                        "engineer:fix-imports"
+                      );
+                      Object.assign(allCompletedFiles, fixSSE.files);
+                    }
+                  } catch {
+                    // Fix failed — fall through to Sandpack with current files
+                  }
+                  updateAgentState("engineer", { status: "done", output: summaryOutput });
+                }
               }
               const res = await fetchAPI("/api/versions", {
                 method: "POST",
