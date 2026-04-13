@@ -5,7 +5,7 @@
  * This utility handles the fallback case where fences slip through.
  */
 
-import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced, hasUnterminatedLiteral } from "@/lib/extract-code";
+import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced, hasUnterminatedLiteral, extractFileExports } from "@/lib/extract-code";
 
 describe("extractReactCode", () => {
   it("extracts code from ```jsx fences", () => {
@@ -544,5 +544,57 @@ describe("hasUnterminatedLiteral", () => {
 
   it("returns true for string truncated at newline (followed by more code)", () => {
     expect(hasUnterminatedLiteral("import { X } from 'lucide\nconst foo = 'bar';")).toBe(true);
+  });
+});
+
+describe("extractFileExports", () => {
+  it("returns named export from function declaration", () => {
+    const result = extractFileExports("export function Foo() {}");
+    expect(result.named.has("Foo")).toBe(true);
+    expect(result.hasDefault).toBe(false);
+  });
+
+  it("returns named export from const declaration", () => {
+    const result = extractFileExports("export const BAR = 42;");
+    expect(result.named.has("BAR")).toBe(true);
+  });
+
+  it("returns named export from class declaration", () => {
+    const result = extractFileExports("export class MyClass {}");
+    expect(result.named.has("MyClass")).toBe(true);
+  });
+
+  it("returns named export from export { Foo }", () => {
+    const result = extractFileExports("function Foo() {}\nexport { Foo };");
+    expect(result.named.has("Foo")).toBe(true);
+  });
+
+  it("returns external name from export { Foo as Bar }", () => {
+    const result = extractFileExports("export { internalFoo as Bar };");
+    expect(result.named.has("Bar")).toBe(true);
+    expect(result.named.has("internalFoo")).toBe(false);
+  });
+
+  it("detects export default function", () => {
+    const result = extractFileExports("export default function App() {}");
+    expect(result.hasDefault).toBe(true);
+  });
+
+  it("detects export default identifier", () => {
+    const result = extractFileExports("function App() {}\nexport default App;");
+    expect(result.hasDefault).toBe(true);
+  });
+
+  it("skips export type { Foo }", () => {
+    const result = extractFileExports("export type { Foo };");
+    expect(result.named.has("Foo")).toBe(false);
+    expect(result.hasDefault).toBe(false);
+  });
+
+  it("returns both named and default for typical component file", () => {
+    const code = "export function Button() {}\nexport default Button;";
+    const result = extractFileExports(code);
+    expect(result.named.has("Button")).toBe(true);
+    expect(result.hasDefault).toBe(true);
   });
 });

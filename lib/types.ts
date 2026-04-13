@@ -165,6 +165,13 @@ export interface AttemptInfo {
   readonly phase: "layer" | "per_file";
 }
 
+export type ImportExportMismatch = {
+  importerPath: string;
+  exporterPath: string;
+  missingNamed: string[];   // named imports with no matching named export
+  missingDefault: boolean;  // default import with no default export
+};
+
 // Structured output schemas for PM and Architect agents
 export interface PmOutput {
   readonly intent: string;

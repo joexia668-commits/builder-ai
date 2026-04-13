@@ -439,3 +439,43 @@ export function findMissingLocalImports(
 
   return Array.from(missing);
 }
+
+/**
+ * Extract all named and default exports from a JS/TS code string.
+ * Skips `export type` declarations — TypeScript type-only, no runtime effect.
+ *
+ * Named exports detected:
+ *   export function/async function/class/const/let/var Name
+ *   export { Foo }
+ *   export { Foo as Bar }  → captures external name Bar
+ *
+ * Default export detected:
+ *   export default ... (any form)
+ */
+export function extractFileExports(code: string): { named: Set<string>; hasDefault: boolean } {
+  const named = new Set<string>();
+  let hasDefault = false;
+
+  // export default (any form)
+  if (/\bexport\s+default\b/.test(code)) hasDefault = true;
+
+  // export function/async function*/class/const/let/var Name — skip "export type ..."
+  const declRe = /\bexport\s+(?!type\b)(?:async\s+)?(?:function\*?|class|const|let|var)\s+([$\w]+)/g;
+  for (const m of code.matchAll(declRe)) named.add(m[1]);
+
+  // export { Foo, Bar as Baz } — skip export type { ... }
+  const braceRe = /\bexport\s+(type\s+)?\{([^}]*)\}/g;
+  for (const m of code.matchAll(braceRe)) {
+    if (m[1]) continue; // type-only export, skip
+    for (const token of m[2].split(",")) {
+      const raw = token.trim();
+      if (!raw) continue;
+      // "Foo as Bar" → external name is Bar
+      const parts = raw.split(/\s+as\s+/);
+      const external = (parts.length > 1 ? parts[1] : parts[0]).trim();
+      if (external && /^[$\w]+$/.test(external)) named.add(external);
+    }
+  }
+
+  return { named, hasDefault };
+}
