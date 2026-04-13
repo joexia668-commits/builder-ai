@@ -32,6 +32,17 @@ npx playwright test e2e/<spec>.spec.ts            # Single E2E file
 
 **E2E**: Playwright auto-starts `npm run dev` if port 3000 is not already listening. `workers: 1` — tests run serially. Timeout is 300s per test (AI generation can take 90s+).
 
+## Bug Recording Rule
+
+所有 bug 必须记录到 `docs/adr/` 目录，格式为 `NNNN-<kebab-slug>[-self].md`：
+
+| 发现方 | 文件名后缀 | 示例 |
+|--------|-----------|------|
+| 用户输入发现 | 无后缀 | `0005-messagerole-system-type-missing.md` |
+| Claude 实现过程中自发现 | `-self` | `0006-some-bug-self.md` |
+
+记录内容（中文）：问题描述、根因、修复 diff、预防措施。序号连续递增，参考现有文件最大编号。
+
 ## Architecture
 
 ### Request flow for AI generation
