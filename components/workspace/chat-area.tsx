@@ -87,8 +87,24 @@ function appendRound(
   existing: IterationContext | null | undefined,
   round: IterationRound
 ): IterationContext {
-  const rounds = [...(existing?.rounds ?? []), round];
-  return { rounds: rounds.slice(-MAX_ITERATION_ROUNDS) };
+  const rounds: readonly IterationRound[] = [
+    ...(existing?.rounds ?? []),
+    round,
+  ].slice(-MAX_ITERATION_ROUNDS);
+  return { rounds };
+}
+
+function resolveArchContext(
+  rounds: readonly IterationRound[],
+  pmOutput: string
+): string {
+  const lastRoundWithArch = [...rounds].reverse().find(
+    (r) => r.archDecisions !== null
+  );
+  const archCtx = lastRoundWithArch?.archDecisions
+    ? buildArchIterationContext(lastRoundWithArch.archDecisions)
+    : "";
+  return archCtx ? `${archCtx}\n\n${pmOutput}` : pmOutput;
 }
 
 export function ChatArea({
@@ -533,7 +549,9 @@ export function ChatArea({
           fetchAPI(`/api/projects/${project.id}`, {
             method: "PATCH",
             body: JSON.stringify({ iterationContext: updated }),
-          }).catch(() => {});
+          }).catch((err: unknown) => {
+            console.error("[iterationContext] PATCH failed — context may lag DB:", err);
+          });
         }
 
         return; // skip full pipeline — finally block still runs
@@ -859,13 +877,7 @@ export function ChatArea({
                 ? buildPmHistoryContext(rounds)
                 : undefined
             : agentRole === "architect"
-              ? (() => {
-                  const lastRoundWithArch = [...rounds].reverse().find((r) => r.archDecisions !== null);
-                  const archCtx = lastRoundWithArch?.archDecisions
-                    ? buildArchIterationContext(lastRoundWithArch.archDecisions)
-                    : "";
-                  return archCtx ? `${archCtx}\n\n${outputs.pm}` : outputs.pm;
-                })()
+              ? resolveArchContext(rounds, outputs.pm)
               : parsedPm
                 ? buildEngineerContextFromStructured(
                     prompt,
