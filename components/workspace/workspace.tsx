@@ -9,7 +9,7 @@ import { PreviewPanel } from "@/components/preview/preview-panel";
 import { DemoBanner } from "@/components/layout/demo-banner";
 import { getVersionFiles } from "@/lib/version-files";
 import { useGenerationSession } from "@/hooks/use-generation-session";
-import type { Project, ProjectMessage, ProjectVersion, PmOutput } from "@/lib/types";
+import type { Project, ProjectMessage, ProjectVersion, IterationContext } from "@/lib/types";
 
 interface WorkspaceProps {
   project: Project & {
@@ -50,7 +50,9 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
   const [messages, setMessages] = useState<ProjectMessage[]>(project.messages);
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewingVersion, setPreviewingVersion] = useState<ProjectVersion | null>(null);
-  const [lastPmOutput, setLastPmOutput] = useState<PmOutput | null>(null);
+  const [iterationContext, setIterationContext] = useState<IterationContext | null>(
+    project.iterationContext ?? null
+  );
 
   const displayFiles = previewingVersion
     ? getVersionFiles(previewingVersion as { code: string; files?: Record<string, string> | null })
@@ -120,8 +122,8 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
             isPreviewingHistory={previewingVersion !== null}
             isDemo={isDemo}
             currentFiles={currentFiles}
-            lastPmOutput={lastPmOutput}
-            onPmOutputGenerated={setLastPmOutput}
+            iterationContext={iterationContext}
+            onIterationContextChange={setIterationContext}
             onFilesGenerated={(files, version) => {
               setCurrentFiles(files);
               setVersions((prev) => [...prev, version]);
