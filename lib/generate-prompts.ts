@@ -321,3 +321,92 @@ ${targetFileList}
 - 不输出任何解释性文字，代码即全部内容
 - 每个文件不超过 150 行，使用紧凑写法`;
 }
+
+/**
+ * Build a prompt for the engineer to implement missing local files that are
+ * imported by already-generated files but were never created by the scaffold.
+ *
+ * @param missingMap  - Map from missing file path → set of required export names
+ * @param completedFiles - All files already generated (used for context extraction)
+ * @param projectId  - Sandpack project ID for the supabase appId binding
+ */
+export function buildMissingFileEngineerPrompt(
+  missingMap: ReadonlyMap<string, ReadonlySet<string>>,
+  completedFiles: Readonly<Record<string, string>>,
+  projectId: string
+): string {
+  // Find which completed files import each missing path
+  const missingPaths = Array.from(missingMap.keys());
+  const importerMap = new Map<string, string[]>();
+  for (const missingPath of missingPaths) {
+    importerMap.set(missingPath, []);
+  }
+  for (const [filePath, code] of Object.entries(completedFiles)) {
+    for (const missingPath of missingPaths) {
+      if (code.includes(missingPath)) {
+        importerMap.get(missingPath)!.push(filePath);
+      }
+    }
+  }
+
+  // Build context: snipped importing files (import + export lines only)
+  const contextEntries: string[] = [];
+  const shownFiles = new Set<string>();
+  for (const importers of Array.from(importerMap.values())) {
+    for (const imp of importers) {
+      if (shownFiles.has(imp)) continue;
+      shownFiles.add(imp);
+      const code = completedFiles[imp];
+      const importLines = code.split("\n").filter((l) => /^\s*import\s/.test(l));
+      const exportLines = code.split("\n").filter((l) => /^\s*export\s/.test(l));
+      contextEntries.push(
+        `// === FILE: ${imp} (snipped) ===\n${[...importLines, ...exportLines].join("\n")}`
+      );
+    }
+  }
+
+  // Build missing file list
+  const missingEntries = Array.from(missingMap.entries()).map(([path, exports]) => {
+    const importers = importerMap.get(path) ?? [];
+    const exportList = exports.size > 0 ? Array.from(exports).join(", ") : "default";
+    return `- ${path}\n  被引用于: ${importers.join(", ") || "未知"}\n  需要导出: ${exportList}`;
+  });
+
+  return `你是一位全栈工程师。以下文件被其他组件引用但尚未实现，请补全。
+
+【严禁包限制 - 违反将导致代码无法运行】
+只允许使用以下外部依赖：
+- lucide-react（图标库，已安装）
+- /supabaseClient.js（数据库客户端，已注入）
+- react 和 react-dom（已安装）
+
+绝对禁止引入任何其他 npm 包，包括但不限于：
+recharts, react-router-dom, axios, lodash, date-fns,
+framer-motion, styled-components, react-query, zustand,
+@radix-ui/*, @headlessui/*, classnames 等。
+
+UI 样式只使用 Tailwind CSS class。
+图标只使用 lucide-react。
+HTTP 请求只使用原生 fetch API。
+
+如需数据持久化，使用沙箱预置的 Supabase 客户端：
+import { supabase } from '/supabaseClient.js'
+// 使用 dynamic_app_data 表，appId 固定为 '${projectId}'
+
+【已有代码上下文】
+${contextEntries.join("\n\n")}
+
+【需要补全的文件】
+${missingEntries.join("\n")}
+
+【导出规则 - 严格遵守】
+每个文件必须同时提供具名导出和默认导出：
+  export function ComponentName(props) { ... }
+  export default ComponentName;
+
+输出格式（严格遵守）：
+- 每个文件以分隔符开头：// === FILE: /path ===
+- 紧接着是该文件的完整代码
+- 不得包含 \`\`\`jsx、\`\`\`js、\`\`\` 等 Markdown 代码围栏
+- 不输出任何解释性文字，代码即全部内容`;
+}

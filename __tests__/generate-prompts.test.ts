@@ -1,4 +1,4 @@
-import { getSystemPrompt, getMultiFileEngineerPrompt, snipCompletedFiles } from "@/lib/generate-prompts";
+import { getSystemPrompt, getMultiFileEngineerPrompt, snipCompletedFiles, buildMissingFileEngineerPrompt } from "@/lib/generate-prompts";
 import type { AgentRole, ScaffoldFile } from "@/lib/types";
 
 describe("getSystemPrompt", () => {
@@ -492,5 +492,39 @@ describe("architect two-phase prompt", () => {
   it("GP-TP-02: architect 提示词指示 <output> 块内只输出 JSON", () => {
     const prompt = getSystemPrompt("architect", "proj-1");
     expect(prompt).toMatch(/<output>[\s\S]*?JSON[\s\S]*?<\/output>/);
+  });
+});
+
+describe("buildMissingFileEngineerPrompt", () => {
+  it("includes missing file paths and required exports", () => {
+    const missingMap = new Map<string, Set<string>>([
+      ["/utils/format.js", new Set(["formatDate", "formatCurrency"])],
+    ]);
+    const completedFiles: Record<string, string> = {
+      "/components/TaskList.jsx": `import { formatDate } from '/utils/format.js';\nexport default function TaskList() { return null; }`,
+    };
+    const prompt = buildMissingFileEngineerPrompt(
+      missingMap,
+      completedFiles,
+      "test-project-id"
+    );
+    expect(prompt).toContain("/utils/format.js");
+    expect(prompt).toContain("formatDate");
+    expect(prompt).toContain("formatCurrency");
+    expect(prompt).toContain("/components/TaskList.jsx");
+    expect(prompt).toContain("// === FILE:");
+  });
+
+  it("includes package constraints", () => {
+    const missingMap = new Map<string, Set<string>>([
+      ["/helpers.js", new Set(["helper"])],
+    ]);
+    const prompt = buildMissingFileEngineerPrompt(
+      missingMap,
+      { "/a.js": `import { helper } from '/helpers.js';\nexport default function A() {}` },
+      "pid"
+    );
+    expect(prompt).toContain("lucide-react");
+    expect(prompt).toContain("严禁");
   });
 });
