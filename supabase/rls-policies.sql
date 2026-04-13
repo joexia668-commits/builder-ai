@@ -1,4 +1,4 @@
--- BuilderAI: Row Level Security policies for dynamic_app_data
+-- BuilderAI: Row Level Security policies for DynamicAppData
 --
 -- IMPORTANT: Execute this SQL in Supabase Dashboard → SQL Editor
 --

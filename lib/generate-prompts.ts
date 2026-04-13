@@ -101,10 +101,10 @@ HTTP 请求只使用原生 fetch API。
 - 可以使用 React hooks：useState、useEffect、useCallback、useRef
 - 如需数据持久化，使用沙箱预置的 Supabase 客户端（已预装）：
   import { supabase } from '/supabaseClient.js'
-  // 使用 dynamic_app_data 表，appId 固定为 '${projectId}'
+  // 使用 DynamicAppData 表，appId 固定为 '${projectId}'
   // 表结构: { id, appId, key, data (JSONB), createdAt, updatedAt }
-  // 读取: await supabase.from('dynamic_app_data').select('*').eq('appId', '${projectId}')
-  // 写入: await supabase.from('dynamic_app_data').upsert({ appId: '${projectId}', key: 'todos', data: { items: [...] } })
+  // 读取: await supabase.from('DynamicAppData').select('*').eq('appId', '${projectId}')
+  // 写入: await supabase.from('DynamicAppData').upsert({ appId: '${projectId}', key: 'todos', data: { items: [...] } })
 - 如数据量小或无需云端持久化，使用 localStorage 代替
 - 允许使用 lucide-react 图标库；绝对禁止使用 recharts、framer-motion 等其他外部库；本地文件只允许 import { supabase } from '/supabaseClient.js'
 
@@ -291,7 +291,7 @@ HTTP 请求只使用原生 fetch API。
 
 如需数据持久化，使用沙箱预置的 Supabase 客户端：
 import { supabase } from '/supabaseClient.js'
-// 使用 dynamic_app_data 表，appId 固定为 '${projectId}'
+// 使用 DynamicAppData 表，appId 固定为 '${projectId}'
 // 表结构: { id, appId, key, data (JSONB), createdAt, updatedAt }
 
 设计说明：${designNotes}
@@ -391,7 +391,7 @@ HTTP 请求只使用原生 fetch API。
 
 如需数据持久化，使用沙箱预置的 Supabase 客户端：
 import { supabase } from '/supabaseClient.js'
-// 使用 dynamic_app_data 表，appId 固定为 '${projectId}'
+// 使用 DynamicAppData 表，appId 固定为 '${projectId}'
 
 【已有代码上下文】
 ${contextEntries.join("\n\n")}
