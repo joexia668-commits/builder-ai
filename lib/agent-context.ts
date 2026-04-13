@@ -1,4 +1,4 @@
-import type { PmOutput, IterationRound, ArchDecisions } from "@/lib/types";
+import type { Intent, PmOutput, IterationRound, ArchDecisions } from "@/lib/types";
 
 /**
  * Builds the full context string passed to the Engineer agent.
@@ -145,7 +145,7 @@ export function buildPmIterationContext(pm: PmOutput): string {
   return lines.join("\n");
 }
 
-const INTENT_LABELS: Record<string, string> = {
+const INTENT_LABELS: Record<Intent, string> = {
   new_project: "新建项目",
   feature_add: "功能迭代",
   bug_fix: "Bug 修复",

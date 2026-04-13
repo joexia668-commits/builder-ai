@@ -65,6 +65,27 @@ describe("buildPmHistoryContext", () => {
     expect(result).toContain("[第2轮]");
     expect(result.indexOf("做个待办应用")).toBeLessThan(result.indexOf("加暗黑模式"));
   });
+
+  it("includes arch decisions line when present in a round", () => {
+    const rounds: IterationRound[] = [
+      {
+        userPrompt: "做个待办",
+        intent: "new_project",
+        pmSummary: null,
+        archDecisions: {
+          fileCount: 3,
+          componentTree: "App -> [List]",
+          stateStrategy: "useState",
+          persistenceSetup: "none",
+          keyDecisions: [],
+        },
+        timestamp: "2026-04-13T10:00:00Z",
+      },
+    ];
+    const result = buildPmHistoryContext(rounds);
+    expect(result).toContain("架构：App -> [List]");
+    expect(result).toContain("useState");
+  });
 });
 
 describe("buildArchIterationContext", () => {
