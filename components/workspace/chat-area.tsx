@@ -98,7 +98,7 @@ export function ChatArea({
   );
 
   const session = useGenerationSession(project.id);
-  const { isGenerating, generationError, scaffoldWarnings, lastPrompt, transitionText, agentStates, engineerProgress } = session;
+  const { isGenerating, generationError, lastPrompt, transitionText, agentStates, engineerProgress } = session;
 
   const availableModelIds = getAvailableModels({
     GOOGLE_GENERATIVE_AI_API_KEY: process.env.NEXT_PUBLIC_GEMINI_CONFIGURED ?? "",
