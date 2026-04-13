@@ -13,6 +13,7 @@ import { ChatInput } from "@/components/workspace/chat-input";
 import { fetchAPI, readSSEBody } from "@/lib/api-client";
 import { DEFAULT_MODEL_ID, getAvailableModels } from "@/lib/model-registry";
 import { topologicalSort } from "@/lib/topo-sort";
+import { validateScaffold } from "@/lib/validate-scaffold";
 import { extractPmOutput, extractScaffoldFromTwoPhase } from "@/lib/extract-json";
 import { runLayerWithFallback } from "@/lib/engineer-circuit";
 import { getMultiFileEngineerPrompt } from "@/lib/generate-prompts";
@@ -506,10 +507,7 @@ export function ChatArea({
         // Engineer: attempt multi-file path after architect completes
         if (agentRole === "engineer") {
           const scaffoldRaw = extractScaffoldFromTwoPhase(outputs.architect);
-          // /supabaseClient.js is platform infrastructure — auto-injected by
-          // buildSandpackConfig and whitelisted by findMissingLocalImports.
-          // Drop it from the scaffold so Engineer is never asked to generate it.
-          const scaffold = scaffoldRaw
+          const scaffoldFiltered = scaffoldRaw
             ? {
                 ...scaffoldRaw,
                 files: scaffoldRaw.files.filter(
@@ -517,6 +515,19 @@ export function ChatArea({
                 ),
               }
             : null;
+
+          // Validate scaffold: remove phantom deps, clean hints, break cycles
+          const { scaffold, warnings: scaffoldWarnings } = scaffoldFiltered
+            ? validateScaffold(scaffoldFiltered)
+            : { scaffold: null, warnings: [] as string[] };
+
+          if (scaffoldWarnings.length > 0) {
+            console.warn("Scaffold 校验修正:", scaffoldWarnings);
+            updateAgentState("architect", {
+              status: "done",
+              output: outputs.architect + `\n\n⚠ 已自动修正 scaffold：${scaffoldWarnings.join("；")}`,
+            });
+          }
 
           if (scaffold && scaffold.files.length > 1) {
             // === MULTI-FILE PATH ===
