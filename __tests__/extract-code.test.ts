@@ -708,6 +708,8 @@ describe("checkImportExportConsistency", () => {
     };
     const result = checkImportExportConsistency(files);
     expect(result).toHaveLength(2);
+    expect(result.some((r) => r.importerPath === "/A.js" && r.exporterPath === "/B.js" && r.missingNamed.includes("X"))).toBe(true);
+    expect(result.some((r) => r.importerPath === "/C.js" && r.exporterPath === "/D.js" && r.missingDefault === true)).toBe(true);
   });
 
   it("does not report mismatches for external packages", () => {
