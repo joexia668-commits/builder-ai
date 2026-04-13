@@ -258,13 +258,19 @@ function extractAnyMultiFileCodeByMarker(
   if (Object.keys(fileMap).length === 0) return null;
 
   const result: Record<string, string> = {};
-  for (const [path, codeLines] of Object.entries(fileMap)) {
-    const code = deduplicateDefaultExport(codeLines.join("\n").trim());
-    if (!isDelimitersBalanced(code)) return null;
+  const paths = Object.keys(fileMap);
+  for (let i = 0; i < paths.length; i++) {
+    const path = paths[i];
+    const code = deduplicateDefaultExport(fileMap[path].join("\n").trim());
+    if (!isDelimitersBalanced(code)) {
+      // Last file truncated mid-stream — salvage everything before it
+      if (i === paths.length - 1 && Object.keys(result).length > 0) break;
+      return null;
+    }
     result[path] = code;
   }
 
-  return result;
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 function extractAnyMultiFileCodeFromMarkdown(
