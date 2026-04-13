@@ -764,6 +764,10 @@ export function ChatArea({
                   }
                 } catch {
                   // Patch failed — fall through to stub injection
+                  updateAgentState("engineer", {
+                    status: "done",
+                    output: "缺失文件补全失败，已回退至存根注入",
+                  });
                 }
                 updateAgentState("engineer", {
                   status: "done",
