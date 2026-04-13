@@ -160,6 +160,12 @@ export function createHandler(deps: GenerateDeps) {
               const { extractAnyMultiFileCode } = await import("@/lib/extract-code");
               const filesResult = extractAnyMultiFileCode(fullContent);
               if (filesResult === null) {
+                console.error("[generate:diag:partial_parse_failed]", {
+                  model: resolvedModelId,
+                  fullContentLength: fullContent.length,
+                  head: fullContent.slice(0, 300),
+                  tail: fullContent.slice(-300),
+                });
                 send(controller, { type: "error", error: "生成的代码不完整，请重试", errorCode: "parse_failed" satisfies ErrorCode });
               } else {
                 send(controller, { type: "files_complete", files: filesResult });
