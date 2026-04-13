@@ -228,6 +228,18 @@ export function extractReactCode(raw: string): string | null {
 export function extractAnyMultiFileCode(
   raw: string
 ): Record<string, string> | null {
+  // Primary: standard FILE marker format
+  const result = extractAnyMultiFileCodeByMarker(raw);
+  if (result !== null) return result;
+
+  // Fallback: Markdown fenced blocks with a path comment on the first line
+  // e.g.  ```jsx\n// /App.js\nimport React ...\n```
+  return extractAnyMultiFileCodeFromMarkdown(raw);
+}
+
+function extractAnyMultiFileCodeByMarker(
+  raw: string
+): Record<string, string> | null {
   const marker = /^\/\/ === FILE: (.+?) ===/;
   const lines = raw.split("\n");
   const fileMap: Record<string, string[]> = {};
@@ -253,6 +265,32 @@ export function extractAnyMultiFileCode(
   }
 
   return result;
+}
+
+function extractAnyMultiFileCodeFromMarkdown(
+  raw: string
+): Record<string, string> | null {
+  // Match fenced code blocks: ```[lang]\n// /path/to/file.ext\n<code>\n```
+  const fenceRe = /```[a-z]*\n([\s\S]*?)```/g;
+  const pathCommentRe = /^\/\/\s*(\/\S+\.[a-zA-Z]+)/;
+  const result: Record<string, string> = {};
+  let m: RegExpExecArray | null;
+
+  while ((m = fenceRe.exec(raw)) !== null) {
+    const block = m[1];
+    const firstLine = block.split("\n")[0].trim();
+    const pathMatch = firstLine.match(pathCommentRe);
+    if (!pathMatch) continue;
+    const path = pathMatch[1];
+    // Strip the path comment line, keep the rest as code
+    const code = deduplicateDefaultExport(
+      block.split("\n").slice(1).join("\n").trim()
+    );
+    if (!isDelimitersBalanced(code)) continue;
+    result[path] = code;
+  }
+
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 /**
