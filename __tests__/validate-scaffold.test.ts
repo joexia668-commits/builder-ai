@@ -74,4 +74,38 @@ describe("validateScaffold", () => {
       expect(warnings).toHaveLength(0);
     });
   });
+
+  describe("Rule 2: hints path cleaning", () => {
+    it("replaces phantom path in hints with inline note", () => {
+      const input = makeScaffold([
+        { path: "/a.js", deps: [], hints: "使用 /utils/format.js 格式化" },
+      ]);
+      const { scaffold, warnings } = validateScaffold(input);
+      const fileA = scaffold.files.find((f) => f.path === "/a.js")!;
+      expect(fileA.hints).not.toContain("/utils/format.js");
+      expect(fileA.hints).toContain("(在当前文件内实现)");
+      expect(warnings).toContainEqual(expect.stringContaining("hints 引用了不存在的文件"));
+    });
+
+    it("preserves hints referencing existing files", () => {
+      const input = makeScaffold([
+        { path: "/a.js", deps: ["/b.js"], hints: "引用 /b.js 的 helper" },
+        { path: "/b.js", deps: [] },
+      ]);
+      const { scaffold, warnings } = validateScaffold(input);
+      const fileA = scaffold.files.find((f) => f.path === "/a.js")!;
+      expect(fileA.hints).toContain("/b.js");
+      expect(warnings).toHaveLength(0);
+    });
+
+    it("leaves hints without paths unchanged", () => {
+      const input = makeScaffold([
+        { path: "/a.js", deps: [], hints: "实现基本 CRUD 功能" },
+      ]);
+      const { scaffold, warnings } = validateScaffold(input);
+      const fileA = scaffold.files.find((f) => f.path === "/a.js")!;
+      expect(fileA.hints).toBe("实现基本 CRUD 功能");
+      expect(warnings).toHaveLength(0);
+    });
+  });
 });
