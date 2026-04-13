@@ -24,6 +24,7 @@ import {
   buildDirectMultiFileEngineerContext,
   buildPmHistoryContext,
   buildArchIterationContext,
+  buildTriageContext,
 } from "@/lib/agent-context";
 import { extractArchDecisions } from "@/lib/extract-arch-decisions";
 import { classifyIntent } from "@/lib/intent-classifier";
@@ -60,6 +61,64 @@ interface ChatAreaProps {
 }
 
 const MAX_PATCH_FILES = 3;
+
+async function triageAffectedFiles(
+  prompt: string,
+  currentFiles: Record<string, string>,
+  projectId: string,
+  modelId: string,
+  signal: AbortSignal
+): Promise<string[]> {
+  const filePaths = Object.keys(currentFiles);
+  const triageContext = buildTriageContext(prompt, filePaths);
+
+  try {
+    const response = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        prompt,
+        agent: "engineer",
+        context: triageContext,
+        modelId,
+        triageMode: true,
+      }),
+      signal,
+    });
+
+    if (!response.ok || !response.body) return [];
+
+    let accumulated = "";
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value, { stream: true });
+      for (const line of text.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const event = JSON.parse(line.slice(6));
+          if (event.type === "chunk" && event.content) {
+            accumulated += event.content;
+          }
+        } catch { /* skip malformed lines */ }
+      }
+    }
+
+    const jsonMatch = accumulated.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return [];
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) return [];
+
+    const validKeys = new Set(filePaths);
+    return parsed.filter((p): p is string => typeof p === "string" && validKeys.has(p));
+  } catch {
+    return [];
+  }
+}
 
 const TRANSITION_MESSAGES: Partial<Record<AgentRole, string>> = {
   pm: "PM 已将需求文档移交给架构师...",
@@ -353,8 +412,22 @@ export function ChatArea({
         // Multi-file V1: use FILE separator format so the server can parse with
         // extractMultiFileCode. Single-file V1: keep the merged single-file path.
         const isMultiFileV1 = Object.keys(currentFiles).length > 1;
+
+        let triageFiles = currentFiles;
+        if (isMultiFileV1) {
+          updateAgentState("engineer", { status: "thinking", output: "正在分析需要修改的文件..." });
+          const triagePaths = await triageAffectedFiles(
+            prompt, currentFiles, project.id, selectedModel, abortController.signal
+          );
+          if (triagePaths.length > 0 && triagePaths.length <= MAX_PATCH_FILES) {
+            triageFiles = Object.fromEntries(
+              triagePaths.map((p) => [p, currentFiles[p]])
+            );
+          }
+        }
+
         const baseDirectContext = isMultiFileV1
-          ? buildDirectMultiFileEngineerContext(prompt, currentFiles)
+          ? buildDirectMultiFileEngineerContext(prompt, triageFiles)
           : buildDirectEngineerContext(prompt, currentFiles);
 
         const MAX_DIRECT_ATTEMPTS = 2;
