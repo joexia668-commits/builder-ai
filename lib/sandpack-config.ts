@@ -86,11 +86,13 @@ const PLACEHOLDER_APP = `export default function App() {
   );
 }`;
 
-function buildSupabaseClientCode(): string {
+function buildSupabaseClientCode(projectId: string): string {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
   return `import { createClient } from '@supabase/supabase-js';
-export const supabase = createClient('${url}', '${key}');
+export const supabase = createClient('${url}', '${key}', {
+  global: { headers: { 'x-app-id': '${projectId}' } },
+});
 // Auth mock — supabase.auth is non-functional in the Sandpack sandbox.
 // All calls are intercepted and return harmless success responses so that
 // any AI-generated auth code does not permanently block the app's login page.
@@ -137,7 +139,6 @@ export function buildSandpackConfig(
   input: string | Record<string, string>,
   projectId: string
 ): SandpackConfig {
-  void projectId; // projectId reserved for future per-project isolation
 
   // Normalize: string input becomes single-file { "/App.js": code }
   let userFiles: Record<string, string> =
@@ -182,7 +183,7 @@ export function buildSandpackConfig(
 
   // Inject hidden supabase client
   sandpackFiles["/supabaseClient.js"] = {
-    code: buildSupabaseClientCode(),
+    code: buildSupabaseClientCode(projectId),
     hidden: true,
   };
 

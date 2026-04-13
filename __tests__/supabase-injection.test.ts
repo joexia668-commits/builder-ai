@@ -41,6 +41,12 @@ describe("Supabase injection — sandpack config (SB-02, SB-04, SB-05)", () => {
   it("SB-05b: supabase export uses const declaration", () => {
     expect(supabaseFile.code).toMatch(/export\s+const\s+supabase/);
   });
+
+  // RLS: x-app-id header must be set so RLS policies can isolate rows by project
+  it("SB-07: /supabaseClient.js sets x-app-id global header with projectId", () => {
+    expect(supabaseFile.code).toContain("x-app-id");
+    expect(supabaseFile.code).toContain(PROJECT_ID);
+  });
 });
 
 describe("Supabase injection — engineer prompt (SB-01, SB-03, SB-06)", () => {
