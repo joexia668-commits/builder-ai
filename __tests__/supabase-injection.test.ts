@@ -48,7 +48,7 @@ describe("Supabase injection — engineer prompt (SB-01, SB-03, SB-06)", () => {
 
   // SB-01: AI is told to use the correct table
   it("SB-01: engineer prompt references dynamic_app_data table", () => {
-    expect(prompt).toContain("dynamic_app_data");
+    expect(prompt).toContain("DynamicAppData");
   });
 
   // SB-03: AI is told to use appId for per-project row isolation
