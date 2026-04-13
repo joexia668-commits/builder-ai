@@ -89,8 +89,6 @@ The AbortController ref is replaced at the start of each generation; calling `ab
 
 ### Intent classification & context memory
 
-`classifyIntent(prompt, hasExistingCode)` in `lib/intent-classifier.ts` — keyword-based router:
-
 | Intent | Trigger | Pipeline |
 |--------|---------|----------|
 | `new_project` | no existing code, or "重新做/start over" keywords | Full PM → Architect → Engineer |
@@ -107,30 +105,12 @@ Context injected per path:
 
 `iterationContext` is loaded from `Project.iterationContext` (Json? column, FIFO max 5 rounds) at page load and held in `Workspace` state. After each generation (both direct and full pipeline), a new `IterationRound` is appended and fire-and-forget PATCHed to `/api/projects/[id]`. `extractArchDecisions(scaffold)` deterministically extracts `ArchDecisions` from `ScaffoldData` without an extra LLM call.
 
-### Model selection priority chain
-
-`resolveModelId(requestModelId?, projectModelId?, userModelId?)` in `lib/ai-providers.ts`:
-
-```
-request-level → project.preferredModel → user.preferredModel → AI_PROVIDER env → DEFAULT_MODEL_ID
-```
-
-`DEFAULT_MODEL_ID = "gemini-2.0-flash"`. All four models are defined in `lib/model-registry.ts`. A model is "available" only if its `envKey` is set in `process.env`.
-
 ### API conventions
 
 - All frontend calls go through `fetchAPI()` or `fetchSSE()` in `lib/api-client.ts` — never raw `fetch('/api/...')` in components.
 - Error responses: `{ error: string, details?: unknown }`.
 - `/api/generate` uses `getToken` (next-auth/jwt) for Edge Runtime compatibility; all other routes use `getServerSession`.
 - `/api/generate` is the only Edge Runtime route (`export const runtime = "edge"`).
-
-### State management
-
-No global store. State lives in hooks and components:
-- `ChatArea` — orchestrates the full multi-phase generation (PM → Architect → layered Engineer), holds `AgentState[]`, `isGenerating`, `engineerProgress`, abort logic; replaced `useAgentStream` hook
-- `useVersions` — version list, selected version for timeline preview, restore action
-- `useProject` — single project data fetch + optimistic preferredModel update
-- `Workspace` — holds `currentFiles: Record<string, string>` and `iterationContext: IterationContext | null` (loaded from project DB row, passed to ChatArea)
 
 ### SSE event protocol
 
@@ -147,10 +127,6 @@ data: {"type":"done"}
 
 `readEngineerSSE` in `chat-area.tsx` handles all three success/partial/error variants and returns `{ files, failedInResponse, truncatedTail }` to `runLayerWithFallback`.
 
-### Version system
-
-Versions are **immutable INSERT-only**. New versions store `files: Record<string,string>` in the `files` Json column; legacy versions only have `code`. `getVersionFiles(version)` in `lib/version-files.ts` provides a unified reader: returns `files` if present, otherwise wraps `code` as `{ "/App.js": code }`. Restore = `getVersionFiles(oldVersion)` → POST `/api/versions` with those files. `useVersions` tracks `previewVersionId` (null = live, non-null = history view which disables ChatInput).
-
 ### Testing patterns
 
 **API route tests** (`__tests__/*.test.ts`): import the route handler directly, mock `next-auth`, `next/server`'s `NextResponse`, and `@/lib/prisma`. See `__tests__/messages-api-route.test.ts` for the canonical pattern.
@@ -163,27 +139,12 @@ Versions are **immutable INSERT-only**. New versions store `files: Record<string
 
 | File | Why |
 |------|-----|
-| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `ScaffoldValidationResult`, `EngineerProgress` (incl. `retryInfo`), `PmOutput`, `ArchOutput`, `PartialExtractResult`, `RequestMeta`, `RequestResult`, `AttemptInfo`, `IterationContext`, `IterationRound`, `ArchDecisions` |
+| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput`, `RequestMeta`, `AttemptInfo` |
 | `lib/intent-classifier.ts` | `classifyIntent(prompt, hasExistingCode)` — keyword router that selects pipeline path |
-| `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildEngineerContextFromStructured`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildPmHistoryContext`, `buildArchIterationContext` |
-| `lib/extract-arch-decisions.ts` | `extractArchDecisions(scaffold)` — deterministic extraction of `ArchDecisions` from `ScaffoldData` (no LLM call) |
+| `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildPmIterationContext` |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
-| `lib/model-registry.ts` | `MODEL_REGISTRY`, `getModelById`, `getAvailableModels`, `isValidModelId` |
-| `lib/extract-json.ts` | `extractPmOutput`, `extractScaffold`, `extractScaffoldFromTwoPhase` — JSON parsing; two-phase extracts from `<output>` block with fallback |
-| `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` (Snip compression) + `getMultiFileEngineerPrompt()` (includes `【本地文件导入限制】` rule + optional `retryHint` for adaptive retry) + `buildMissingFileEngineerPrompt()` (patch generation prompt) |
-| `lib/extract-code.ts` | Multi-layer code extraction + `extractMultiFileCodePartial()` (partial salvage) + `deduplicateDefaultExport()` (removes duplicate `export default X;` lines) + `findMissingLocalImports()` + `findMissingLocalImportsWithNames()` (returns `Map<path, Set<exportName>>` for patch generation) |
-| `lib/validate-scaffold.ts` | `validateScaffold(raw)` — 4-rule deterministic repair before `topologicalSort`: self-ref removal → phantom dep removal → hints path cleaning → cycle breaking (reverse-flow heuristic). Returns `ScaffoldValidationResult { scaffold, warnings }` |
-| `lib/engineer-circuit.ts` | `runLayerWithFallback(layerFiles, requestFn, signal?, onAttempt?)` — 2 layer attempts → 2 per-file attempts → circuit breaker (3 consecutive failures); `requestFn` receives `RequestMeta { attempt, priorFailed }` |
-| `lib/topo-sort.ts` | `topologicalSort` — groups scaffold files into dependency layers for parallel generation |
-| `lib/version-files.ts` | `getVersionFiles` — backward-compatible reader for `code` / `files` version fields |
-| `lib/sandpack-config.ts` | `buildSandpackConfig(input: string \| Record<string,string>, projectId)` — calls `findMissingLocalImports` and injects Proxy stubs for missing paths |
-| `lib/error-codes.ts` | `ErrorCode` union + `ERROR_DISPLAY` map — user-facing error titles and descriptions (includes `missing_imports`) |
-| `lib/auth.ts` | NextAuth configuration — GitHub OAuth, Email Magic Link (Resend), Demo Mode credentials provider |
-| `lib/resend.ts` | Resend email service singleton for Email Magic Link provider |
-| `lib/demo-bootstrap.ts` | Auto-create demo viewer account on startup if `DEMO_VIEWER_ID` env var is set |
-| `components/workspace/chat-area.tsx` | Core orchestration — intent classification, direct path, PM → Architect → layered Engineer, abort, progress state, missing-import error |
-| `app/api/generate/route.ts` | The only Edge route — auth, model validation, provider selection, SSE stream |
-| `components/workspace/workspace.tsx` | Holds `currentFiles` + `lastPmOutput` state; wires to ChatArea and preview |
-| `components/layout/demo-banner.tsx` | Demo mode indicator banner (amber background, read-only notice) |
-| `components/layout/demo-login-button.tsx` | Quick-login button for demo viewer account (login page) |
-| `components/layout/email-login-form.tsx` | Email Magic Link form (sign-in / sign-up unified flow) |
+| `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` + `getMultiFileEngineerPrompt()` (includes retry hint) + `buildMissingFileEngineerPrompt()` |
+| `lib/extract-code.ts` | Multi-layer code extraction + `extractMultiFileCodePartial()` (partial salvage) + `findMissingLocalImports()` + `findMissingLocalImportsWithNames()` |
+| `lib/validate-scaffold.ts` | `validateScaffold(raw)` — 4-rule deterministic repair: self-ref → phantom dep → hints path → cycle breaking |
+| `lib/engineer-circuit.ts` | `runLayerWithFallback` — 2 layer attempts → 2 per-file attempts → circuit breaker (3 consecutive failures) |
+| `components/workspace/chat-area.tsx` | Core orchestration — intent classification, direct path, PM → Architect → layered Engineer, abort, progress |

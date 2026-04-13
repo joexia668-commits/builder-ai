@@ -2,11 +2,7 @@
 
 ## General
 
-- TypeScript strict mode enabled
-- Immutable data patterns — always create new objects, never mutate
 - `import type { ... }` for type-only imports
-- No `any` type — use `unknown` and narrow
-- Async/await only — no raw Promises or callbacks
 
 ## Naming
 
@@ -66,10 +62,8 @@ export function AgentMessage({ agent, content, isStreaming }: AgentMessageProps)
 
 ## Error Handling
 
-- API routes: return structured error responses `{ error: string, details?: unknown }`
-- Client: try/catch with user-friendly toast notifications
+- API routes: return `{ error: string, details?: unknown }`
 - AI API failures: show retry button, don't crash the page
-- Never silently swallow errors
 
 ## CodeRenderer Interface (Extension Point)
 
