@@ -461,11 +461,14 @@ export function extractFileExports(code: string): { named: Set<string>; hasDefau
 
   // export function/async function*/class/const/let/var Name — skip "export type ..."
   const declRe = /\bexport\s+(?!type\b)(?:async\s+)?(?:function\*?|class|const|let|var)\s+([$\w]+)/g;
-  for (const m of code.matchAll(declRe)) named.add(m[1]);
+  let dm: RegExpExecArray | null;
+  while ((dm = declRe.exec(code)) !== null) named.add(dm[1]);
 
   // export { Foo, Bar as Baz } — skip export type { ... }
   const braceRe = /\bexport\s+(type\s+)?\{([^}]*)\}/g;
-  for (const m of code.matchAll(braceRe)) {
+  let bm: RegExpExecArray | null;
+  while ((bm = braceRe.exec(code)) !== null) {
+    const m = bm;
     if (m[1]) continue; // type-only export, skip
     for (const token of m[2].split(",")) {
       const raw = token.trim();
@@ -502,10 +505,11 @@ export function extractFileImports(
   // import [Default,] { Named } from '/path' — skip "import type ..."
   const namedRe =
     /\bimport\s+(?!type\b)(?:([$\w]+)\s*,\s*)?\{([^}]*)\}\s+from\s+['"](\/.+?)['"]/g;
-  for (const m of code.matchAll(namedRe)) {
-    const entry = ensure(m[3]);
-    if (m[1]) entry.hasDefault = true; // "Default," prefix present
-    for (const token of m[2].split(",")) {
+  let nm: RegExpExecArray | null;
+  while ((nm = namedRe.exec(code)) !== null) {
+    const entry = ensure(nm[3]);
+    if (nm[1]) entry.hasDefault = true; // "Default," prefix present
+    for (const token of nm[2].split(",")) {
       const raw = token.trim();
       if (!raw) continue;
       // "Foo as Bar" → external name from the source is "Foo"
@@ -516,8 +520,9 @@ export function extractFileImports(
 
   // import Default from '/path' (no braces — default-only import)
   const defaultRe = /\bimport\s+(?!type\b)([$\w]+)\s+from\s+['"](\/.+?)['"]/g;
-  for (const m of code.matchAll(defaultRe)) {
-    ensure(m[2]).hasDefault = true;
+  let dfm: RegExpExecArray | null;
+  while ((dfm = defaultRe.exec(code)) !== null) {
+    ensure(dfm[2]).hasDefault = true;
   }
 
   return Array.from(byPath.entries()).map(([path, v]) => ({ path, ...v }));
