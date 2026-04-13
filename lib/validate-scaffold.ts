@@ -27,10 +27,10 @@ function findOneCycle(files: readonly ScaffoldFile[]): string[] | null {
 
   const WHITE = 0, GRAY = 1, BLACK = 2;
   const color = new Map<string, number>();
-  for (const p of pathSet) color.set(p, WHITE);
+  for (const p of Array.from(pathSet)) color.set(p, WHITE);
   const parent = new Map<string, string | null>();
 
-  for (const start of pathSet) {
+  for (const start of Array.from(pathSet)) {
     if (color.get(start) !== WHITE) continue;
     const stack: string[] = [start];
     while (stack.length > 0) {
