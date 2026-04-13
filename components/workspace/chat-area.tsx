@@ -16,7 +16,7 @@ import { topologicalSort } from "@/lib/topo-sort";
 import { validateScaffold } from "@/lib/validate-scaffold";
 import { extractPmOutput, extractScaffoldFromTwoPhase } from "@/lib/extract-json";
 import { runLayerWithFallback } from "@/lib/engineer-circuit";
-import { getMultiFileEngineerPrompt } from "@/lib/generate-prompts";
+import { getMultiFileEngineerPrompt, buildMissingFileEngineerPrompt } from "@/lib/generate-prompts";
 import {
   buildEngineerContext,
   buildEngineerContextFromStructured,
@@ -25,7 +25,7 @@ import {
   buildPmIterationContext,
 } from "@/lib/agent-context";
 import { classifyIntent } from "@/lib/intent-classifier";
-import { findMissingLocalImports } from "@/lib/extract-code";
+import { findMissingLocalImports, findMissingLocalImportsWithNames } from "@/lib/extract-code";
 import { ERROR_DISPLAY } from "@/lib/error-codes";
 import type { ErrorCode } from "@/lib/types";
 import type {
@@ -53,6 +53,8 @@ interface ChatAreaProps {
   onPmOutputGenerated?: (pm: PmOutput) => void;
   onNewProject?: () => void;
 }
+
+const MAX_PATCH_FILES = 3;
 
 const TRANSITION_MESSAGES: Partial<Record<AgentRole, string>> = {
   pm: "PM 已将需求文档移交给架构师...",
@@ -728,12 +730,54 @@ export function ChatArea({
             });
 
             if (Object.keys(allCompletedFiles).length > 0) {
-              const missingImports = findMissingLocalImports(allCompletedFiles);
-              if (missingImports.length > 0) {
+              // Attempt to patch missing files before falling back to stubs
+              const missingMap = findMissingLocalImportsWithNames(allCompletedFiles);
+              if (missingMap.size > 0 && missingMap.size <= MAX_PATCH_FILES) {
+                updateAgentState("engineer", {
+                  status: "streaming",
+                  output: `正在补全缺失文件: ${Array.from(missingMap.keys()).map((p) => p.split("/").pop()).join(", ")}`,
+                });
+                try {
+                  const patchPrompt = buildMissingFileEngineerPrompt(
+                    missingMap,
+                    allCompletedFiles,
+                    project.id
+                  );
+                  const patchResponse = await fetchAPI("/api/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      projectId: project.id,
+                      prompt: "补全缺失文件",
+                      agent: "engineer",
+                      context: patchPrompt,
+                      modelId: selectedModel,
+                    }),
+                    signal: abortController.signal,
+                  });
+                  if (patchResponse.body) {
+                    const patchSSE = await readEngineerSSE(
+                      patchResponse.body,
+                      "engineer:patch"
+                    );
+                    Object.assign(allCompletedFiles, patchSSE.files);
+                  }
+                } catch {
+                  // Patch failed — fall through to stub injection
+                }
+                updateAgentState("engineer", {
+                  status: "done",
+                  output: summaryOutput,
+                });
+              }
+
+              // Re-check for remaining missing imports after patch attempt
+              const remainingMissing = findMissingLocalImports(allCompletedFiles);
+              if (remainingMissing.length > 0) {
                 updateSession(project.id, {
                   generationError: {
                     code: "missing_imports",
-                    raw: `AI 生成的代码引用了未创建的文件：${missingImports.join("、")}`,
+                    raw: `AI 生成的代码引用了未创建的文件：${remainingMissing.join("、")}`,
                   },
                 });
                 // Intentionally do NOT return here — stubs were injected by buildSandpackConfig
