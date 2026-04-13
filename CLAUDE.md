@@ -59,8 +59,12 @@ ChatArea
   │   Single-file V1:
   │     buildDirectEngineerContext()  → POST /api/generate { agent: "engineer" }
   │           └── code_complete  →  onFilesGenerated({ "/App.js": code })
-  │   Multi-file V1:
-  │     buildDirectMultiFileEngineerContext()  → POST /api/generate { agent: "engineer", targetFiles: v1Paths }
+  │   Multi-file V1 (two-phase triage):
+  │     triageAffectedFiles(prompt, currentFiles)  → POST /api/generate { triageMode: true }
+  │           └── JSON array of affected paths  →  intersect with currentFiles keys
+  │           └── ≤3 paths: buildDirectMultiFileEngineerContext(prompt, subset)
+  │           └── 0 or >3 paths: fallback to buildDirectMultiFileEngineerContext(prompt, allFiles)
+  │     → POST /api/generate { agent: "engineer", partialMultiFile: true }
   │           └── files_complete  →  merge with V1  →  onFilesGenerated(mergedFiles)
   │
   └─ FULL PIPELINE  (new_project | feature_add)
@@ -79,6 +83,8 @@ ChatArea
             onAttempt callback → updates engineerProgress.retryInfo → UI retry banner
       └── allFiles merged  →  findMissingLocalImportsWithNames()  →  ≤3 缺失文件时发起补全请求 / 超出则跳过
                            →  findMissingLocalImports()  →  stub 注入 / missing_imports 错误
+                           →  checkImportExportConsistency()  →  ≤3 文件时发起修复请求（named/default 不匹配）
+                           →  checkDisallowedImports()  →  ≤3 文件时发起修复请求（禁止包引用）
                            →  buildSandpackConfig(files, projectId)  →  Sandpack
                            →  POST /api/versions  { code, files }  (immutable snapshot)
 ```
@@ -141,10 +147,10 @@ data: {"type":"done"}
 |------|-----|
 | `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput`, `RequestMeta`, `AttemptInfo` |
 | `lib/intent-classifier.ts` | `classifyIntent(prompt, hasExistingCode)` — keyword router that selects pipeline path |
-| `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildPmIterationContext` |
+| `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildTriageContext`, `buildPmIterationContext` |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
-| `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` + `getMultiFileEngineerPrompt()` (includes retry hint) + `buildMissingFileEngineerPrompt()` |
-| `lib/extract-code.ts` | Multi-layer code extraction + `extractMultiFileCodePartial()` (partial salvage) + `findMissingLocalImports()` + `findMissingLocalImportsWithNames()` |
+| `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` + `getMultiFileEngineerPrompt()` (includes retry hint) + `buildMissingFileEngineerPrompt()` + `buildMismatchedFilesEngineerPrompt()` + `buildDisallowedImportsEngineerPrompt()` |
+| `lib/extract-code.ts` | Multi-layer code extraction + `extractMultiFileCodePartial()` (partial salvage) + `findMissingLocalImports()` + `findMissingLocalImportsWithNames()` + `checkImportExportConsistency()` + `checkDisallowedImports()` |
 | `lib/validate-scaffold.ts` | `validateScaffold(raw)` — 4-rule deterministic repair: self-ref → phantom dep → hints path → cycle breaking |
 | `lib/engineer-circuit.ts` | `runLayerWithFallback` — 2 layer attempts → 2 per-file attempts → circuit breaker (3 consecutive failures) |
 | `components/workspace/chat-area.tsx` | Core orchestration — intent classification, direct path, PM → Architect → layered Engineer, abort, progress |
