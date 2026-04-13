@@ -22,8 +22,10 @@ import {
   buildEngineerContextFromStructured,
   buildDirectEngineerContext,
   buildDirectMultiFileEngineerContext,
-  buildPmIterationContext,
+  buildPmHistoryContext,
+  buildArchIterationContext,
 } from "@/lib/agent-context";
+import { extractArchDecisions } from "@/lib/extract-arch-decisions";
 import { classifyIntent } from "@/lib/intent-classifier";
 import { findMissingLocalImports, findMissingLocalImportsWithNames } from "@/lib/extract-code";
 import { ERROR_DISPLAY } from "@/lib/error-codes";
@@ -36,6 +38,9 @@ import type {
   AgentRole,
   PmOutput,
   ScaffoldFile,
+  ScaffoldData,
+  IterationContext,
+  IterationRound,
 } from "@/lib/types";
 import { AGENT_ORDER, AGENTS } from "@/lib/types";
 
@@ -49,8 +54,8 @@ interface ChatAreaProps {
   isDemo?: boolean;
   initialModel?: string;
   currentFiles?: Record<string, string>;
-  lastPmOutput?: PmOutput | null;
-  onPmOutputGenerated?: (pm: PmOutput) => void;
+  iterationContext?: IterationContext | null;
+  onIterationContextChange?: (ctx: IterationContext) => void;
   onNewProject?: () => void;
 }
 
@@ -76,6 +81,32 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const MAX_ITERATION_ROUNDS = 5;
+
+function appendRound(
+  existing: IterationContext | null | undefined,
+  round: IterationRound
+): IterationContext {
+  const rounds: readonly IterationRound[] = [
+    ...(existing?.rounds ?? []),
+    round,
+  ].slice(-MAX_ITERATION_ROUNDS);
+  return { rounds };
+}
+
+function resolveArchContext(
+  rounds: readonly IterationRound[],
+  pmOutput: string
+): string {
+  const lastRoundWithArch = [...rounds].reverse().find(
+    (r) => r.archDecisions !== null
+  );
+  const archCtx = lastRoundWithArch?.archDecisions
+    ? buildArchIterationContext(lastRoundWithArch.archDecisions)
+    : "";
+  return archCtx ? `${archCtx}\n\n${pmOutput}` : pmOutput;
+}
+
 export function ChatArea({
   project,
   messages,
@@ -86,8 +117,8 @@ export function ChatArea({
   isDemo = false,
   initialModel,
   currentFiles = {},
-  lastPmOutput,
-  onPmOutputGenerated,
+  iterationContext,
+  onIterationContextChange,
   onNewProject,
 }: ChatAreaProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -295,6 +326,7 @@ export function ChatArea({
     // Phase 0: classify intent to route pipeline
     const hasExistingCode = Object.keys(currentFiles).length > 0;
     const intent = classifyIntent(prompt, hasExistingCode);
+    const roundTimestamp = new Date().toISOString();
 
     const userMsg: ProjectMessage = {
       id: `temp-${Date.now()}`,
@@ -311,6 +343,7 @@ export function ChatArea({
     const outputs: Record<AgentRole, string> = { pm: "", architect: "", engineer: "" };
     let parsedPm: PmOutput | null = null;
     let lastCode = "";
+    let capturedScaffold: ScaffoldData | null = null;
 
     try {
       // Direct path: bug_fix / style_change skips PM + Architect
@@ -502,6 +535,25 @@ export function ChatArea({
           updateSession(project.id, { generationError: { code: "unknown", raw: "Engineer 未能生成可解析的代码，请重试" } });
         }
 
+        // Persist direct-path iteration round (no PM/Arch)
+        {
+          const round: IterationRound = {
+            userPrompt: prompt,
+            intent,
+            pmSummary: null,
+            archDecisions: null,
+            timestamp: roundTimestamp,
+          };
+          const updated = appendRound(iterationContext, round);
+          onIterationContextChange?.(updated);
+          fetchAPI(`/api/projects/${project.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ iterationContext: updated }),
+          }).catch((err: unknown) => {
+            console.error("[iterationContext] PATCH failed — context may lag DB:", err);
+          });
+        }
+
         return; // skip full pipeline — finally block still runs
       }
 
@@ -517,6 +569,8 @@ export function ChatArea({
                 ),
               }
             : null;
+
+          if (scaffoldFiltered) capturedScaffold = scaffoldFiltered;
 
           // Validate scaffold: remove phantom deps, clean hints, break cycles
           const { scaffold, warnings: scaffoldWarnings } = scaffoldFiltered
@@ -816,13 +870,14 @@ export function ChatArea({
 
         updateAgentState(agentRole, { status: "thinking", output: "" });
 
+        const rounds = iterationContext?.rounds ?? [];
         const context =
           agentRole === "pm"
-            ? (intent === "feature_add" && lastPmOutput)
-                ? buildPmIterationContext(lastPmOutput)
+            ? (intent === "feature_add" && rounds.length > 0)
+                ? buildPmHistoryContext(rounds)
                 : undefined
             : agentRole === "architect"
-              ? outputs.pm
+              ? resolveArchContext(rounds, outputs.pm)
               : parsedPm
                 ? buildEngineerContextFromStructured(
                     prompt,
@@ -932,9 +987,23 @@ export function ChatArea({
         onFilesGenerated({ "/App.js": lastCode }, version);
       }
 
-      // Persist PM output so next iteration can inject feature summary
-      if (parsedPm) {
-        onPmOutputGenerated?.(parsedPm);
+      // Persist iteration round for cross-round context (full pipeline)
+      {
+        const round: IterationRound = {
+          userPrompt: prompt,
+          intent,
+          pmSummary: parsedPm,
+          archDecisions: capturedScaffold ? extractArchDecisions(capturedScaffold) : null,
+          timestamp: roundTimestamp,
+        };
+        const updated = appendRound(iterationContext, round);
+        onIterationContextChange?.(updated);
+        fetchAPI(`/api/projects/${project.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ iterationContext: updated }),
+        }).catch((err: unknown) => {
+          console.error("[iterationContext] PATCH failed — context may lag DB:", err);
+        });
       }
     } catch (err) {
       const isAbort =

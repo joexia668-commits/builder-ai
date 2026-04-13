@@ -59,17 +59,18 @@ model VerificationToken {
 }
 
 model Project {
-  id             String       @id @default(cuid())
-  name           String
-  description    String?
-  userId         String
-  preferredModel String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  messages       Message[]
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  versions       Version[]
-  deployments    Deployment[]
+  id               String       @id @default(cuid())
+  name             String
+  description      String?
+  userId           String
+  preferredModel   String?
+  iterationContext Json?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  messages         Message[]
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions         Version[]
+  deployments      Deployment[]
 }
 
 model Version {

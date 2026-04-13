@@ -43,7 +43,7 @@ export async function PATCH(
   }
 
   const body = await req.json();
-  const { name, description, currentCode, preferredModel } = body;
+  const { name, description, preferredModel, iterationContext } = body;
 
   if (preferredModel !== undefined && preferredModel !== null) {
     if (!isValidModelId(preferredModel)) {
@@ -59,8 +59,8 @@ export async function PATCH(
     data: {
       ...(name !== undefined && { name: name.trim() }),
       ...(description !== undefined && { description: description?.trim() ?? null }),
-      ...(currentCode !== undefined && { currentCode }),
       ...(preferredModel !== undefined && { preferredModel: preferredModel ?? null }),
+      ...(iterationContext !== undefined && { iterationContext }),
     },
   });
 
