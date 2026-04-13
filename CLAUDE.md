@@ -56,7 +56,7 @@ ChatArea
       └── POST /api/generate  { agent: "pm", prompt, context?: buildPmIterationContext(lastPmOutput) }
             └── JSON PmOutput  →  extractPmOutput()  →  onPmOutputGenerated(parsedPm)
       └── POST /api/generate  { agent: "architect", context: pmOutput }
-            └── <thinking>推理</thinking><output>JSON ScaffoldData</output>  →  extractScaffoldFromTwoPhase()  →  topologicalSort()  →  layers[][]
+            └── <thinking>推理</thinking><output>JSON ScaffoldData</output>  →  extractScaffoldFromTwoPhase()  →  validateScaffold()  →  topologicalSort()  →  layers[][]
       └── for each layer (sequential):
             runLayerWithFallback(layerFiles, requestFn, signal, onAttempt)
               ├─ Attempt 1: all files in layer → POST /api/generate (parallel per file)
@@ -66,7 +66,8 @@ ChatArea
               ├─ Attempt 2: only prior failed files (prompt carries retryHint)
               └─ Per-file fallback (up to 2 attempts each, circuit-breaker at 3 consecutive failures)
             onAttempt callback → updates engineerProgress.retryInfo → UI retry banner
-      └── allFiles merged  →  findMissingLocalImports()  →  stub 注入 / missing_imports 错误
+      └── allFiles merged  →  findMissingLocalImportsWithNames()  →  ≤3 缺失文件时发起补全请求 / 超出则跳过
+                           →  findMissingLocalImports()  →  stub 注入 / missing_imports 错误
                            →  buildSandpackConfig(files, projectId)  →  Sandpack
                            →  POST /api/versions  { code, files }  (immutable snapshot)
 ```
@@ -150,14 +151,15 @@ Versions are **immutable INSERT-only**. New versions store `files: Record<string
 
 | File | Why |
 |------|-----|
-| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress` (incl. `retryInfo`), `PmOutput`, `ArchOutput`, `PartialExtractResult`, `RequestMeta`, `RequestResult`, `AttemptInfo` |
+| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `ScaffoldValidationResult`, `EngineerProgress` (incl. `retryInfo`), `PmOutput`, `ArchOutput`, `PartialExtractResult`, `RequestMeta`, `RequestResult`, `AttemptInfo` |
 | `lib/intent-classifier.ts` | `classifyIntent(prompt, hasExistingCode)` — keyword router that selects pipeline path |
 | `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildEngineerContextFromStructured`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildPmIterationContext` |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
 | `lib/model-registry.ts` | `MODEL_REGISTRY`, `getModelById`, `getAvailableModels`, `isValidModelId` |
 | `lib/extract-json.ts` | `extractPmOutput`, `extractScaffold`, `extractScaffoldFromTwoPhase` — JSON parsing; two-phase extracts from `<output>` block with fallback |
-| `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` (Snip compression) + `getMultiFileEngineerPrompt()` (includes `【本地文件导入限制】` rule + optional `retryHint` for adaptive retry) |
-| `lib/extract-code.ts` | Multi-layer code extraction + `extractMultiFileCodePartial()` (partial salvage) + `deduplicateDefaultExport()` (removes duplicate `export default X;` lines) + `findMissingLocalImports()` |
+| `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` (Snip compression) + `getMultiFileEngineerPrompt()` (includes `【本地文件导入限制】` rule + optional `retryHint` for adaptive retry) + `buildMissingFileEngineerPrompt()` (patch generation prompt) |
+| `lib/extract-code.ts` | Multi-layer code extraction + `extractMultiFileCodePartial()` (partial salvage) + `deduplicateDefaultExport()` (removes duplicate `export default X;` lines) + `findMissingLocalImports()` + `findMissingLocalImportsWithNames()` (returns `Map<path, Set<exportName>>` for patch generation) |
+| `lib/validate-scaffold.ts` | `validateScaffold(raw)` — 4-rule deterministic repair before `topologicalSort`: self-ref removal → phantom dep removal → hints path cleaning → cycle breaking (reverse-flow heuristic). Returns `ScaffoldValidationResult { scaffold, warnings }` |
 | `lib/engineer-circuit.ts` | `runLayerWithFallback(layerFiles, requestFn, signal?, onAttempt?)` — 2 layer attempts → 2 per-file attempts → circuit breaker (3 consecutive failures); `requestFn` receives `RequestMeta { attempt, priorFailed }` |
 | `lib/topo-sort.ts` | `topologicalSort` — groups scaffold files into dependency layers for parallel generation |
 | `lib/version-files.ts` | `getVersionFiles` — backward-compatible reader for `code` / `files` version fields |
