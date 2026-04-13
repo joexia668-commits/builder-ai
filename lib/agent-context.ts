@@ -163,11 +163,17 @@ export function buildPmHistoryContext(rounds: readonly IterationRound[]): string
 
   const roundLines = rounds.map((r, i) => {
     const label = INTENT_LABELS[r.intent] ?? r.intent;
+    const parts: string[] = [];
     if (r.pmSummary) {
       const features = r.pmSummary.features.join("、");
-      return `[第${i + 1}轮] 用户："${r.userPrompt}"\n  意图：${r.pmSummary.intent} / 功能：${features} / 持久化：${r.pmSummary.persistence}`;
+      parts.push(`[第${i + 1}轮] 用户："${r.userPrompt}"\n  意图：${r.pmSummary.intent} / 功能：${features} / 持久化：${r.pmSummary.persistence}`);
+    } else {
+      parts.push(`[第${i + 1}轮] 用户："${r.userPrompt}" (${label}，跳过PM)`);
     }
-    return `[第${i + 1}轮] 用户："${r.userPrompt}" (${label}，跳过PM)`;
+    if (r.archDecisions) {
+      parts.push(`  架构：${r.archDecisions.componentTree} | 状态：${r.archDecisions.stateStrategy} | 持久化：${r.archDecisions.persistenceSetup}`);
+    }
+    return parts.join("\n");
   });
 
   return header + "\n" + roundLines.join("\n\n");
@@ -183,7 +189,9 @@ export function buildArchIterationContext(archDecisions: ArchDecisions): string 
     `组件结构：${archDecisions.componentTree}`,
     `状态管理：${archDecisions.stateStrategy}`,
     `持久化：${archDecisions.persistenceSetup}`,
-    `关键决策：${archDecisions.keyDecisions.join(" / ")}`,
   ];
+  if (archDecisions.keyDecisions.length > 0) {
+    lines.push(`关键决策：${archDecisions.keyDecisions.join(" / ")}`);
+  }
   return lines.join("\n");
 }

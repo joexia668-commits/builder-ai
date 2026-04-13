@@ -85,4 +85,16 @@ describe("buildArchIterationContext", () => {
     expect(result).toContain("localStorage");
     expect(result).toContain("Tab切换视图");
   });
+
+  it("buildArchIterationContext omits 关键决策 when keyDecisions is empty", () => {
+    const archDecisions: ArchDecisions = {
+      fileCount: 2,
+      componentTree: "App -> [Component]",
+      stateStrategy: "useState",
+      persistenceSetup: "none",
+      keyDecisions: [],
+    };
+    const result = buildArchIterationContext(archDecisions);
+    expect(result).not.toContain("关键决策");
+  });
 });
