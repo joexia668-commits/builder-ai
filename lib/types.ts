@@ -73,6 +73,7 @@ export interface Project {
   description?: string | null;
   userId: string;
   preferredModel?: string | null;
+  iterationContext?: IterationContext | null;
   createdAt: Date;
   updatedAt: Date;
   messages?: ProjectMessage[];
@@ -205,6 +206,27 @@ export interface ScaffoldData {
 export interface ScaffoldValidationResult {
   readonly scaffold: ScaffoldData;
   readonly warnings: readonly string[];
+}
+
+// Cross-round iteration context (V2)
+export interface ArchDecisions {
+  readonly fileCount: number;
+  readonly componentTree: string;
+  readonly stateStrategy: string;
+  readonly persistenceSetup: string;
+  readonly keyDecisions: readonly string[];
+}
+
+export interface IterationRound {
+  readonly userPrompt: string;
+  readonly intent: Intent;
+  readonly pmSummary: PmOutput | null;
+  readonly archDecisions: ArchDecisions | null;
+  readonly timestamp: string;
+}
+
+export interface IterationContext {
+  readonly rounds: readonly IterationRound[];
 }
 
 // Engineer multi-file generation progress
