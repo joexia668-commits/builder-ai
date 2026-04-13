@@ -398,6 +398,54 @@ describe("extractMultiFileCodePartial", () => {
     // The last occurrence is preserved
     expect(code.endsWith("export default filterStudentsByClass;")).toBe(true);
   });
+
+  it("marks file with unterminated string as failed", () => {
+    const raw = [
+      "// === FILE: /A.js ===",
+      "export const A = () => { return 1 }",
+      "// === FILE: /B.js ===",
+      "import { X } from 'lucide",
+    ].join("\n");
+    const result = extractMultiFileCodePartial(raw, ["/A.js", "/B.js"]);
+    expect(result.ok["/A.js"]).toContain("return 1");
+    expect(result.ok["/B.js"]).toBeUndefined();
+    expect(result.failed).toContain("/B.js");
+  });
+
+  it("marks file with unbalanced parens as failed", () => {
+    const raw = [
+      "// === FILE: /A.js ===",
+      "export default function App() { return null; }",
+      "// === FILE: /B.js ===",
+      "export default function Broken(",
+    ].join("\n");
+    const result = extractMultiFileCodePartial(raw, ["/A.js", "/B.js"]);
+    expect(result.ok["/A.js"]).toBeDefined();
+    expect(result.failed).toContain("/B.js");
+  });
+
+  it("marks file with unterminated multi-line comment as failed", () => {
+    const raw = [
+      "// === FILE: /A.js ===",
+      "export const A = () => { return 1 }",
+      "// === FILE: /B.js ===",
+      "/* TODO: implement this",
+    ].join("\n");
+    const result = extractMultiFileCodePartial(raw, ["/A.js", "/B.js"]);
+    expect(result.ok["/A.js"]).toBeDefined();
+    expect(result.failed).toContain("/B.js");
+  });
+
+  it("passes file with balanced delimiters and closed strings", () => {
+    const raw = [
+      "// === FILE: /A.js ===",
+      "import { X } from 'react';",
+      "export default function App() { return [1, 2, 3].map((x) => x); }",
+    ].join("\n");
+    const result = extractMultiFileCodePartial(raw, ["/A.js"]);
+    expect(result.ok["/A.js"]).toBeDefined();
+    expect(result.failed).toEqual([]);
+  });
 });
 
 describe("deduplicateDefaultExport", () => {

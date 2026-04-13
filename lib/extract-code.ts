@@ -351,6 +351,10 @@ export function extractMultiFileCodePartial(
       failed.push(path);
       continue;
     }
+    if (hasUnterminatedLiteral(code)) {
+      failed.push(path);
+      continue;
+    }
     ok[path] = code;
   }
 
