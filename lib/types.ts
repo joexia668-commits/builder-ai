@@ -1,5 +1,5 @@
 export type AgentRole = "pm" | "architect" | "engineer";
-export type MessageRole = "user" | AgentRole;
+export type MessageRole = "user" | "system" | AgentRole;
 
 export interface Agent {
   id: AgentRole;
@@ -52,6 +52,7 @@ export interface ProjectMessage {
     agentName?: string;
     agentColor?: string;
     thinkingDuration?: number;
+    type?: string;
   } | null;
   createdAt: Date;
 }
