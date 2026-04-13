@@ -64,7 +64,7 @@ export function inferErrorCode(err: unknown): ErrorCode {
   const msg = err.message.toLowerCase();
   if (msg.includes("429") || msg.includes("rate limit")) return "rate_limited";
   if (msg.includes("context length") || msg.includes("too long")) return "context_overflow";
-  if (msg.includes("timeout") || msg.includes("timed out") || msg.includes("aborted")) return "generation_timeout";
+  if (msg.includes("timeout") || msg.includes("timed out")) return "generation_timeout";
   if (
     msg.includes("api key") ||
     msg.includes("unauthorized") ||
