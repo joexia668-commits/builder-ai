@@ -36,6 +36,12 @@ describe("extractArchDecisions", () => {
     expect(result.stateStrategy).toBe("unknown");
   });
 
+  it("infers stateStrategy as Context API when context keyword present", () => {
+    const scaffold: ScaffoldData = { ...SCAFFOLD, designNotes: "使用 React context 管理主题" };
+    const result = extractArchDecisions(scaffold);
+    expect(result.stateStrategy).toBe("Context API");
+  });
+
   it("detects supabase persistence from deps", () => {
     const scaffold: ScaffoldData = {
       ...SCAFFOLD,
@@ -45,7 +51,7 @@ describe("extractArchDecisions", () => {
       ],
     };
     const result = extractArchDecisions(scaffold);
-    expect(result.persistenceSetup).toBe("supabase");
+    expect(result.persistenceSetup).toBe("Supabase (CRUD)");
   });
 
   it("detects localStorage persistence from designNotes", () => {

@@ -55,7 +55,7 @@ function fileName(path: string): string {
 function inferStateStrategy(designNotes: string): string {
   const lower = designNotes.toLowerCase();
   if (lower.includes("usereducer")) return "useReducer";
-  if (lower.includes("context")) return "context";
+  if (lower.includes("context")) return "Context API";
   if (lower.includes("usestate")) return "useState";
   return "unknown";
 }
@@ -64,7 +64,7 @@ function inferPersistenceSetup(scaffold: ScaffoldData): string {
   const hasSupabaseDep = scaffold.files.some((f) =>
     f.deps.some((d) => d.includes("supabaseClient"))
   );
-  if (hasSupabaseDep) return "supabase";
+  if (hasSupabaseDep) return "Supabase (CRUD)";
 
   const lower = scaffold.designNotes.toLowerCase();
   if (lower.includes("localstorage")) return "localStorage";
