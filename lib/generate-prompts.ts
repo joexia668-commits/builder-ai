@@ -471,7 +471,7 @@ HTTP 请求只使用原生 fetch API。
 
 如需数据持久化，使用沙箱预置的 Supabase 客户端：
 import { supabase } from '/supabaseClient.js'
-// 使用 dynamic_app_data 表，appId 固定为 '${projectId}'
+// 使用 DynamicAppData 表，appId 固定为 '${projectId}'
 
 【不一致详情】
 ${mismatchLines.join("\n")}
