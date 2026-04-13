@@ -1,4 +1,4 @@
-import type { PmOutput } from "@/lib/types";
+import type { PmOutput, IterationRound, ArchDecisions } from "@/lib/types";
 
 /**
  * Builds the full context string passed to the Engineer agent.
@@ -142,5 +142,48 @@ export function buildPmIterationContext(pm: PmOutput): string {
     lines.push(`[数据模型]: ${pm.dataModel.join(" / ")}`);
   }
 
+  return lines.join("\n");
+}
+
+const INTENT_LABELS: Record<string, string> = {
+  new_project: "新建项目",
+  feature_add: "功能迭代",
+  bug_fix: "Bug 修复",
+  style_change: "样式调整",
+};
+
+/**
+ * Builds a multi-round history context string for PM.
+ * Replaces the single-round buildPmIterationContext.
+ */
+export function buildPmHistoryContext(rounds: readonly IterationRound[]): string {
+  if (rounds.length === 0) return "";
+
+  const header = "当前应用的迭代历史（请在此基础上分析增量需求，不要重新设计已有功能）：\n";
+
+  const roundLines = rounds.map((r, i) => {
+    const label = INTENT_LABELS[r.intent] ?? r.intent;
+    if (r.pmSummary) {
+      const features = r.pmSummary.features.join("、");
+      return `[第${i + 1}轮] 用户："${r.userPrompt}"\n  意图：${r.pmSummary.intent} / 功能：${features} / 持久化：${r.pmSummary.persistence}`;
+    }
+    return `[第${i + 1}轮] 用户："${r.userPrompt}" (${label}，跳过PM)`;
+  });
+
+  return header + "\n" + roundLines.join("\n\n");
+}
+
+/**
+ * Builds context for Architect showing its own previous decisions.
+ */
+export function buildArchIterationContext(archDecisions: ArchDecisions): string {
+  const lines = [
+    "上次架构方案（请在此基础上增量修改，保留已有文件结构）：",
+    `文件数：${archDecisions.fileCount}`,
+    `组件结构：${archDecisions.componentTree}`,
+    `状态管理：${archDecisions.stateStrategy}`,
+    `持久化：${archDecisions.persistenceSetup}`,
+    `关键决策：${archDecisions.keyDecisions.join(" / ")}`,
+  ];
   return lines.join("\n");
 }
