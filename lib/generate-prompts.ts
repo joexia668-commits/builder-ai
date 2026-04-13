@@ -1,4 +1,4 @@
-import type { AgentRole, ScaffoldFile } from "@/lib/types";
+import type { AgentRole, AttemptReason, ScaffoldFile } from "@/lib/types";
 
 export function getSystemPrompt(agent: AgentRole, projectId: string): string {
   const prompts: Record<AgentRole, string> = {
@@ -210,7 +210,7 @@ interface MultiFileEngineerPromptInput {
   readonly existingFiles?: Record<string, string>;
   readonly retryHint?: {
     readonly attempt: number;
-    readonly reason: string;
+    readonly reason: AttemptReason;
     readonly priorTail?: string;
   };
 }

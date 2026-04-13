@@ -73,6 +73,7 @@ export function AgentStatusBar({
                     {engineerProgress.retryInfo.attempt}/
                     {engineerProgress.retryInfo.maxAttempts}
                     {engineerProgress.retryInfo.reason === "parse_failed" && "（上次输出截断）"}
+                    {engineerProgress.retryInfo.reason === "string_truncated" && "（字符串/括号截断）"}
                     {engineerProgress.retryInfo.reason === "per_file_fallback" && "（逐文件回退）"}
                     {engineerProgress.retryInfo.failedSubset.length > 0 && (
                       <>
