@@ -14,6 +14,7 @@ export interface GenerationSession {
   liveStreams: Record<string, LiveFileStream>;
   isGenerating: boolean;
   generationError: { code: ErrorCode; raw: string } | null;
+  scaffoldWarnings: readonly string[];
   transitionText: string | null;
   lastPrompt: string;
   lastEventAt: number | null;
@@ -33,6 +34,7 @@ function makeEmptySession(projectId: string = ""): GenerationSession {
     liveStreams: {},
     isGenerating: false,
     generationError: null,
+    scaffoldWarnings: [],
     transitionText: null,
     lastPrompt: "",
     lastEventAt: null,
@@ -53,6 +55,7 @@ export const EMPTY_SESSION: GenerationSession = {
   liveStreams: {},
   isGenerating: false,
   generationError: null,
+  scaffoldWarnings: [],
   transitionText: null,
   lastPrompt: "",
   lastEventAt: null,

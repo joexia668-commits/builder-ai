@@ -98,7 +98,7 @@ export function ChatArea({
   );
 
   const session = useGenerationSession(project.id);
-  const { isGenerating, generationError, lastPrompt, transitionText, agentStates, engineerProgress } = session;
+  const { isGenerating, generationError, scaffoldWarnings, lastPrompt, transitionText, agentStates, engineerProgress } = session;
 
   const availableModelIds = getAvailableModels({
     GOOGLE_GENERATIVE_AI_API_KEY: process.env.NEXT_PUBLIC_GEMINI_CONFIGURED ?? "",
@@ -524,10 +524,19 @@ export function ChatArea({
             : { scaffold: null, warnings: [] as readonly string[] };
 
           if (scaffoldWarnings.length > 0) {
-            updateAgentState("architect", {
-              status: "done",
-              output: outputs.architect + `\n\n⚠ 已自动修正 scaffold：${scaffoldWarnings.join("；")}`,
-            });
+            const warningContent = `🔧 已自动修正 scaffold：${scaffoldWarnings.join("；")}`;
+            const warningMsg: ProjectMessage = {
+              id: `scaffold-warning-${Date.now()}`,
+              projectId: project.id,
+              role: "system",
+              content: warningContent,
+              metadata: { type: "scaffold_warning" },
+              createdAt: new Date(),
+            };
+            currentMessages = [...currentMessages, warningMsg];
+            onMessagesChange(currentMessages);
+            await persistMessage("system", warningContent, { type: "scaffold_warning" });
+            updateSession(project.id, { scaffoldWarnings: [] });
           }
 
           if (scaffold && scaffold.files.length > 1) {
@@ -987,9 +996,16 @@ export function ChatArea({
           </div>
         )}
 
-        {messages.map((msg) => (
-          <AgentMessage key={msg.id} message={msg} />
-        ))}
+        {messages.map((msg) => {
+          if ((msg.metadata as { type?: string } | null)?.type === "scaffold_warning") {
+            return (
+              <div key={msg.id} className="flex items-start gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg mx-2 text-xs text-gray-500">
+                <span>{msg.content}</span>
+              </div>
+            );
+          }
+          return <AgentMessage key={msg.id} message={msg} />;
+        })}
 
         {isGenerating &&
           AGENT_ORDER.map((role) => {
