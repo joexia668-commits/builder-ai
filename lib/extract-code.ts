@@ -479,3 +479,46 @@ export function extractFileExports(code: string): { named: Set<string>; hasDefau
 
   return { named, hasDefault };
 }
+
+/**
+ * Extract all imports of local paths (starting with '/') from a JS/TS code string.
+ * Skips `import type` declarations and external packages.
+ *
+ * Returns one entry per local path with:
+ *   - named: external names being imported (the name as exported by the source file)
+ *            e.g. `import { Foo as F }` → named contains "Foo"
+ *   - hasDefault: true if there is a default import from that path
+ */
+export function extractFileImports(
+  code: string
+): Array<{ path: string; named: string[]; hasDefault: boolean }> {
+  const byPath = new Map<string, { named: string[]; hasDefault: boolean }>();
+
+  const ensure = (path: string) => {
+    if (!byPath.has(path)) byPath.set(path, { named: [], hasDefault: false });
+    return byPath.get(path)!;
+  };
+
+  // import [Default,] { Named } from '/path' — skip "import type ..."
+  const namedRe =
+    /\bimport\s+(?!type\b)(?:([$\w]+)\s*,\s*)?\{([^}]*)\}\s+from\s+['"](\/.+?)['"]/g;
+  for (const m of code.matchAll(namedRe)) {
+    const entry = ensure(m[3]);
+    if (m[1]) entry.hasDefault = true; // "Default," prefix present
+    for (const token of m[2].split(",")) {
+      const raw = token.trim();
+      if (!raw) continue;
+      // "Foo as Bar" → external name from the source is "Foo"
+      const name = raw.split(/\s+as\s+/)[0].trim();
+      if (name && /^[$\w]+$/.test(name)) entry.named.push(name);
+    }
+  }
+
+  // import Default from '/path' (no braces — default-only import)
+  const defaultRe = /\bimport\s+(?!type\b)([$\w]+)\s+from\s+['"](\/.+?)['"]/g;
+  for (const m of code.matchAll(defaultRe)) {
+    ensure(m[2]).hasDefault = true;
+  }
+
+  return Array.from(byPath.entries()).map(([path, v]) => ({ path, ...v }));
+}

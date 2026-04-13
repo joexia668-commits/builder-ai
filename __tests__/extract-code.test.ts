@@ -5,7 +5,7 @@
  * This utility handles the fallback case where fences slip through.
  */
 
-import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced, hasUnterminatedLiteral, extractFileExports } from "@/lib/extract-code";
+import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced, hasUnterminatedLiteral, extractFileExports, extractFileImports } from "@/lib/extract-code";
 
 describe("extractReactCode", () => {
   it("extracts code from ```jsx fences", () => {
@@ -596,5 +596,64 @@ describe("extractFileExports", () => {
     const result = extractFileExports(code);
     expect(result.named.has("Button")).toBe(true);
     expect(result.hasDefault).toBe(true);
+  });
+});
+
+describe("extractFileImports", () => {
+  it("returns named imports from local path", () => {
+    const result = extractFileImports("import { Foo, Bar } from '/components/Foo.js';");
+    expect(result).toHaveLength(1);
+    expect(result[0].path).toBe("/components/Foo.js");
+    expect(result[0].named).toEqual(expect.arrayContaining(["Foo", "Bar"]));
+    expect(result[0].hasDefault).toBe(false);
+  });
+
+  it("returns default import from local path", () => {
+    const result = extractFileImports("import Foo from '/components/Foo.js';");
+    expect(result).toHaveLength(1);
+    expect(result[0].hasDefault).toBe(true);
+    expect(result[0].named).toHaveLength(0);
+  });
+
+  it("returns both default and named for mixed import", () => {
+    const result = extractFileImports("import Foo, { Bar } from '/x.js';");
+    expect(result).toHaveLength(1);
+    expect(result[0].hasDefault).toBe(true);
+    expect(result[0].named).toContain("Bar");
+  });
+
+  it("captures external name for aliased import (import { Foo as F })", () => {
+    const result = extractFileImports("import { Foo as F } from '/x.js';");
+    expect(result[0].named).toContain("Foo");
+    expect(result[0].named).not.toContain("F");
+  });
+
+  it("skips external packages (non-slash paths)", () => {
+    const result = extractFileImports(
+      "import React from 'react'; import { X } from 'lucide-react';"
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it("skips import type declarations", () => {
+    const result = extractFileImports("import type { Foo } from '/x.js';");
+    expect(result).toHaveLength(0);
+  });
+
+  it("merges multiple imports from same path into one entry", () => {
+    const code = "import Foo from '/x.js';\nimport { Bar } from '/x.js';";
+    const result = extractFileImports(code);
+    expect(result).toHaveLength(1);
+    expect(result[0].hasDefault).toBe(true);
+    expect(result[0].named).toContain("Bar");
+  });
+
+  it("handles multiple different local paths", () => {
+    const code = "import { A } from '/a.js';\nimport B from '/b.js';";
+    const result = extractFileImports(code);
+    expect(result).toHaveLength(2);
+    const paths = result.map((r) => r.path);
+    expect(paths).toContain("/a.js");
+    expect(paths).toContain("/b.js");
   });
 });
