@@ -196,3 +196,25 @@ export function buildArchIterationContext(archDecisions: ArchDecisions): string 
   }
   return lines.join("\n");
 }
+
+/**
+ * Builds context for the triage phase.
+ * Asks the LLM to analyze which files need modification based on user feedback.
+ * Returns a structured prompt that expects JSON array output.
+ */
+export function buildTriageContext(
+  userPrompt: string,
+  filePaths: string[]
+): string {
+  const pathList = filePaths.map((p) => `- ${p}`).join("\n");
+
+  return `你是一位代码分析助手。根据用户反馈，判断以下 React 应用中哪些文件需要修改。
+
+用户反馈：${userPrompt}
+
+文件列表：
+${pathList}
+
+只输出一个 JSON 数组，包含需要修改的文件路径，不输出其他内容。
+示例：["/App.js", "/components/Layout.js"]`;
+}

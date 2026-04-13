@@ -4,6 +4,7 @@ import {
   buildDirectEngineerContext,
   buildDirectMultiFileEngineerContext,
   buildPmIterationContext,
+  buildTriageContext,
 } from "@/lib/agent-context";
 import type { PmOutput } from "@/lib/types";
 
@@ -312,5 +313,34 @@ describe("buildDirectMultiFileEngineerContext", () => {
   it("uses FILE separator format in output instructions", () => {
     const result = buildDirectMultiFileEngineerContext(prompt, files);
     expect(result).toContain("// === FILE:");
+  });
+});
+
+describe("buildTriageContext", () => {
+  const prompt = "修复 dynamic_app_data 表名";
+  const filePaths = ["/App.js", "/components/Layout.js", "/utils/db.js"];
+
+  it("contains user prompt", () => {
+    const result = buildTriageContext(prompt, filePaths);
+    expect(result).toContain(prompt);
+  });
+
+  it("contains all file paths", () => {
+    const result = buildTriageContext(prompt, filePaths);
+    for (const p of filePaths) {
+      expect(result).toContain(p);
+    }
+  });
+
+  it("does not contain file contents", () => {
+    const result = buildTriageContext(prompt, filePaths);
+    expect(result).not.toContain("import ");
+    expect(result).not.toContain("export ");
+    expect(result).not.toContain("function ");
+  });
+
+  it("asks for JSON array output", () => {
+    const result = buildTriageContext(prompt, filePaths);
+    expect(result).toContain("JSON");
   });
 });
