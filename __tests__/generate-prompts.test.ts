@@ -513,6 +513,8 @@ describe("buildMissingFileEngineerPrompt", () => {
     expect(prompt).toContain("formatCurrency");
     expect(prompt).toContain("/components/TaskList.jsx");
     expect(prompt).toContain("// === FILE:");
+    // Verify the context section includes actual snipped content from the importer
+    expect(prompt).toContain("import { formatDate } from '/utils/format.js'");
   });
 
   it("includes package constraints", () => {
