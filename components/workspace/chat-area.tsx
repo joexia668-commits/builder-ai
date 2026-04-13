@@ -519,10 +519,9 @@ export function ChatArea({
           // Validate scaffold: remove phantom deps, clean hints, break cycles
           const { scaffold, warnings: scaffoldWarnings } = scaffoldFiltered
             ? validateScaffold(scaffoldFiltered)
-            : { scaffold: null, warnings: [] as string[] };
+            : { scaffold: null, warnings: [] as readonly string[] };
 
           if (scaffoldWarnings.length > 0) {
-            console.warn("Scaffold 校验修正:", scaffoldWarnings);
             updateAgentState("architect", {
               status: "done",
               output: outputs.architect + `\n\n⚠ 已自动修正 scaffold：${scaffoldWarnings.join("；")}`,
