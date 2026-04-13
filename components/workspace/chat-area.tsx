@@ -899,7 +899,7 @@ export function ChatArea({
               // Check for disallowed external package imports and retry affected files (≤ MAX_PATCH_FILES)
               const pkgViolations = checkDisallowedImports(allCompletedFiles);
               if (pkgViolations.length > 0) {
-                const violatedPaths = [...new Set(pkgViolations.map((v) => v.filePath))];
+                const violatedPaths = Array.from(new Set(pkgViolations.map((v) => v.filePath)));
                 if (violatedPaths.length <= MAX_PATCH_FILES) {
                   updateAgentState("engineer", {
                     status: "streaming",
