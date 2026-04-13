@@ -10,7 +10,7 @@ export interface EngineerStreamTap {
   reset(): void;
 }
 
-const FILE_HEADER_RE = /\/\/ === FILE: (\/[^\s=]+) ===(\n)?/;
+const FILE_HEADER_RE = /\/\/ === FILE: (\/[^\s=]+)[^\n]*(\n)?/;
 const SAFE_TAIL = 256;
 
 export function createEngineerStreamTap(): EngineerStreamTap {

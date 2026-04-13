@@ -188,7 +188,7 @@ export function createHandler(deps: GenerateDeps) {
                 // "truncated mid-file" vs "hallucinated unrelated content".
                 if (expectedPaths.length <= 2) {
                   const foundMarkers = Array.from(
-                    fullContent.matchAll(/^\/\/ === FILE: (.+?) ===/gm)
+                    fullContent.matchAll(/^\/\/ === FILE: (.+?)(?:\s*===)?$/gm)
                   ).map((m) => m[1]);
                   console.error("[generate:diag:fallback_empty]", {
                     model: resolvedModelId,

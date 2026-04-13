@@ -240,7 +240,7 @@ export function extractAnyMultiFileCode(
 function extractAnyMultiFileCodeByMarker(
   raw: string
 ): Record<string, string> | null {
-  const marker = /^\/\/ === FILE: (.+?) ===/;
+  const marker = /^\/\/ === FILE: (.+?)(?:\s*===)?$/;
   const lines = raw.split("\n");
   const fileMap: Record<string, string[]> = {};
   let currentPath: string | null = null;
@@ -318,7 +318,7 @@ export function extractMultiFileCode(
 ): Record<string, string> | null {
   if (expectedFiles.length === 0) return {};
 
-  const marker = /^\/\/ === FILE: (.+?) ===/;
+  const marker = /^\/\/ === FILE: (.+?)(?:\s*===)?$/;
   const lines = raw.split("\n");
   const fileMap: Record<string, string[]> = {};
   let currentPath: string | null = null;
@@ -366,7 +366,7 @@ export function extractMultiFileCodePartial(
     return { ok: {}, failed: [], truncatedTail: null };
   }
 
-  const marker = /^\/\/ === FILE: (.+?) ===/;
+  const marker = /^\/\/ === FILE: (.+?)(?:\s*===)?$/;
   const lines = raw.split("\n");
   const fileMap: Record<string, string[]> = {};
   let currentPath: string | null = null;
