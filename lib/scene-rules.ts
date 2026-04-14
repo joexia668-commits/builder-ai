@@ -120,5 +120,5 @@ export function getArchitectSceneHint(scenes: Scene[]): string {
     .map((s) => SCENE_ARCHITECT_HINTS[s])
     .filter(Boolean);
   if (hints.length === 0) return "";
-  return `\n【场景提示】${hints.join(" ")}`;
+  return `【场景提示】${hints.join(" ")}`;
 }
