@@ -91,6 +91,28 @@ ChatArea
                            →  POST /api/versions  { code, files }  (immutable snapshot)
 ```
 
+### Export & Deploy 流程
+
+```
+PreviewPanel
+  ├─ "Deploy" 按钮
+  │     POST /api/deploy { projectId, versionId? }
+  │       → getVersionFiles(version)
+  │       → assembleProject(files, mode:'hosted')  →  Next.js 模板合并
+  │       → createVercelDeployment(assembled)       →  Vercel API v13
+  │       → save Deployment record
+  │       → 202 { deploymentId, status:'building', url }
+  │     GET /api/deploy/[id]  (轮询)
+  │       → pollDeploymentStatus(deployId) → 'ready'|'error'|'building'
+  │
+  └─ "Export" 按钮
+        GET /api/export?projectId=...&versionId=...
+          → getVersionFiles(version)
+          → assembleProject(files, mode:'export')   →  env var 版 Supabase config
+          → createProjectZip(assembled, projectName)
+          → Response: application/zip
+```
+
 `resolveModelId(modelId, project.preferredModel, user.preferredModel)` → `createProvider()` → `GeminiProvider | DeepSeekProvider | GroqProvider`
 
 The AbortController ref is replaced at the start of each generation; calling `abort()` cancels all in-flight SSE reads immediately.
@@ -129,6 +151,9 @@ data: {"type":"chunk","content":"..."}
 data: {"type":"code_complete","code":"..."}                                      // engineer single-file fallback
 data: {"type":"files_complete","files":{...}}                                    // engineer multi-file, all ok
 data: {"type":"partial_files_complete","files":{...},"failed":[...],"truncatedTail":"..."}  // partial salvage
+data: {"type":"file_start","path":"/components/Header.js"}                        // stream tap: 检测到新文件
+data: {"type":"file_chunk","path":"/components/Header.js","delta":"..."}           // stream tap: 代码片段
+data: {"type":"file_end","path":"/components/Header.js"}                          // stream tap: 文件边界结束
 data: {"type":"error","error":"...","errorCode":"parse_failed","failedFiles":[...],"truncatedTail":"..."}
 data: {"type":"done"}
 ```
@@ -157,6 +182,17 @@ data: {"type":"done"}
 | `lib/sandpack-config.ts` | `buildSandpackConfig()` + `normalizeExports()` (bidirectional export normalization for Sandpack Babel compat) |
 | `lib/engineer-circuit.ts` | `runLayerWithFallback` — 2 layer attempts → 2 per-file attempts → circuit breaker (3 consecutive failures) |
 | `components/workspace/chat-area.tsx` | Core orchestration — intent classification, direct path, PM → Architect → layered Engineer, abort, progress |
+| `lib/model-registry.ts` | `MODEL_REGISTRY` 数组、`getAvailableModels()`、`DEFAULT_MODEL_ID` — 集中式模型定义与可用性检测 |
+| `lib/generation-session.ts` | 内存 pub-sub 存储驱动实时 UI；`getSession`、`updateSession`、`subscribe` |
+| `lib/engineer-stream-tap.ts` | `createEngineerStreamTap()` — 解析 `// === FILE:` 标记，emit `file_start/file_chunk/file_end` 事件 |
+| `lib/coalesce-chunks.ts` | `coalesceChunks()` — 合并同路径连续 `file_chunk` 事件，降低 SSE 频率 |
+| `lib/project-assembler.ts` | `assembleProject()` — Sandpack 文件与 Next.js 模板合并，用于 export/deploy |
+| `lib/vercel-deploy.ts` | `createVercelDeployment()`、`pollDeploymentStatus()` — Vercel API v13 集成 |
+| `lib/zip-exporter.ts` | `createProjectZip()` — 将生成文件打包为可下载 ZIP |
+| `lib/file-tree.ts` | `buildFileTree()` — 平铺路径 → 层级文件树（供文件资源管理器 UI 使用）|
+| `lib/guest-cleanup.ts` | `deleteStaleGuestUsers()` — 定时清理 >5 天未活跃 Guest 账户 |
+| `lib/extract-json.ts` | 从 LLM 输出安全提取 JSON，含 fence 剥离与错误恢复 |
+| `app/api/generate/handler.ts` | `createHandler()` — SSE 生成编排器；Agent 路由、stream tap、代码提取、重试逻辑 |
 
 ### Known limitations & open issues
 
