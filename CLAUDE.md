@@ -165,5 +165,5 @@ data: {"type":"done"}
 | `normalizeExports`: Sandpack Babel 不支持 `export { Name }` after `export default function Name` — 需要拆分声明 | 0015 | ✅ 已修复（拆分为普通声明 + 分离 export） |
 | 后处理阶段（missing imports / consistency check）需要看完整文件集（old + new），否则误判旧文件为缺失 | 0016 | ✅ 已修复（merge 提前到后处理之前） |
 | `generationError.raw` 具体错误详情需要在 UI 展示，方便线上排查 | 0017 | ✅ 已修复 |
-| `bug_fix` 直接路径缺少架构感知，Engineer 可能过度修复导致功能丢失 | 0018 | ⏳ 待实施（需给 direct path 加 `deriveArchFromFiles` + triage 范围硬约束） |
+| `bug_fix` 直接路径缺少架构感知，Engineer 可能过度修复导致功能丢失 | 0018 | ✅ 已修复（方向 A：架构摘要注入） |
 | Supabase `DynamicAppData` RLS 需要 `x-app-id` header | 0007 | ✅ 已修复（`buildSupabaseClientCode` 注入 header） |

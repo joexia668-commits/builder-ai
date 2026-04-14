@@ -96,7 +96,8 @@ export function buildDirectEngineerContext(
  */
 export function buildDirectMultiFileEngineerContext(
   userPrompt: string,
-  currentFiles: Record<string, string>
+  currentFiles: Record<string, string>,
+  archSummary?: string
 ): string {
   const fileList = Object.keys(currentFiles)
     .map((p) => `- ${p}`)
@@ -106,10 +107,14 @@ export function buildDirectMultiFileEngineerContext(
     .map(([path, code]) => `<source file="${path}">\n${code}\n</source>`)
     .join("\n\n");
 
+  const archBlock = archSummary
+    ? `\n${archSummary}\n\n重要约束：你的任务是定向修复上述反馈中的问题，严禁重写、重构或添加未提及的功能。保持应用的整体架构、功能和 UI 不变。所有现有 import 必须保留，除非 import 的目标文件确实不存在。\n`
+    : "";
+
   return `你是一位全栈工程师。根据用户反馈，精准修改以下多文件 React 应用。
 
 用户反馈：${userPrompt}
-
+${archBlock}
 当前应用文件列表：
 ${fileList}
 

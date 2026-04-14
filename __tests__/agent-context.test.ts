@@ -314,6 +314,21 @@ describe("buildDirectMultiFileEngineerContext", () => {
     const result = buildDirectMultiFileEngineerContext(prompt, files);
     expect(result).toContain("// === FILE:");
   });
+
+  it("injects arch summary and constraint when archSummary is provided", () => {
+    const archSummary = "当前应用架构（从代码实时分析）：\n\n文件结构（3 个文件）：\n  /App.js — exports: App (default)\n  /components/Button.js — exports: Button\n  /components/Header.js — exports: Header (default)\n\n依赖关系：\n  /App.js → [/components/Button.js, /components/Header.js]";
+    const result = buildDirectMultiFileEngineerContext(prompt, files, archSummary);
+    expect(result).toContain("当前应用架构");
+    expect(result).toContain("/components/Header.js");
+    expect(result).toContain("严禁重写");
+    expect(result).toContain("所有现有 import 必须保留");
+  });
+
+  it("does not inject arch block when archSummary is omitted", () => {
+    const result = buildDirectMultiFileEngineerContext(prompt, files);
+    expect(result).not.toContain("严禁重写");
+    expect(result).not.toContain("所有现有 import 必须保留");
+  });
 });
 
 describe("buildTriageContext", () => {
