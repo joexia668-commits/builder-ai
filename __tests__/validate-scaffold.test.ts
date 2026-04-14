@@ -187,3 +187,31 @@ describe("validateScaffold", () => {
     });
   });
 });
+
+describe("removeFiles validation", () => {
+  it("passes through removeFiles unchanged when valid", () => {
+    const input: ScaffoldData = {
+      ...makeScaffold([{ path: "/a.js", deps: [] }]),
+      removeFiles: ["/old.js", "/deprecated.js"],
+    };
+    const { scaffold, warnings } = validateScaffold(input);
+    expect(scaffold.removeFiles).toEqual(["/old.js", "/deprecated.js"]);
+    expect(warnings.length).toBe(0);
+  });
+
+  it("warns when removeFiles entry also exists in files array", () => {
+    const input: ScaffoldData = {
+      ...makeScaffold([{ path: "/a.js", deps: [] }, { path: "/b.js", deps: [] }]),
+      removeFiles: ["/a.js"],
+    };
+    const { scaffold, warnings } = validateScaffold(input);
+    expect(scaffold.removeFiles).toEqual([]);
+    expect(warnings).toContainEqual(expect.stringContaining("/a.js"));
+  });
+
+  it("handles undefined removeFiles (backward compat)", () => {
+    const input = makeScaffold([{ path: "/a.js", deps: [] }]);
+    const { scaffold } = validateScaffold(input);
+    expect(scaffold.removeFiles).toBeUndefined();
+  });
+});
