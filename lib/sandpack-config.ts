@@ -57,22 +57,37 @@ function normalizeExports(
     }
 
     // 3. Bidirectional normalization
-    // Default with a name but no matching named export → add named re-export.
-    // Use `export { X }` rather than `export { default as X }` — the latter
-    // uses the `default` keyword inside export braces which older Babel configs
-    // (including Sandpack's) reject with "Unexpected keyword 'default'".
-    // Skip adding `export { Name }` entirely — Sandpack's older Babel
-    // rejects it with "Export 'Name' is not defined" regardless of how
-    // the default was declared. The only safe direction is named → default
-    // (handled below), not default → named.
-    // Named exports exist but no default → promote first named to default
+    let transformedCode = code;
+
+    // 3a. `export default function/class Name` → split into declaration + separate exports.
+    // Sandpack's Babel rejects `export { Name }` after `export default function Name`,
+    // but accepts it when Name is a regular declaration. So we transform:
+    //   export default function Name(...) {    →    function Name(...) {
+    //                                          +    export default Name;
+    //                                          +    export { Name };
+    if (defaultFnMatch && defaultName && !namedSet.has(defaultName)) {
+      transformedCode = transformedCode.replace(
+        /export\s+default\s+((?:async\s+)?(?:function|class)\s+)/,
+        "$1"
+      );
+      additions.push(`export default ${defaultName};`);
+      additions.push(`export { ${defaultName} };`);
+    }
+
+    // 3b. `export default Name` (identifier ref) — Name is already declared,
+    // safe to add `export { Name }` directly.
+    if (!defaultFnMatch && defaultName && !namedSet.has(defaultName)) {
+      additions.push(`export { ${defaultName} };`);
+    }
+
+    // 3c. Named exports exist but no default → promote first named to default
     if (!hasDefault && namedSet.size > 0) {
       const first = Array.from(namedSet)[0];
       additions.push(`export default ${first};`);
     }
 
     if (additions.length > 0) {
-      result[path] = code + "\n// [builder-ai: export normalization]\n" + additions.join("\n");
+      result[path] = transformedCode + "\n// [builder-ai: export normalization]\n" + additions.join("\n");
     }
   }
 
