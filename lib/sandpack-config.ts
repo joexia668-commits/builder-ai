@@ -62,7 +62,15 @@ function normalizeExports(
     // uses the `default` keyword inside export braces which older Babel configs
     // (including Sandpack's) reject with "Unexpected keyword 'default'".
     if (defaultName && !namedSet.has(defaultName)) {
-      additions.push(`export { ${defaultName} };`);
+      // `export default function Foo` / `export default class Foo` already
+      // create a local binding in standard JS, but Sandpack's older Babel
+      // rejects a subsequent `export { Foo }` with "Export 'Foo' is not
+      // defined". Only add the named re-export when the default came from
+      // a separate identifier reference (e.g. `export default Foo`), where
+      // `Foo` is guaranteed to be declared elsewhere in the file.
+      if (!defaultFnMatch) {
+        additions.push(`export { ${defaultName} };`);
+      }
     }
     // Named exports exist but no default → promote first named to default
     if (!hasDefault && namedSet.size > 0) {

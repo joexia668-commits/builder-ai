@@ -98,10 +98,22 @@ describe("buildSandpackConfig", () => {
 });
 
 describe("normalizeExports (via buildSandpackConfig)", () => {
-  it("adds named re-export when file has only export default function", () => {
+  it("does NOT add named re-export for export default function (Babel compat)", () => {
+    // `export default function Btn` already creates a local binding in standard JS,
+    // but Sandpack's Babel rejects a subsequent `export { Btn }`.
     const files = {
       "/App.js": `import Btn from '/Btn.jsx'\nexport default function App() { return null; }`,
       "/Btn.jsx": `export default function Btn() { return <button />; }`,
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    expect(config.files["/Btn.jsx"].code).not.toContain("export { Btn }");
+  });
+
+  it("adds named re-export when file has export default <identifier>", () => {
+    // `export default Btn` (reference to existing variable) — safe to add `export { Btn }`
+    const files = {
+      "/App.js": `import Btn from '/Btn.jsx'\nexport default function App() { return null; }`,
+      "/Btn.jsx": `function Btn() { return <button />; }\nexport default Btn;`,
     };
     const config = buildSandpackConfig(files, "proj-1");
     expect(config.files["/Btn.jsx"].code).toContain("export { Btn }");
