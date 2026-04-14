@@ -215,6 +215,7 @@ export interface ScaffoldData {
   readonly files: readonly ScaffoldFile[];
   readonly sharedTypes: string;
   readonly designNotes: string;
+  readonly removeFiles?: readonly string[];
 }
 
 export interface ScaffoldValidationResult {
@@ -223,19 +224,10 @@ export interface ScaffoldValidationResult {
 }
 
 // Cross-round iteration context (V2)
-export interface ArchDecisions {
-  readonly fileCount: number;
-  readonly componentTree: string;
-  readonly stateStrategy: string;
-  readonly persistenceSetup: string;
-  readonly keyDecisions: readonly string[];
-}
-
 export interface IterationRound {
   readonly userPrompt: string;
   readonly intent: Intent;
   readonly pmSummary: PmOutput | null;
-  readonly archDecisions: ArchDecisions | null;
   readonly timestamp: string;
 }
 

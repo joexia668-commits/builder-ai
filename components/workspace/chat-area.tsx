@@ -23,10 +23,9 @@ import {
   buildDirectEngineerContext,
   buildDirectMultiFileEngineerContext,
   buildPmHistoryContext,
-  buildArchIterationContext,
+  deriveArchFromFiles,
   buildTriageContext,
 } from "@/lib/agent-context";
-import { extractArchDecisions } from "@/lib/extract-arch-decisions";
 import { classifyIntent } from "@/lib/intent-classifier";
 import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency, checkDisallowedImports } from "@/lib/extract-code";
 import { ERROR_DISPLAY } from "@/lib/error-codes";
@@ -154,14 +153,12 @@ function appendRound(
 }
 
 function resolveArchContext(
-  rounds: readonly IterationRound[],
-  pmOutput: string
+  _rounds: readonly IterationRound[],
+  pmOutput: string,
+  existingFiles: Record<string, string>
 ): string {
-  const lastRoundWithArch = [...rounds].reverse().find(
-    (r) => r.archDecisions !== null
-  );
-  const archCtx = lastRoundWithArch?.archDecisions
-    ? buildArchIterationContext(lastRoundWithArch.archDecisions)
+  const archCtx = Object.keys(existingFiles).length > 0
+    ? deriveArchFromFiles(existingFiles)
     : "";
   return archCtx ? `${archCtx}\n\n${pmOutput}` : pmOutput;
 }
@@ -614,7 +611,6 @@ export function ChatArea({
             userPrompt: prompt,
             intent,
             pmSummary: null,
-            archDecisions: null,
             timestamp: roundTimestamp,
           };
           const updated = appendRound(iterationContext, round);
@@ -865,7 +861,28 @@ export function ChatArea({
               agentColor: AGENTS.engineer.color,
             });
 
+            console.warn("[pipeline] allCompletedFiles:", Object.keys(allCompletedFiles));
+            console.warn("[pipeline] currentFiles:", Object.keys(currentFiles));
+            console.warn("[pipeline] hasExistingCode:", hasExistingCode);
+            console.warn("[pipeline] scaffold files:", capturedScaffold?.files.map(f => f.path));
+            console.warn("[pipeline] scaffold removeFiles:", capturedScaffold?.removeFiles);
             if (Object.keys(allCompletedFiles).length > 0) {
+              // Merge existing files BEFORE post-processing so that
+              // findMissingLocalImports / checkImportExportConsistency see
+              // the full file set (old + new) instead of only newly generated files.
+              // Without this, imports pointing to old files are treated as "missing"
+              // and trigger unnecessary patch/fix cycles that can corrupt files.
+              if (hasExistingCode) {
+                const preserved = { ...currentFiles };
+                // New files override old; old files fill the gaps
+                for (const [p, code] of Object.entries(allCompletedFiles)) {
+                  preserved[p] = code;
+                }
+                // Write merged set back so post-processing sees everything
+                Object.keys(allCompletedFiles).forEach((k) => delete allCompletedFiles[k]);
+                Object.assign(allCompletedFiles, preserved);
+              }
+
               // Attempt to patch missing files before falling back to stubs
               const missingMap = findMissingLocalImportsWithNames(allCompletedFiles);
               if (missingMap.size > 0 && missingMap.size <= MAX_PATCH_FILES) {
@@ -914,6 +931,7 @@ export function ChatArea({
               // Re-check for remaining missing imports after patch attempt
               const remainingMissing = findMissingLocalImports(allCompletedFiles);
               if (remainingMissing.length > 0) {
+                console.warn("[pipeline] missing imports:", remainingMissing);
                 updateSession(project.id, {
                   generationError: {
                     code: "missing_imports",
@@ -1010,16 +1028,24 @@ export function ChatArea({
                   updateAgentState("engineer", { status: "done", output: summaryOutput });
                 }
               }
+              // allCompletedFiles already includes currentFiles (merged before post-processing).
+              // Only need to apply removeFiles from Architect.
+              const finalFiles = allCompletedFiles;
+              if (capturedScaffold?.removeFiles) {
+                for (const removePath of capturedScaffold.removeFiles) {
+                  delete finalFiles[removePath];
+                }
+              }
               const res = await fetchAPI("/api/versions", {
                 method: "POST",
                 body: JSON.stringify({
                   projectId: project.id,
-                  files: allCompletedFiles,
+                  files: finalFiles,
                   description: prompt.slice(0, 80),
                 }),
               });
               const version = await res.json();
-              onFilesGenerated(allCompletedFiles, version);
+              onFilesGenerated(finalFiles, version);
             }
 
             // Skip normal engineer loop iteration
@@ -1037,7 +1063,7 @@ export function ChatArea({
                 ? buildPmHistoryContext(rounds)
                 : undefined
             : agentRole === "architect"
-              ? resolveArchContext(rounds, outputs.pm)
+              ? resolveArchContext(rounds, outputs.pm, currentFiles)
               : parsedPm
                 ? buildEngineerContextFromStructured(
                     prompt,
@@ -1153,7 +1179,6 @@ export function ChatArea({
           userPrompt: prompt,
           intent,
           pmSummary: parsedPm,
-          archDecisions: capturedScaffold ? extractArchDecisions(capturedScaffold) : null,
           timestamp: roundTimestamp,
         };
         const updated = appendRound(iterationContext, round);
@@ -1265,6 +1290,9 @@ export function ChatArea({
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-red-700 font-medium">{display.title}</p>
                 <p className="text-xs text-red-500 mt-0.5">{display.description}</p>
+                {generationError.raw && generationError.raw !== display.description && (
+                  <p className="text-xs text-red-400 mt-1 break-all">{generationError.raw}</p>
+                )}
                 {display.action?.type === "new_project" && (
                   <button
                     onClick={onNewProject}

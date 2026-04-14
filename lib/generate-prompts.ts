@@ -53,12 +53,19 @@ HTTP 请求只使用原生 fetch API。
 - 组件导出名必须加功能性后缀（如 Panel、View、List、Form），避免与 lucide-react 图标重名。例如：CalculatorPanel 而非 Calculator，HistoryList 而非 History，SettingsPanel 而非 Settings
 
 JSON schema：
-{"files":[{"path":"string","description":"string","exports":["string"],"deps":["string"],"hints":"string"}],"sharedTypes":"string","designNotes":"string"}
+{"files":[{"path":"string","description":"string","exports":["string"],"deps":["string"],"hints":"string"}],"sharedTypes":"string","designNotes":"string","removeFiles":["string"]}
 
 字段说明：
 - files: 文件列表，每项包含 path（文件路径）、description（职责描述）、exports（导出列表）、deps（依赖的其他文件路径）、hints（实现提示）
 - sharedTypes: 所有文件共享的 TypeScript/JSDoc 类型定义
 - designNotes: 整体设计说明和风格指南
+- removeFiles: （可选）需要删除的旧文件路径数组。仅在迭代模式下使用，当某个功能被移除或文件被重命名时，列出应删除的旧文件路径
+
+迭代规则（当收到已有架构分析时必须遵守）：
+- 已有文件不要重新设计，除非用户明确要求修改
+- 只输出需要新增的文件和必须修改的文件
+- 修改已有文件时，保留其现有 exports 和 deps 结构，仅添加新功能
+- 如需删除旧文件（如重命名或移除功能），将旧路径加入 removeFiles 数组
 
 输出格式（严格遵守两个阶段）：
 

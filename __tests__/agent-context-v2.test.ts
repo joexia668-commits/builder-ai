@@ -1,5 +1,5 @@
-import { buildPmHistoryContext, buildArchIterationContext } from "@/lib/agent-context";
-import type { IterationRound, ArchDecisions } from "@/lib/types";
+import { buildPmHistoryContext } from "@/lib/agent-context";
+import type { IterationRound } from "@/lib/types";
 
 describe("buildPmHistoryContext", () => {
   it("returns empty string for empty rounds", () => {
@@ -17,7 +17,6 @@ describe("buildPmHistoryContext", () => {
           persistence: "localStorage",
           modules: ["TaskList", "TaskForm"],
         },
-        archDecisions: null,
         timestamp: "2026-04-13T10:00:00Z",
       },
     ];
@@ -34,7 +33,6 @@ describe("buildPmHistoryContext", () => {
         userPrompt: "把字体改大",
         intent: "style_change",
         pmSummary: null,
-        archDecisions: null,
         timestamp: "2026-04-13T10:00:00Z",
       },
     ];
@@ -49,14 +47,12 @@ describe("buildPmHistoryContext", () => {
         userPrompt: "做个待办应用",
         intent: "new_project",
         pmSummary: { intent: "待办", features: ["添加"], persistence: "none", modules: ["List"] },
-        archDecisions: null,
         timestamp: "2026-04-13T10:00:00Z",
       },
       {
         userPrompt: "加暗黑模式",
         intent: "feature_add",
         pmSummary: { intent: "主题切换", features: ["暗黑模式"], persistence: "localStorage", modules: ["Theme"] },
-        archDecisions: null,
         timestamp: "2026-04-13T11:00:00Z",
       },
     ];
@@ -66,56 +62,29 @@ describe("buildPmHistoryContext", () => {
     expect(result.indexOf("做个待办应用")).toBeLessThan(result.indexOf("加暗黑模式"));
   });
 
-  it("includes arch decisions line when present in a round", () => {
+  it("does NOT include archDecisions in output (field removed)", () => {
     const rounds: IterationRound[] = [
       {
         userPrompt: "做个待办",
         intent: "new_project",
         pmSummary: null,
-        archDecisions: {
-          fileCount: 3,
-          componentTree: "App -> [List]",
-          stateStrategy: "useState",
-          persistenceSetup: "none",
-          keyDecisions: [],
-        },
         timestamp: "2026-04-13T10:00:00Z",
       },
     ];
     const result = buildPmHistoryContext(rounds);
-    expect(result).toContain("架构：App -> [List]");
-    expect(result).toContain("useState");
-  });
-});
-
-describe("buildArchIterationContext", () => {
-  const decisions: ArchDecisions = {
-    fileCount: 12,
-    componentTree: "App -> [Sidebar, MainView -> [TodoList, TodoForm]]",
-    stateStrategy: "useReducer",
-    persistenceSetup: "localStorage",
-    keyDecisions: ["Tab切换视图", "表单用modal"],
-  };
-
-  it("formats arch decisions into readable context", () => {
-    const result = buildArchIterationContext(decisions);
-    expect(result).toContain("上次架构方案");
-    expect(result).toContain("文件数：12");
-    expect(result).toContain("App -> [Sidebar, MainView -> [TodoList, TodoForm]]");
-    expect(result).toContain("useReducer");
-    expect(result).toContain("localStorage");
-    expect(result).toContain("Tab切换视图");
+    expect(result).not.toContain("架构：");
+    expect(result).not.toContain("componentTree");
   });
 
-  it("buildArchIterationContext omits 关键决策 when keyDecisions is empty", () => {
-    const archDecisions: ArchDecisions = {
-      fileCount: 2,
-      componentTree: "App -> [Component]",
-      stateStrategy: "useState",
-      persistenceSetup: "none",
-      keyDecisions: [],
-    };
-    const result = buildArchIterationContext(archDecisions);
-    expect(result).not.toContain("关键决策");
+  it("backward compat: old rounds with archDecisions field load without error", () => {
+    const rawFromDB = JSON.parse(JSON.stringify({
+      userPrompt: "做一个待办",
+      intent: "new_project",
+      pmSummary: null,
+      archDecisions: { fileCount: 3, componentTree: "App -> [List]", stateStrategy: "useState", persistenceSetup: "none", keyDecisions: [] },
+      timestamp: "2026-04-13T10:00:00Z",
+    })) as IterationRound;
+    const result = buildPmHistoryContext([rawFromDB]);
+    expect(result).toContain("做一个待办");
   });
 });

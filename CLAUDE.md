@@ -70,7 +70,7 @@ ChatArea
   └─ FULL PIPELINE  (new_project | feature_add)
       └── POST /api/generate  { agent: "pm", prompt, context?: buildPmHistoryContext(rounds) }
             └── JSON PmOutput  →  extractPmOutput()  →  onPmOutputGenerated(parsedPm)
-      └── POST /api/generate  { agent: "architect", context: resolveArchContext(rounds, pmOutput) }
+      └── POST /api/generate  { agent: "architect", context: resolveArchContext(rounds, pmOutput, existingFiles) }
             └── <thinking>推理</thinking><output>JSON ScaffoldData</output>  →  extractScaffoldFromTwoPhase()  →  validateScaffold()  →  topologicalSort()  →  layers[][]
       └── for each layer (sequential):
             runLayerWithFallback(layerFiles, requestFn, signal, onAttempt)
@@ -81,11 +81,13 @@ ChatArea
               ├─ Attempt 2: only prior failed files (prompt carries retryHint)
               └─ Per-file fallback (up to 2 attempts each, circuit-breaker at 3 consecutive failures)
             onAttempt callback → updates engineerProgress.retryInfo → UI retry banner
-      └── allFiles merged  →  findMissingLocalImportsWithNames()  →  ≤3 缺失文件时发起补全请求 / 超出则跳过
+      └── merge { ...currentFiles, ...allCompletedFiles }  →  post-processing sees full file set (old + new)
+                           →  findMissingLocalImportsWithNames()  →  ≤3 缺失文件时发起补全请求 / 超出则跳过
                            →  findMissingLocalImports()  →  stub 注入 / missing_imports 错误
                            →  checkImportExportConsistency()  →  ≤3 文件时发起修复请求（named/default 不匹配）
                            →  checkDisallowedImports()  →  ≤3 文件时发起修复请求（禁止包引用）
-                           →  buildSandpackConfig(files, projectId)  →  Sandpack
+                           →  apply scaffold.removeFiles (delete old paths)
+                           →  buildSandpackConfig(files, projectId)  →  Sandpack (normalizeExports bidirectional)
                            →  POST /api/versions  { code, files }  (immutable snapshot)
 ```
 
@@ -103,13 +105,13 @@ The AbortController ref is replaced at the start of each generation; calling `ab
 | `style_change` | "颜色/样式/dark mode/UI…" keywords | Direct to Engineer only |
 
 Context injected per path:
-- **PM** (`feature_add`): `buildPmHistoryContext(rounds)` — formats up to 5 past rounds (userPrompt, intent summary, pmSummary, archDecisions) so PM writes a delta PRD
-- **Architect** (full pipeline): `resolveArchContext(rounds, pmOutput)` — finds last round with non-null `archDecisions`, prepends arch summary (file count, component tree, state strategy, key decisions) to PM output so Architect modifies incrementally
+- **PM** (`feature_add`): `buildPmHistoryContext(rounds)` — formats up to 5 past rounds (userPrompt, intent summary, pmSummary) so PM writes a delta PRD
+- **Architect** (full pipeline): `resolveArchContext(rounds, pmOutput, existingFiles)` — calls `deriveArchFromFiles(existingFiles)` to build a real-time architecture summary (file list, exports, imports, state strategy, persistence) from current code, prepends to PM output so Architect modifies incrementally. No longer depends on saved `archDecisions`.
 - **Engineer** (`feature_add`): `existingFiles: currentFiles` appended to `getMultiFileEngineerPrompt` as `// === EXISTING FILE: /path ===` blocks
 - **Engineer** (direct, single-file V1): `buildDirectEngineerContext` with `<source file="…">` XML tags
 - **Engineer** (direct, multi-file V1): `buildDirectMultiFileEngineerContext` with `targetFiles` = V1 paths → `extractMultiFileCode` on server
 
-`iterationContext` is loaded from `Project.iterationContext` (Json? column, FIFO max 5 rounds) at page load and held in `Workspace` state. After each generation (both direct and full pipeline), a new `IterationRound` is appended and fire-and-forget PATCHed to `/api/projects/[id]`. `extractArchDecisions(scaffold)` deterministically extracts `ArchDecisions` from `ScaffoldData` without an extra LLM call.
+`iterationContext` is loaded from `Project.iterationContext` (Json? column, FIFO max 5 rounds) at page load and held in `Workspace` state. After each generation (both direct and full pipeline), a new `IterationRound` is appended and fire-and-forget PATCHed to `/api/projects/[id]`. Architecture context is derived at runtime from existing files via `deriveArchFromFiles()`, not stored in `iterationContext`.
 
 ### API conventions
 
@@ -147,10 +149,21 @@ data: {"type":"done"}
 |------|-----|
 | `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput`, `RequestMeta`, `AttemptInfo` |
 | `lib/intent-classifier.ts` | `classifyIntent(prompt, hasExistingCode)` — keyword router that selects pipeline path |
-| `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildTriageContext`, `buildPmIterationContext` |
+| `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildTriageContext`, `buildPmIterationContext`, `deriveArchFromFiles` |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
 | `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` + `getMultiFileEngineerPrompt()` (includes retry hint) + `buildMissingFileEngineerPrompt()` + `buildMismatchedFilesEngineerPrompt()` + `buildDisallowedImportsEngineerPrompt()` |
 | `lib/extract-code.ts` | Multi-layer code extraction + `extractMultiFileCodePartial()` (partial salvage) + `findMissingLocalImports()` + `findMissingLocalImportsWithNames()` + `checkImportExportConsistency()` + `checkDisallowedImports()` |
-| `lib/validate-scaffold.ts` | `validateScaffold(raw)` — 4-rule deterministic repair: self-ref → phantom dep → hints path → cycle breaking |
+| `lib/validate-scaffold.ts` | `validateScaffold(raw)` — 5-rule deterministic repair: self-ref → phantom dep → hints path → cycle breaking → removeFiles conflict |
+| `lib/sandpack-config.ts` | `buildSandpackConfig()` + `normalizeExports()` (bidirectional export normalization for Sandpack Babel compat) |
 | `lib/engineer-circuit.ts` | `runLayerWithFallback` — 2 layer attempts → 2 per-file attempts → circuit breaker (3 consecutive failures) |
 | `components/workspace/chat-area.tsx` | Core orchestration — intent classification, direct path, PM → Architect → layered Engineer, abort, progress |
+
+### Known limitations & open issues
+
+| Issue | ADR | Status |
+|-------|-----|--------|
+| `normalizeExports`: Sandpack Babel 不支持 `export { Name }` after `export default function Name` — 需要拆分声明 | 0015 | ✅ 已修复（拆分为普通声明 + 分离 export） |
+| 后处理阶段（missing imports / consistency check）需要看完整文件集（old + new），否则误判旧文件为缺失 | 0016 | ✅ 已修复（merge 提前到后处理之前） |
+| `generationError.raw` 具体错误详情需要在 UI 展示，方便线上排查 | 0017 | ✅ 已修复 |
+| `bug_fix` 直接路径缺少架构感知，Engineer 可能过度修复导致功能丢失 | 0018 | ⏳ 待实施（需给 direct path 加 `deriveArchFromFiles` + triage 范围硬约束） |
+| Supabase `DynamicAppData` RLS 需要 `x-app-id` header | 0007 | ✅ 已修复（`buildSupabaseClientCode` 注入 header） |

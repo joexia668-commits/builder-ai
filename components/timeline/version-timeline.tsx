@@ -91,7 +91,7 @@ export function VersionTimeline({
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="timeline-scroll">
         <div className="flex items-start gap-2 px-4 py-3 min-w-max">
           {versions.map((version, index) => {
             const isLast = index === versions.length - 1;

@@ -98,10 +98,28 @@ describe("buildSandpackConfig", () => {
 });
 
 describe("normalizeExports (via buildSandpackConfig)", () => {
-  it("adds named re-export when file has only export default function", () => {
+  it("splits export default function into declaration + named + default export (Babel compat)", () => {
+    // `export default function Btn` → Babel rejects `export { Btn }` after it.
+    // normalizeExports transforms to: `function Btn` + `export default Btn` + `export { Btn }`
     const files = {
       "/App.js": `import Btn from '/Btn.jsx'\nexport default function App() { return null; }`,
       "/Btn.jsx": `export default function Btn() { return <button />; }`,
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    const code = config.files["/Btn.jsx"].code;
+    // Declaration should no longer have "export default" prefix
+    expect(code).toContain("function Btn()");
+    expect(code).not.toMatch(/export\s+default\s+function\s+Btn/);
+    // Both export styles present at the end
+    expect(code).toContain("export default Btn");
+    expect(code).toContain("export { Btn }");
+  });
+
+  it("adds named re-export for identifier-style default (export default Name)", () => {
+    // `export default Btn` where Btn is a regular declaration — safe to add `export { Btn }`
+    const files = {
+      "/App.js": `export default function App() { return null; }`,
+      "/Btn.jsx": `const Btn = () => null;\nexport default Btn;`,
     };
     const config = buildSandpackConfig(files, "proj-1");
     expect(config.files["/Btn.jsx"].code).toContain("export { Btn }");
@@ -124,15 +142,6 @@ describe("normalizeExports (via buildSandpackConfig)", () => {
     };
     const config = buildSandpackConfig(files, "proj-1");
     expect(config.files["/Btn.jsx"].code).toBe(original);
-  });
-
-  it("adds named re-export for identifier-style default export (export default X;)", () => {
-    const files = {
-      "/App.js": `export default function App() { return null; }`,
-      "/Btn.jsx": `const Btn = () => null;\nexport default Btn;`,
-    };
-    const config = buildSandpackConfig(files, "proj-1");
-    expect(config.files["/Btn.jsx"].code).toContain("export { Btn }");
   });
 
   it("adds default using first named export when multiple named exports exist and no default", () => {

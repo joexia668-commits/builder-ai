@@ -166,8 +166,21 @@ export function validateScaffold(raw: ScaffoldData): ScaffoldValidationResult {
   // Rule 3: detect and break cycles (reverse-flow heuristic)
   files = breakCycles(files, warnings);
 
+  // Rule 5: validate removeFiles — entries must not also appear in files array
+  let removeFiles = raw.removeFiles;
+  if (removeFiles && removeFiles.length > 0) {
+    const scaffoldPaths = new Set(files.map((f) => f.path));
+    const conflicting = removeFiles.filter((p) => scaffoldPaths.has(p));
+    if (conflicting.length > 0) {
+      for (const p of conflicting) {
+        warnings.push(`removeFiles 与 scaffold files 冲突: ${p}（已从 removeFiles 移除）`);
+      }
+      removeFiles = removeFiles.filter((p) => !scaffoldPaths.has(p));
+    }
+  }
+
   return {
-    scaffold: { ...raw, files },
+    scaffold: { ...raw, files, ...(removeFiles !== undefined ? { removeFiles } : {}) },
     warnings,
   };
 }

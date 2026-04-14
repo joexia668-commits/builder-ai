@@ -10,6 +10,30 @@
   }
 }
 
+/* Always-visible thin scrollbar for version timeline (WebKit + Firefox) */
+.timeline-scroll {
+  overflow-x: scroll;
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db #f3f4f6;
+  /* Force scrollbar visible on macOS even in "automatic" mode */
+  -webkit-overflow-scrolling: auto;
+}
+.timeline-scroll::-webkit-scrollbar {
+  height: 6px;
+  display: block;
+}
+.timeline-scroll::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 3px;
+}
+.timeline-scroll::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+.timeline-scroll::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
 /* Force Sandpack preview to fill its container */
 .sp-layout {
   height: 100% !important;
