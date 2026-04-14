@@ -218,6 +218,7 @@ interface MultiFileEngineerPromptInput {
   readonly sharedTypes: string;
   readonly completedFiles: Record<string, string>;
   readonly designNotes: string;
+  readonly sceneRules?: string;
   readonly existingFiles?: Record<string, string>;
   readonly retryHint?: {
     readonly attempt: number;
@@ -227,7 +228,7 @@ interface MultiFileEngineerPromptInput {
 }
 
 export function getMultiFileEngineerPrompt(input: MultiFileEngineerPromptInput): string {
-  const { projectId, targetFiles, sharedTypes, completedFiles, designNotes, existingFiles, retryHint } = input;
+  const { projectId, targetFiles, sharedTypes, completedFiles, designNotes, sceneRules, existingFiles, retryHint } = input;
 
   const targetFileList = targetFiles
     .map(
@@ -276,6 +277,8 @@ ${retryHint.priorTail}
 `
     : "";
 
+  const sceneBlock = sceneRules ? `${sceneRules}\n\n` : "";
+
   return `${retryBlock}你是一位全栈工程师。根据架构师的文件脚手架，实现以下目标文件。
 
 【严禁包限制 - 违反将导致代码无法运行】
@@ -305,7 +308,7 @@ import { supabase } from '/supabaseClient.js'
 // 使用 DynamicAppData 表，appId 固定为 '${projectId}'
 // 表结构: { id, appId, key, data (JSONB), createdAt, updatedAt }
 
-设计说明：${designNotes}
+${sceneBlock}设计说明：${designNotes}
 
 共享类型定义：
 ${sharedTypes}

@@ -277,6 +277,56 @@ describe("getMultiFileEngineerPrompt", () => {
     expect(prompt).toContain("CalculatorIcon");
     expect(prompt).toContain("别名");
   });
+
+  const sceneBaseInput = {
+    projectId: "proj-scene-test",
+    targetFiles: [
+      {
+        path: "/App.js",
+        description: "Main app component",
+        exports: ["App"],
+        deps: [],
+        hints: "",
+      } as ScaffoldFile,
+    ] as const,
+    sharedTypes: "type GameState = { score: number; level: number; }",
+    completedFiles: {} as Record<string, string>,
+    designNotes: "Use dark theme with neon accents",
+  };
+
+  // GP-SR-01: when sceneRules is provided, the prompt contains the scene rules text before 设计说明：
+  it("GP-SR-01: 提供 sceneRules 时，prompt 包含 scene rules 文本", () => {
+    const rules = "【场景规则】玩家每次点击得 10 分，满 100 分升级。";
+    const prompt = getMultiFileEngineerPrompt({ ...sceneBaseInput, sceneRules: rules });
+    expect(prompt).toContain(rules);
+    expect(prompt).toContain("设计说明：");
+  });
+
+  // GP-SR-02: when sceneRules is omitted, the prompt does NOT contain any extra block and 设计说明： is present normally
+  it("GP-SR-02: 未提供 sceneRules 时，prompt 正常包含设计说明：且无额外 scene 块", () => {
+    const prompt = getMultiFileEngineerPrompt({ ...sceneBaseInput });
+    expect(prompt).toContain("设计说明：");
+    expect(prompt).toContain(sceneBaseInput.designNotes);
+    // No stray scene-rules marker injected
+    expect(prompt).not.toContain("【场景规则】");
+  });
+
+  // GP-SR-03: when sceneRules is an empty string, the prompt behaves same as when omitted
+  it("GP-SR-03: sceneRules 为空字符串时行为与省略相同", () => {
+    const promptOmitted = getMultiFileEngineerPrompt({ ...sceneBaseInput });
+    const promptEmpty = getMultiFileEngineerPrompt({ ...sceneBaseInput, sceneRules: "" });
+    expect(promptOmitted).toBe(promptEmpty);
+  });
+
+  // GP-SR-04: when sceneRules contains game rules text, it appears before 设计说明： in the output
+  it("GP-SR-04: sceneRules 内容出现在设计说明：之前", () => {
+    const rules = "【场景规则】障碍物碰到玩家扣 5 分，生命值归零则游戏结束。";
+    const prompt = getMultiFileEngineerPrompt({ ...sceneBaseInput, sceneRules: rules });
+    const sceneIdx = prompt.indexOf(rules);
+    const designIdx = prompt.indexOf("设计说明：");
+    expect(sceneIdx).toBeGreaterThanOrEqual(0);
+    expect(designIdx).toBeGreaterThan(sceneIdx);
+  });
 });
 
 describe("snipCompletedFiles", () => {

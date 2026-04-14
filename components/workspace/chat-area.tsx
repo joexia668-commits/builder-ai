@@ -27,6 +27,8 @@ import {
   buildTriageContext,
 } from "@/lib/agent-context";
 import { classifyIntent } from "@/lib/intent-classifier";
+import { classifySceneFromPrompt, classifySceneFromPm } from "@/lib/scene-classifier";
+import { getEngineerSceneRules, getArchitectSceneHint } from "@/lib/scene-rules";
 import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency, checkDisallowedImports } from "@/lib/extract-code";
 import { ERROR_DISPLAY } from "@/lib/error-codes";
 import type { ErrorCode } from "@/lib/types";
@@ -41,6 +43,7 @@ import type {
   ScaffoldData,
   IterationContext,
   IterationRound,
+  Scene,
 } from "@/lib/types";
 import { AGENT_ORDER, AGENTS } from "@/lib/types";
 
@@ -155,12 +158,15 @@ function appendRound(
 function resolveArchContext(
   _rounds: readonly IterationRound[],
   pmOutput: string,
-  existingFiles: Record<string, string>
+  existingFiles: Record<string, string>,
+  scenes: Scene[] = ["general"]
 ): string {
   const archCtx = Object.keys(existingFiles).length > 0
     ? deriveArchFromFiles(existingFiles)
     : "";
-  return archCtx ? `${archCtx}\n\n${pmOutput}` : pmOutput;
+  const hint = getArchitectSceneHint(scenes);
+  const base = archCtx ? `${archCtx}\n\n${pmOutput}` : pmOutput;
+  return hint ? `${hint}\n\n${base}` : base;
 }
 
 export function ChatArea({
@@ -400,6 +406,7 @@ export function ChatArea({
     let parsedPm: PmOutput | null = null;
     let lastCode = "";
     let capturedScaffold: ScaffoldData | null = null;
+    let detectedScenes: Scene[] = ["general"];
 
     try {
       // Direct path: bug_fix / style_change skips PM + Architect
@@ -430,6 +437,8 @@ export function ChatArea({
         const baseDirectContext = isMultiFileV1
           ? buildDirectMultiFileEngineerContext(prompt, triageFiles, archSummary || undefined)
           : buildDirectEngineerContext(prompt, currentFiles);
+        const directSceneRules = getEngineerSceneRules(classifySceneFromPrompt(prompt));
+        const baseDirectContextWithScene = directSceneRules ? `${baseDirectContext}\n\n${directSceneRules}` : baseDirectContext;
 
         const MAX_DIRECT_ATTEMPTS = 2;
         const DIRECT_RETRY_PREFIX =
@@ -446,7 +455,7 @@ export function ChatArea({
           // On retry, prepend conciseness hint directly into context (retryHint in the
           // request body is ignored by the server — context is the only injected field).
           const directContext =
-            attempt > 1 ? DIRECT_RETRY_PREFIX + baseDirectContext : baseDirectContext;
+            attempt > 1 ? DIRECT_RETRY_PREFIX + baseDirectContextWithScene : baseDirectContextWithScene;
 
           const directResponse = await fetch("/api/generate", {
             method: "POST",
@@ -723,6 +732,7 @@ export function ChatArea({
                     completedFiles: allCompletedFiles,
                     designNotes: scaffold.designNotes,
                     existingFiles: hasExistingCode ? currentFiles : undefined,
+                    sceneRules: getEngineerSceneRules(detectedScenes),
                     retryHint:
                       meta.attempt > 1
                         ? {
@@ -1061,26 +1071,19 @@ export function ChatArea({
         updateAgentState(agentRole, { status: "thinking", output: "" });
 
         const rounds = iterationContext?.rounds ?? [];
+        const baseEngineerCtx = parsedPm
+          ? buildEngineerContextFromStructured(prompt, parsedPm, outputs.architect, hasExistingCode ? currentFiles : undefined)
+          : buildEngineerContext(prompt, outputs.pm, outputs.architect, hasExistingCode ? currentFiles : undefined);
+        const engineerSceneRules = getEngineerSceneRules(detectedScenes);
+        const engineerCtxWithScene = engineerSceneRules ? `${baseEngineerCtx}\n\n${engineerSceneRules}` : baseEngineerCtx;
         const context =
           agentRole === "pm"
             ? (intent === "feature_add" && rounds.length > 0)
                 ? buildPmHistoryContext(rounds)
                 : undefined
             : agentRole === "architect"
-              ? resolveArchContext(rounds, outputs.pm, currentFiles)
-              : parsedPm
-                ? buildEngineerContextFromStructured(
-                    prompt,
-                    parsedPm,
-                    outputs.architect,
-                    hasExistingCode ? currentFiles : undefined
-                  )
-                : buildEngineerContext(
-                    prompt,
-                    outputs.pm,
-                    outputs.architect,
-                    hasExistingCode ? currentFiles : undefined
-                  );
+              ? resolveArchContext(rounds, outputs.pm, currentFiles, detectedScenes)
+              : engineerCtxWithScene;
 
         const response = await fetch("/api/generate", {
           method: "POST",
@@ -1137,7 +1140,10 @@ export function ChatArea({
         );
 
         outputs[agentRole] = agentOutput;
-        if (agentRole === "pm") parsedPm = extractPmOutput(agentOutput);
+        if (agentRole === "pm") {
+          parsedPm = extractPmOutput(agentOutput);
+          if (parsedPm) detectedScenes = classifySceneFromPm(parsedPm);
+        }
         updateAgentState(agentRole, { status: "done", output: agentOutput });
 
         const agentMsg: ProjectMessage = {
