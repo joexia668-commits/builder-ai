@@ -423,8 +423,12 @@ export function ChatArea({
           }
         }
 
+        // ADR 0018: inject full-project architecture summary so Engineer sees all
+        // 27 files' structure/exports/deps, even though code is only triage subset.
+        const archSummary = isMultiFileV1 ? deriveArchFromFiles(currentFiles) : "";
+
         const baseDirectContext = isMultiFileV1
-          ? buildDirectMultiFileEngineerContext(prompt, triageFiles)
+          ? buildDirectMultiFileEngineerContext(prompt, triageFiles, archSummary || undefined)
           : buildDirectEngineerContext(prompt, currentFiles);
 
         const MAX_DIRECT_ATTEMPTS = 2;
