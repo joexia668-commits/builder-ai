@@ -91,7 +91,7 @@ ChatArea
                            →  POST /api/versions  { code, files }  (immutable snapshot)
 ```
 
-### Export & Deploy 流程
+### Export & Deploy flow
 
 ```
 PreviewPanel
@@ -158,7 +158,7 @@ data: {"type":"error","error":"...","errorCode":"parse_failed","failedFiles":[..
 data: {"type":"done"}
 ```
 
-`readEngineerSSE` in `chat-area.tsx` handles all three success/partial/error variants and returns `{ files, failedInResponse, truncatedTail }` to `runLayerWithFallback`.
+`readEngineerSSE` in `chat-area.tsx` handles `files_complete`、`partial_files_complete`、`code_complete`（成功路径）、`file_start/file_chunk/file_end`（stream tap 实时 UI）和 `error` 变体，返回 `{ files, failedInResponse, truncatedTail }` 给 `runLayerWithFallback`。
 
 ### Testing patterns
 
