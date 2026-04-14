@@ -104,12 +104,12 @@ The AbortController ref is replaced at the start of each generation; calling `ab
 
 Context injected per path:
 - **PM** (`feature_add`): `buildPmHistoryContext(rounds)` — formats up to 5 past rounds (userPrompt, intent summary, pmSummary, archDecisions) so PM writes a delta PRD
-- **Architect** (full pipeline): `resolveArchContext(rounds, pmOutput)` — finds last round with non-null `archDecisions`, prepends arch summary (file count, component tree, state strategy, key decisions) to PM output so Architect modifies incrementally
+- **Architect** (full pipeline): `resolveArchContext(rounds, pmOutput, existingFiles)` — calls `deriveArchFromFiles(existingFiles)` to build a real-time architecture summary (file list, exports, imports, state strategy, persistence) from current code, prepends to PM output so Architect modifies incrementally. No longer depends on saved `archDecisions`.
 - **Engineer** (`feature_add`): `existingFiles: currentFiles` appended to `getMultiFileEngineerPrompt` as `// === EXISTING FILE: /path ===` blocks
 - **Engineer** (direct, single-file V1): `buildDirectEngineerContext` with `<source file="…">` XML tags
 - **Engineer** (direct, multi-file V1): `buildDirectMultiFileEngineerContext` with `targetFiles` = V1 paths → `extractMultiFileCode` on server
 
-`iterationContext` is loaded from `Project.iterationContext` (Json? column, FIFO max 5 rounds) at page load and held in `Workspace` state. After each generation (both direct and full pipeline), a new `IterationRound` is appended and fire-and-forget PATCHed to `/api/projects/[id]`. `extractArchDecisions(scaffold)` deterministically extracts `ArchDecisions` from `ScaffoldData` without an extra LLM call.
+`iterationContext` is loaded from `Project.iterationContext` (Json? column, FIFO max 5 rounds) at page load and held in `Workspace` state. After each generation (both direct and full pipeline), a new `IterationRound` is appended and fire-and-forget PATCHed to `/api/projects/[id]`. Architecture context is derived at runtime from existing files via `deriveArchFromFiles()`, not stored in `iterationContext`.
 
 ### API conventions
 
@@ -147,7 +147,7 @@ data: {"type":"done"}
 |------|-----|
 | `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput`, `RequestMeta`, `AttemptInfo` |
 | `lib/intent-classifier.ts` | `classifyIntent(prompt, hasExistingCode)` — keyword router that selects pipeline path |
-| `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildTriageContext`, `buildPmIterationContext` |
+| `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildTriageContext`, `buildPmIterationContext`, `deriveArchFromFiles` |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
 | `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` + `getMultiFileEngineerPrompt()` (includes retry hint) + `buildMissingFileEngineerPrompt()` + `buildMismatchedFilesEngineerPrompt()` + `buildDisallowedImportsEngineerPrompt()` |
 | `lib/extract-code.ts` | Multi-layer code extraction + `extractMultiFileCodePartial()` (partial salvage) + `findMissingLocalImports()` + `findMissingLocalImportsWithNames()` + `checkImportExportConsistency()` + `checkDisallowedImports()` |
