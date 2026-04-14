@@ -14,10 +14,19 @@ builder-ai/
 │   │   │   ├── route.ts                # GET (list) / POST (create)
 │   │   │   └── [id]/route.ts           # GET (detail) / PATCH (update) / DELETE
 │   │   ├── messages/route.ts           # GET (by project) / POST (save)
-│   │   └── versions/
-│   │       ├── route.ts                # GET (by project) / POST (create)
-│   │       └── [id]/
-│   │           └── restore/route.ts    # POST (restore version)
+│   │   ├── versions/
+│   │   │   ├── route.ts                # GET (by project) / POST (create)
+│   │   │   └── [id]/
+│   │   │       └── restore/route.ts    # POST (restore version)
+│   │   ├── user/
+│   │   │   └── preferences/route.ts    # GET/PATCH: 用户全局模型偏好
+│   │   ├── deploy/
+│   │   │   ├── route.ts                # POST: 触发 Vercel 部署（返回 deploymentId）
+│   │   │   └── [id]/route.ts           # GET: 轮询部署状态
+│   │   ├── export/
+│   │   │   └── route.ts                # GET: 导出项目为 ZIP 包
+│   │   └── cron/
+│   │       └── cleanup-guests/route.ts # Cron: 清理过期 Guest 账户（>5 天未活跃）
 │   │
 │   └── project/
 │       └── [id]/
@@ -53,10 +62,16 @@ builder-ai/
 │   │   └── thinking-indicator.tsx      # Typing dots animation
 │   │
 │   ├── preview/
-│   │   ├── preview-panel.tsx           # Right panel: toolbar + tabs
-│   │   ├── preview-frame.tsx           # iframe with srcdoc
-│   │   ├── code-editor.tsx             # Monaco Editor (editable, triggers preview refresh)
-│   │   └── device-selector.tsx         # Desktop/Tablet/Mobile toggle
+│   │   ├── preview-panel.tsx           # Right panel: toolbar + tabs（Preview/Code/Activity）
+│   │   ├── preview-frame.tsx           # Sandpack iframe 渲染
+│   │   ├── file-tree-code-viewer.tsx   # 文件树 + 代码查看（含流式状态指示）
+│   │   ├── code-editor.tsx             # Monaco Editor（可编辑，触发预览刷新）
+│   │   ├── multi-file-editor.tsx       # 多文件标签管理
+│   │   ├── file-block.tsx              # 单文件展示块
+│   │   ├── activity-panel.tsx          # 生成活动实时日志面板
+│   │   ├── device-selector.tsx         # Desktop/Tablet/Mobile 切换
+│   │   ├── error-boundary.tsx          # 预览错误边界
+│   │   └── walking-cat.tsx             # 加载动画（装饰性）
 │   │
 │   └── timeline/
 │       ├── version-timeline.tsx        # Horizontal timeline at bottom
@@ -64,9 +79,9 @@ builder-ai/
 │       └── version-detail-popover.tsx  # Click-to-show version info
 │
 ├── hooks/
-│   ├── use-agent-stream.ts             # SSE streaming + agent orchestration
-│   ├── use-versions.ts                 # Version CRUD + timeline state
-│   └── use-project.ts                  # Project data fetching
+│   ├── use-generation-session.ts   # useSyncExternalStore 订阅生成会话状态
+│   ├── use-auto-scroll-to-bottom.ts # 消息列表自动滚动
+│   └── use-mounted.ts              # Hydration 安全检查（防 SSR 闪烁）
 │
 ├── lib/
 │   ├── api-client.ts                   # fetchAPI() / fetchSSE() — CRITICAL abstraction
@@ -77,7 +92,18 @@ builder-ai/
 │   ├── resend.ts                       # Resend email service singleton
 │   ├── demo-bootstrap.ts               # Auto-create demo viewer account on startup
 │   ├── prisma.ts                       # Prisma client singleton
-│   └── types.ts                        # Shared TypeScript types
+│   ├── types.ts                        # Shared TypeScript types
+│   ├── model-registry.ts          # 模型定义注册表 + 可用性检测（基于 env var）
+│   ├── generation-session.ts      # 生成状态内存 pub-sub 存储（驱动实时 UI）
+│   ├── engineer-stream-tap.ts     # SSE 流 FILE 标记解析 → file_start/chunk/end 事件
+│   ├── coalesce-chunks.ts         # 合并同文件连续 file_chunk 事件
+│   ├── project-assembler.ts       # Sandpack 文件 + Next.js 模板合并（export/deploy）
+│   ├── vercel-deploy.ts           # Vercel 部署 API 集成
+│   ├── zip-exporter.ts            # ZIP 打包导出
+│   ├── file-tree.ts               # 平铺路径 → 层级文件树
+│   ├── guest-cleanup.ts           # Guest 账户定期清理（>5 天）
+│   ├── extract-json.ts            # LLM 输出 JSON 安全提取
+│   └── extract-arch-decisions.ts  # 从 ScaffoldData 提取架构决策摘要
 │
 ├── prisma/
 │   └── schema.prisma                   # Database schema

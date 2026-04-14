@@ -19,6 +19,7 @@
 | @monaco-editor/react | 4.x | Code editor (VS Code engine) |
 | @codesandbox/sandpack-react | latest | In-browser React sandbox for preview |
 | @supabase/supabase-js | latest | Supabase client (injected into generated apps) |
+| jszip | latest | ZIP archive generation (project export) |
 
 ## AI API Configuration
 
@@ -34,11 +35,18 @@
 - Free tier: 30 RPM
 - Streaming: supported
 
+### DeepSeek V3（Default）
+- Model: `deepseek-chat`
+- Env var: `DEEPSEEK_API_KEY`
+- Default: Yes（`DEFAULT_MODEL_ID = "deepseek-chat"`）
+- Streaming: OpenAI-compatible API
+- Note: 默认模型，性价比最优
+
 ### Selection logic
 ```typescript
-// lib/ai.ts — AI provider abstraction
-// Default to Gemini, fallback to Groq if Gemini key not set
-// Each Agent call is independent, can use different providers
+// lib/model-registry.ts — 模型定义 + 可用性检测（按 env var）
+// lib/ai-providers.ts  — AIProvider 接口 + 三 Provider 工厂
+// resolveModelId 优先级：request → project → user → env.AI_PROVIDER → DEFAULT_MODEL_ID ("deepseek-chat")
 ```
 
 ## Database
