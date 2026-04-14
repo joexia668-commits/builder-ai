@@ -8,6 +8,10 @@ const SCENE_ENGINEER_RULES: Record<Exclude<Scene, "general">, string> = {
 3. setInterval/requestAnimationFrame 的 useEffect 依赖数组必须为 []，在回调内通过 ref.current 读写状态
 4. 需要重绘画面时，用一个独立的 forceUpdate 计数器：const [tick, setTick] = useState(0)，在 interval 回调末尾 setTick(t => t + 1)
 5. 键盘事件监听器的 useEffect 依赖数组也必须为 []，方向存入 useRef
+6. 触摸事件（touchstart/touchend）同样必须依赖数组为 []，在回调内通过 ref.current 写入方向，不要将方向存入 useState 再放入依赖：
+   错误：useEffect(() => { window.addEventListener('touchstart', e => setDir(swipe(e))); }, [dir])
+   正确：const dirRef = useRef('RIGHT');
+         useEffect(() => { const fn = e => { dirRef.current = swipe(e) || dirRef.current; }; window.addEventListener('touchstart', fn); return () => window.removeEventListener('touchstart', fn); }, []);
 错误示例：
   useEffect(() => { const id = setInterval(() => setSnake(move(snake)), 200); return () => clearInterval(id); }, [snake])
 正确示例：
