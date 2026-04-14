@@ -1,4 +1,4 @@
-import type { Intent, PmOutput, IterationRound, ArchDecisions } from "@/lib/types";
+import type { Intent, PmOutput, IterationRound } from "@/lib/types";
 
 /**
  * Builds the full context string passed to the Engineer agent.
@@ -164,37 +164,14 @@ export function buildPmHistoryContext(rounds: readonly IterationRound[]): string
 
   const roundLines = rounds.map((r, i) => {
     const label = INTENT_LABELS[r.intent] ?? r.intent;
-    const parts: string[] = [];
     if (r.pmSummary) {
       const features = r.pmSummary.features.join("、");
-      parts.push(`[第${i + 1}轮] 用户："${r.userPrompt}"\n  意图：${r.pmSummary.intent} / 功能：${features} / 持久化：${r.pmSummary.persistence}`);
-    } else {
-      parts.push(`[第${i + 1}轮] 用户："${r.userPrompt}" (${label}，跳过PM)`);
+      return `[第${i + 1}轮] 用户："${r.userPrompt}"\n  意图：${r.pmSummary.intent} / 功能：${features} / 持久化：${r.pmSummary.persistence}`;
     }
-    if (r.archDecisions) {
-      parts.push(`  架构：${r.archDecisions.componentTree} | 状态：${r.archDecisions.stateStrategy} | 持久化：${r.archDecisions.persistenceSetup}`);
-    }
-    return parts.join("\n");
+    return `[第${i + 1}轮] 用户："${r.userPrompt}" (${label}，跳过PM)`;
   });
 
   return header + "\n" + roundLines.join("\n\n");
-}
-
-/**
- * Builds context for Architect showing its own previous decisions.
- */
-export function buildArchIterationContext(archDecisions: ArchDecisions): string {
-  const lines = [
-    "上次架构方案（请在此基础上增量修改，保留已有文件结构）：",
-    `文件数：${archDecisions.fileCount}`,
-    `组件结构：${archDecisions.componentTree}`,
-    `状态管理：${archDecisions.stateStrategy}`,
-    `持久化：${archDecisions.persistenceSetup}`,
-  ];
-  if (archDecisions.keyDecisions.length > 0) {
-    lines.push(`关键决策：${archDecisions.keyDecisions.join(" / ")}`);
-  }
-  return lines.join("\n");
 }
 
 /**
@@ -217,4 +194,85 @@ ${pathList}
 
 只输出一个 JSON 数组，包含需要修改的文件路径，不输出其他内容。
 示例：["/App.js", "/components/Layout.js"]`;
+}
+
+/**
+ * Derives a structured architecture summary from existing source files.
+ * Pure string analysis — zero LLM calls. Replaces the old buildArchIterationContext
+ * which relied on saved archDecisions from iterationContext.
+ */
+export function deriveArchFromFiles(files: Record<string, string>): string {
+  const entries = Object.entries(files);
+  if (entries.length === 0) return "";
+
+  const EXPORT_RE = /export\s+(default\s+)?(?:function|const|class)\s+(\w+)/g;
+  const IMPORT_RE = /import\s+.*?from\s+['"]([^'"]+)['"]/g;
+  const STATE_KEYWORDS = ["useState", "useReducer", "useContext", "createContext"] as const;
+
+  const fileInfos: Array<{
+    path: string;
+    lines: number;
+    exports: string[];
+    localDeps: string[];
+  }> = [];
+
+  const allCode = entries.map(([, code]) => code).join("\n");
+
+  for (const [path, code] of entries) {
+    const lines = code.split("\n").length;
+
+    const exports: string[] = [];
+    let m: RegExpExecArray | null;
+    const exportRe = new RegExp(EXPORT_RE.source, EXPORT_RE.flags);
+    while ((m = exportRe.exec(code)) !== null) {
+      const isDefault = Boolean(m[1]?.trim());
+      exports.push(isDefault ? `${m[2]} (default)` : m[2]);
+    }
+
+    const localDeps: string[] = [];
+    const importRe = new RegExp(IMPORT_RE.source, IMPORT_RE.flags);
+    while ((m = importRe.exec(code)) !== null) {
+      const source = m[1];
+      if (source.startsWith("/") || source.startsWith("./") || source.startsWith("../")) {
+        if (source !== "/supabaseClient.js") {
+          localDeps.push(source);
+        }
+      }
+    }
+
+    fileInfos.push({ path, lines, exports, localDeps });
+  }
+
+  const fileListLines = fileInfos.map((f) => {
+    const exportsStr = f.exports.length > 0 ? f.exports.join(", ") : "(no exports)";
+    return `  ${f.path} (${f.lines} lines) — exports: ${exportsStr}`;
+  });
+
+  const depLines = fileInfos
+    .filter((f) => f.localDeps.length > 0)
+    .map((f) => `  ${f.path} → [${f.localDeps.join(", ")}]`);
+
+  const detectedState = STATE_KEYWORDS.filter((kw) => allCode.includes(kw));
+  const stateStr = detectedState.length > 0 ? detectedState.join(", ") : "none detected";
+
+  const persistence: string[] = [];
+  if (allCode.includes("supabase")) persistence.push("Supabase");
+  if (allCode.includes("localStorage")) persistence.push("localStorage");
+  const persistStr = persistence.length > 0 ? persistence.join(", ") : "none";
+
+  const sections = [
+    `当前应用架构（从代码实时分析，请在此基础上增量修改）：`,
+    ``,
+    `文件结构（${entries.length} 个文件）：`,
+    ...fileListLines,
+  ];
+
+  if (depLines.length > 0) {
+    sections.push(``, `依赖关系：`, ...depLines);
+  }
+
+  sections.push(``, `状态管理：${stateStr}`);
+  sections.push(`持久化：${persistStr}`);
+
+  return sections.join("\n");
 }
