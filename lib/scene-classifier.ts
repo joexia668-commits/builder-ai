@@ -38,7 +38,51 @@ export function classifySceneFromPrompt(prompt: string): Scene[] {
   return matched.slice(0, MAX_SCENES);
 }
 
-export function classifySceneFromPm(_pm: PmOutput): Scene[] {
-  // Placeholder — implemented in Task 3
-  return ["general"];
+const PM_FEATURE_KEYWORDS: Record<Exclude<Scene, "general">, readonly string[]> = {
+  game: ["移动", "碰撞", "得分", "关卡", "生命", "游戏"],
+  dashboard: ["图表", "统计", "趋势", "指标", "分析"],
+  crud: ["添加", "删除", "编辑", "筛选", "搜索", "管理", "记录"],
+  multiview: ["切换", "导航", "页面"],
+  animation: ["拖拽", "排序", "动画", "过渡", "滑动"],
+  persistence: [],
+};
+
+const PM_MODULE_KEYWORDS: Record<Exclude<Scene, "general">, readonly RegExp[]> = {
+  game: [/game/i, /board/i, /loop/i, /score/i],
+  dashboard: [/chart/i, /graph/i, /analytics/i, /stats/i, /dashboard/i],
+  crud: [/form/i, /list/i, /table/i, /editor/i],
+  multiview: [],
+  animation: [],
+  persistence: [],
+};
+
+const MULTIVIEW_MODULE_THRESHOLD = 3;
+
+export function classifySceneFromPm(pm: PmOutput): Scene[] {
+  const matched: Scene[] = [];
+  const featuresText = pm.features.join(" ").toLowerCase();
+  const modulesText = pm.modules.join(" ");
+
+  for (const [scene, keywords] of Object.entries(PM_FEATURE_KEYWORDS) as [Exclude<Scene, "general">, readonly string[]][]) {
+    if (keywords.length > 0 && keywords.some((kw) => featuresText.includes(kw))) {
+      matched.push(scene);
+    }
+  }
+
+  for (const [scene, patterns] of Object.entries(PM_MODULE_KEYWORDS) as [Exclude<Scene, "general">, readonly RegExp[]][]) {
+    if (!matched.includes(scene) && patterns.some((re) => re.test(modulesText))) {
+      matched.push(scene);
+    }
+  }
+
+  if (!matched.includes("multiview") && pm.modules.length >= MULTIVIEW_MODULE_THRESHOLD) {
+    matched.push("multiview");
+  }
+
+  if (!matched.includes("persistence") && (pm.persistence === "supabase" || pm.persistence === "localStorage")) {
+    matched.push("persistence");
+  }
+
+  if (matched.length === 0) return ["general"];
+  return matched.slice(0, MAX_SCENES);
 }
