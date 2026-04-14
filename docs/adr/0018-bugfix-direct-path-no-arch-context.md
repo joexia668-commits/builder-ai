@@ -40,15 +40,13 @@
 
 ---
 
-## 修复方案（待实施）
+## 修复方案
 
-**方向 A — 给 bug_fix 加架构上下文：**
-在 `buildDirectMultiFileEngineerContext` 中调用 `deriveArchFromFiles(currentFiles)`，在 prompt 开头注入架构摘要，让 Engineer 知道"这是一个计算器 app，有暗黑模式和历史记录功能"。
+**方向 A — 给 bug_fix 加架构上下文：** ✅ 已实施
+在 `buildDirectMultiFileEngineerContext` 中注入 `deriveArchFromFiles(currentFiles)` 的架构摘要（全量文件），加上"严禁重写/严禁删除 import"的约束指令。代码只传 triage 选中的文件，架构摘要覆盖全量文件。
 
-**方向 B — 改动范围硬约束：**
-triage 阶段已选出需要修改的文件（≤3 个）。在 prompt 中明确禁止修改 triage 未选中的文件，即使 Engineer 输出了额外文件也丢弃。
-
-**推荐：A + B 同时实施。**
+**方向 B — 改动范围硬约束：** ⏭️ 暂不实施
+经分析，实际 case 中 Engineer 只输出了 triage 选中的文件，未输出额外文件。问题在于缺少架构感知而非范围失控。后续观察是否需要。
 
 ---
 
