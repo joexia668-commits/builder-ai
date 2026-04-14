@@ -1290,6 +1290,9 @@ export function ChatArea({
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-red-700 font-medium">{display.title}</p>
                 <p className="text-xs text-red-500 mt-0.5">{display.description}</p>
+                {generationError.raw && generationError.raw !== display.description && (
+                  <p className="text-xs text-red-400 mt-1 break-all">{generationError.raw}</p>
+                )}
                 {display.action?.type === "new_project" && (
                   <button
                     onClick={onNewProject}
