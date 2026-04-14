@@ -23,6 +23,7 @@ BuilderAI is an AI-powered code generation platform. Describe your idea in natur
 
 - **多 Agent 协作** — PM → Architect → Engineer 顺序流转，实时可见每个 Agent 的思考过程 → [详情](docs/features/multi-agent-pipeline.md)
 - **意图路由** — 自动识别 bug_fix / style_change / feature_add / new_project，修 bug 和调样式直接跳过前两个 Agent，响应速度提升 2-3 倍 → [详情](docs/features/intent-routing.md)
+- **场景化 Prompt 注入** — 在意图之上识别应用场景（游戏/仪表盘/CRUD/多视图/动画/持久化），向 Architect 和 Engineer 注入场景专属规则，从源头防止 useEffect 无限循环、禁止包引入等 LLM 反模式 → [详情](docs/features/scene-prompt-injection.md)
 - **分层并行生成** — Architect 输出文件依赖图，Engineer 按拓扑排序分层并行生成，内置三级容错 → [详情](docs/features/engineer-circuit.md)
 - **代码后处理** — 生成后自动检测 import/export 不一致、缺失文件、禁止包引用，≤3 文件时定向修复 → [详情](docs/features/code-post-processing.md)
 - **迭代上下文记忆** — 最近 5 轮历史 + 实时架构推导，PM 写增量 PRD，刷新后上下文不丢失 → [详情](docs/features/context-memory.md)
@@ -39,9 +40,12 @@ BuilderAI is an AI-powered code generation platform. Describe your idea in natur
 ## Architecture Overview
 
 ```
-用户输入 → classifyIntent() → Agent Pipeline → Sandpack Preview
-                                     │
-          ┌──────────────────────────┼──────────────────────────┐
+用户输入 → classifyIntent() ──────────────────────────────── Agent Pipeline → Sandpack Preview
+                │                                                    │
+                └── classifyScene() → 场景规则注入 → Architect / Engineer
+                    (game/dashboard/crud/multiview/animation/persistence)
+
+          ┌──────────────────────────┬──────────────────────────┐
           │                          │                          │
      bug_fix / style_change     new_project               feature_add
      Engineer only              PM → Architect            PM → Architect
