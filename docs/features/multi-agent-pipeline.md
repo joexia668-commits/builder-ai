@@ -147,4 +147,4 @@ resolveModelId(requestModelId, projectModelId, userModelId, env)
 - `lib/validate-scaffold.ts` — Scaffold 验证修复
 - `lib/topo-sort.ts` — 拓扑排序分层
 - `app/api/generate/route.ts` — SSE 生成端点
-- `docs/examples/agent-orchestration.md` — 旧版编排说明（已被本文档取代）
+- `docs/features/multi-agent-pipeline.md` — 本文档（多 Agent 编排详解）
