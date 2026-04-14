@@ -23,24 +23,24 @@
 
 ## AI API Configuration
 
-### Primary: Google Gemini Flash
+### Default: DeepSeek V3
+- Model: `deepseek-chat`
+- Env var: `DEEPSEEK_API_KEY`
+- Default model: `DEFAULT_MODEL_ID = "deepseek-chat"`
+- Streaming: supported via OpenAI-compatible API
+- Free tier: generous rate limits
+
+### Option: Google Gemini Flash
 - Model: `gemini-2.0-flash`
 - Env var: `GOOGLE_GENERATIVE_AI_API_KEY`
 - Free tier: 15 RPM, sufficient for demo
 - Streaming: supported via `generateContentStream()`
 
-### Fallback: Groq
+### Option: Groq
 - Model: `llama-3.3-70b-versatile`
 - Env var: `GROQ_API_KEY`
 - Free tier: 30 RPM
 - Streaming: supported
-
-### DeepSeek V3（Default）
-- Model: `deepseek-chat`
-- Env var: `DEEPSEEK_API_KEY`
-- Default: Yes（`DEFAULT_MODEL_ID = "deepseek-chat"`）
-- Streaming: OpenAI-compatible API
-- Note: 默认模型，性价比最优
 
 ### Selection logic
 ```typescript
