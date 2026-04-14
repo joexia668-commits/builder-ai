@@ -202,6 +202,9 @@ export interface CompletionOptions {
 // Intent of a user's follow-up prompt — drives pipeline routing
 export type Intent = "new_project" | "bug_fix" | "feature_add" | "style_change";
 
+// Scene type for prompt injection categorization
+export type Scene = "game" | "dashboard" | "crud" | "multiview" | "animation" | "persistence" | "general";
+
 // Multi-file scaffold types (Architect agent output)
 export interface ScaffoldFile {
   readonly path: string;
