@@ -861,6 +861,11 @@ export function ChatArea({
               agentColor: AGENTS.engineer.color,
             });
 
+            console.warn("[pipeline] allCompletedFiles:", Object.keys(allCompletedFiles));
+            console.warn("[pipeline] currentFiles:", Object.keys(currentFiles));
+            console.warn("[pipeline] hasExistingCode:", hasExistingCode);
+            console.warn("[pipeline] scaffold files:", capturedScaffold?.files.map(f => f.path));
+            console.warn("[pipeline] scaffold removeFiles:", capturedScaffold?.removeFiles);
             if (Object.keys(allCompletedFiles).length > 0) {
               // Merge existing files BEFORE post-processing so that
               // findMissingLocalImports / checkImportExportConsistency see
@@ -926,6 +931,7 @@ export function ChatArea({
               // Re-check for remaining missing imports after patch attempt
               const remainingMissing = findMissingLocalImports(allCompletedFiles);
               if (remainingMissing.length > 0) {
+                console.warn("[pipeline] missing imports:", remainingMissing);
                 updateSession(project.id, {
                   generationError: {
                     code: "missing_imports",
