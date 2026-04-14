@@ -98,25 +98,22 @@ describe("buildSandpackConfig", () => {
 });
 
 describe("normalizeExports (via buildSandpackConfig)", () => {
-  it("does NOT add named re-export for export default function (Babel compat)", () => {
-    // `export default function Btn` already creates a local binding in standard JS,
-    // but Sandpack's Babel rejects a subsequent `export { Btn }`.
-    const files = {
+  it("does NOT add named re-export for any default export (Sandpack Babel compat)", () => {
+    // Sandpack's Babel rejects `export { Name }` regardless of how the
+    // default was declared. normalizeExports no longer adds it.
+    const files1 = {
       "/App.js": `import Btn from '/Btn.jsx'\nexport default function App() { return null; }`,
       "/Btn.jsx": `export default function Btn() { return <button />; }`,
     };
-    const config = buildSandpackConfig(files, "proj-1");
-    expect(config.files["/Btn.jsx"].code).not.toContain("export { Btn }");
-  });
+    expect(buildSandpackConfig(files1, "proj-1").files["/Btn.jsx"].code)
+      .not.toContain("export { Btn }");
 
-  it("adds named re-export when file has export default <identifier>", () => {
-    // `export default Btn` (reference to existing variable) — safe to add `export { Btn }`
-    const files = {
+    const files2 = {
       "/App.js": `import Btn from '/Btn.jsx'\nexport default function App() { return null; }`,
       "/Btn.jsx": `function Btn() { return <button />; }\nexport default Btn;`,
     };
-    const config = buildSandpackConfig(files, "proj-1");
-    expect(config.files["/Btn.jsx"].code).toContain("export { Btn }");
+    expect(buildSandpackConfig(files2, "proj-1").files["/Btn.jsx"].code)
+      .not.toContain("export { Btn }");
   });
 
   it("adds default export when file has only a named export", () => {
@@ -138,13 +135,13 @@ describe("normalizeExports (via buildSandpackConfig)", () => {
     expect(config.files["/Btn.jsx"].code).toBe(original);
   });
 
-  it("adds named re-export for identifier-style default export (export default X;)", () => {
+  it("does NOT add named re-export for identifier-style default export either", () => {
     const files = {
       "/App.js": `export default function App() { return null; }`,
       "/Btn.jsx": `const Btn = () => null;\nexport default Btn;`,
     };
     const config = buildSandpackConfig(files, "proj-1");
-    expect(config.files["/Btn.jsx"].code).toContain("export { Btn }");
+    expect(config.files["/Btn.jsx"].code).not.toContain("export { Btn }");
   });
 
   it("adds default using first named export when multiple named exports exist and no default", () => {
