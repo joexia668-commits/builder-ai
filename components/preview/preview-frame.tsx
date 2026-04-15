@@ -285,17 +285,30 @@ export function PreviewFrame({
 
   // Error state
   if (status === "error") {
+    const isBoot =
+      errorMessage?.includes("boot") ||
+      errorMessage?.includes("WebContainer") ||
+      errorMessage?.includes("SharedArrayBuffer") ||
+      errorMessage?.includes("cross-origin");
     return (
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#f9fafb] px-8 text-center">
         <span className="text-3xl">⚠️</span>
-        <p className="text-sm font-medium text-[#374151]">预览环境启动失败</p>
-        <p className="text-xs text-[#9ca3af] max-w-sm">{errorMessage}</p>
-        <button
-          onClick={startContainer}
-          className="px-3 py-1.5 text-xs bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 transition-colors"
-        >
-          重试
-        </button>
+        <p className="text-sm font-medium text-[#374151]">
+          {isBoot ? "预览环境不可用" : "预览环境启动失败"}
+        </p>
+        <p className="text-xs text-[#9ca3af] max-w-sm">
+          {isBoot
+            ? "WebContainer 需要现代浏览器支持（Chrome 90+, Firefox 90+），且页面需通过 HTTPS 或 localhost 访问"
+            : errorMessage}
+        </p>
+        {!isBoot && (
+          <button
+            onClick={startContainer}
+            className="px-3 py-1.5 text-xs bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 transition-colors"
+          >
+            重试
+          </button>
+        )}
       </div>
     );
   }

@@ -153,6 +153,23 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const PHASE_TIMEOUTS: Record<string, number> = {
+  CLASSIFYING: 60_000,
+  DECOMPOSING: 30_000,
+  SKELETON: 90_000,
+  MODULE_FILLING: 90_000,
+  POST_PROCESSING: 30_000,
+};
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} 超时 (${ms / 1000}s)`)), ms)
+    ),
+  ]);
+}
+
 const MAX_ITERATION_ROUNDS = 5;
 
 function appendRound(
@@ -1251,18 +1268,22 @@ export function ChatArea({
               detectedScenes
             );
 
-            const decomposerResponse = await fetch("/api/generate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                agent: "decomposer",
-                prompt,
-                context: decomposerContext,
-                projectId: project.id,
-                modelId: selectedModel,
+            const decomposerResponse = await withTimeout(
+              fetch("/api/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  agent: "decomposer",
+                  prompt,
+                  context: decomposerContext,
+                  projectId: project.id,
+                  modelId: selectedModel,
+                }),
+                signal: abortController.signal,
               }),
-              signal: abortController.signal,
-            });
+              PHASE_TIMEOUTS.DECOMPOSING,
+              "模块拆解"
+            );
 
             if (!decomposerResponse.ok) {
               const errorText = await decomposerResponse.text();
@@ -1338,18 +1359,22 @@ export function ChatArea({
               parsedPm, validated.skeleton, currentFiles, detectedScenes
             );
 
-            const skeletonArchResponse = await fetch("/api/generate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                projectId: project.id,
-                prompt,
-                agent: "architect",
-                context: skeletonArchContext,
-                modelId: selectedModel,
+            const skeletonArchResponse = await withTimeout(
+              fetch("/api/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  projectId: project.id,
+                  prompt,
+                  agent: "architect",
+                  context: skeletonArchContext,
+                  modelId: selectedModel,
+                }),
+                signal: abortController.signal,
               }),
-              signal: abortController.signal,
-            });
+              PHASE_TIMEOUTS.SKELETON,
+              "骨架架构"
+            );
 
             if (!skeletonArchResponse.ok) {
               const errText = await skeletonArchResponse.text();
@@ -1423,21 +1448,25 @@ export function ChatArea({
                         ? { attempt: meta.attempt, reason: "string_truncated" as const, priorTail: undefined }
                         : undefined,
                     });
-                    const resp = await fetch("/api/generate", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        projectId: project.id,
-                        prompt,
-                        agent: "engineer",
-                        context: engineerPrompt,
-                        modelId: selectedModel,
-                        targetFiles: files,
-                        completedFiles: skeletonFiles,
-                        scaffold: { sharedTypes: skeletonScaffold.sharedTypes, designNotes: skeletonScaffold.designNotes },
+                    const resp = await withTimeout(
+                      fetch("/api/generate", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          projectId: project.id,
+                          prompt,
+                          agent: "engineer",
+                          context: engineerPrompt,
+                          modelId: selectedModel,
+                          targetFiles: files,
+                          completedFiles: skeletonFiles,
+                          scaffold: { sharedTypes: skeletonScaffold.sharedTypes, designNotes: skeletonScaffold.designNotes },
+                        }),
+                        signal: abortController.signal,
                       }),
-                      signal: abortController.signal,
-                    });
+                      PHASE_TIMEOUTS.SKELETON,
+                      "骨架生成"
+                    );
                     if (!resp.ok) {
                       const errText = await resp.text();
                       throw new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
@@ -1840,6 +1869,9 @@ export function ChatArea({
             architect: { role: "architect", status: "idle", output: "" },
             engineer: { role: "engineer", status: "idle", output: "" },
           },
+          pipelineState: "IDLE",
+          currentModule: null,
+          moduleProgress: null,
         });
       }
     } finally {
