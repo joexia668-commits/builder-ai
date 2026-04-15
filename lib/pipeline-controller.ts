@@ -136,6 +136,7 @@ export function createPipelineController(
       transition("ARCHITECTING", "Decomposer failed — falling back to simple architecture path");
     },
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     onArchitectComplete(scaffold: ScaffoldData): void {
       if (state !== "ARCHITECTING") return;
       transition("ENGINEERING", "Architecture complete — generating code");
@@ -162,6 +163,7 @@ export function createPipelineController(
       advanceModuleQueue();
     },
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     onModuleFailed(moduleName: string, reason: string): void {
       if (state !== "MODULE_FILLING") return;
       moduleQueue = moduleQueue.filter((m) => m !== moduleName);
