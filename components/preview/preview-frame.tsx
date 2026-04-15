@@ -147,7 +147,7 @@ function prepareFiles(
   files: Record<string, string>,
   projectId: string
 ): Record<string, string> {
-  let prepared = deduplicateImports({ ...files });
+  const prepared = deduplicateImports({ ...files });
 
   // Ensure /App.js entry exists
   if (!prepared["/App.js"]) {
