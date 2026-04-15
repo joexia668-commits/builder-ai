@@ -203,16 +203,7 @@ data: {"type":"done"}
 
 ### Known limitations & open issues
 
-| Issue | ADR | Status |
-|-------|-----|--------|
-| `normalizeExports`: Sandpack Babel 不支持 `export { Name }` after `export default function Name` — 需要拆分声明 | 0015 | ✅ 已修复（拆分为普通声明 + 分离 export） |
-| 后处理阶段（missing imports / consistency check）需要看完整文件集（old + new），否则误判旧文件为缺失 | 0016 | ✅ 已修复（merge 提前到后处理之前） |
-| `generationError.raw` 具体错误详情需要在 UI 展示，方便线上排查 | 0017 | ✅ 已修复 |
-| `bug_fix` 直接路径缺少架构感知，Engineer 可能过度修复导致功能丢失 | 0018 | ✅ 已修复（方向 A：架构摘要注入） |
-| Supabase `DynamicAppData` RLS 需要 `x-app-id` header | 0007 | ✅ 已修复（`buildSupabaseClientCode` 注入 header） |
-| `iterationSnapshot` 缺少当前轮次，恢复后上下文少一轮 | 0020 | ✅ 已修复（appendRound 提前到版本创建之前） |
-| 复杂游戏类项目 — 动态行数上限 + 第三方包黑名单机制已解锁，但 AI 代码质量在 300+ 行文件时可能下降 | — | ✅ 基本解决（动态 maxLines + 包黑名单 + 动态补全上限） |
-| Dashboard 场景从空 Supabase 表读数据导致 NaN 崩溃 | 0021 | ✅ 已修复（dashboard 场景规则强制 hardcoded mock 数据） |
-| 自定义 Hook 返回值格式不一致（对象 vs 数组）导致 TypeError | 0022 | ✅ 已修复（prompt 规则强制 hook 返回对象） |
-| LLM 生成重复 import 声明导致 SyntaxError | 0023 | ✅ 已修复（`deduplicateImports` 后处理自动合并） |
-| 平台游戏/物理模拟类项目（如超级马里奥）— 需要精确物理逻辑、碰撞检测、视口滚动，且 Sandpack 沙箱禁用游戏引擎（phaser/pixi.js），纯 React+SVG 实现可玩游戏超出单次 LLM 生成能力 | — | ⚠️ 已知限制（需多轮迭代修复方案） |
+详见 `docs/adr/` 目录（ADR 0001–0023）。遇到相关问题时按需读取对应 ADR 文件。
+
+当前未解决的限制：
+- 平台游戏/物理模拟类项目（如超级马里奥）— 需要精确物理逻辑、碰撞检测、视口滚动，且 Sandpack 沙箱禁用游戏引擎（phaser/pixi.js），纯 React+SVG 实现可玩游戏超出单次 LLM 生成能力（需多轮迭代修复方案）
