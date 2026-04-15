@@ -36,11 +36,13 @@ export async function POST(req: Request) {
   if (session.user.isDemo) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await req.json();
-  const { projectId, code, files, description } = body as {
+  const { projectId, code, files, description, changedFiles, iterationSnapshot } = body as {
     projectId?: string;
     code?: string;
     files?: Record<string, string>;
     description?: string;
+    changedFiles?: unknown;
+    iterationSnapshot?: unknown;
   };
 
   // Determine the effective code: from files["/App.js"] or direct code param
@@ -73,6 +75,8 @@ export async function POST(req: Request) {
       ...(files ? { files } : {}),
       description,
       versionNumber,
+      ...(changedFiles ? { changedFiles } : {}),
+      ...(iterationSnapshot ? { iterationSnapshot } : {}),
     },
   });
 

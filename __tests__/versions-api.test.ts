@@ -252,6 +252,74 @@ describe("POST /api/versions", () => {
     );
   });
 
+  it("API-02g: stores changedFiles and iterationSnapshot when provided", async () => {
+    mockSession.mockResolvedValue(session);
+    mockProjectFindFirst.mockResolvedValue(mockProject);
+    mockVersionFindFirst.mockResolvedValue(null);
+    const changedFiles = {
+      added: { "/New.js": "new" },
+      modified: { "/App.js": "updated" },
+      removed: ["/Old.js"],
+    };
+    const iterationSnapshot = {
+      rounds: [{ userPrompt: "test", intent: "new_project", pmSummary: null, timestamp: "2026-04-15T00:00:00Z" }],
+    };
+    mockVersionCreate.mockResolvedValue({
+      id: "v1",
+      projectId: "proj-1",
+      versionNumber: 1,
+      code: "app code",
+      files: { "/App.js": "app code" },
+      changedFiles,
+      iterationSnapshot,
+      description: "test",
+      createdAt: new Date(),
+    });
+    mockProjectUpdate.mockResolvedValue({});
+
+    const res = await POST(
+      makePostRequest({
+        projectId: "proj-1",
+        files: { "/App.js": "app code" },
+        description: "test",
+        changedFiles,
+        iterationSnapshot,
+      })
+    );
+    expect(res.status).toBe(201);
+
+    expect(mockVersionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          changedFiles,
+          iterationSnapshot,
+        }),
+      })
+    );
+  });
+
+  it("API-02h: omitted changedFiles and iterationSnapshot default to undefined (backward compat)", async () => {
+    mockSession.mockResolvedValue(session);
+    mockProjectFindFirst.mockResolvedValue(mockProject);
+    mockVersionFindFirst.mockResolvedValue(null);
+    mockVersionCreate.mockResolvedValue({
+      id: "v1",
+      projectId: "proj-1",
+      versionNumber: 1,
+      code: "code",
+      description: "no extras",
+      createdAt: new Date(),
+    });
+    mockProjectUpdate.mockResolvedValue({});
+
+    const res = await POST(makePostRequest({ projectId: "proj-1", code: "code", description: "no extras" }));
+    expect(res.status).toBe(201);
+
+    const createCall = mockVersionCreate.mock.calls[0][0];
+    expect(createCall.data.changedFiles).toBeUndefined();
+    expect(createCall.data.iterationSnapshot).toBeUndefined();
+  });
+
   // API-02f: returns 201 with the created version object
   it("API-02f: 成功时返回 201 和新版本对象", async () => {
     mockSession.mockResolvedValue(session);
