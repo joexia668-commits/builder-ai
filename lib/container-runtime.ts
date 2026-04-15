@@ -241,14 +241,28 @@ export async function mountAndStart(
 
     // npm install
     const installProcess = await container.spawn("npm", ["install"]);
+    const installOutput: string[] = [];
+    installProcess.output.pipeTo(new WritableStream({
+      write(chunk) { installOutput.push(chunk); }
+    })).catch(() => {});
     const installExit = await installProcess.exit;
     if (installExit !== 0) {
-      onError(new Error(`npm install failed with exit code ${installExit}`));
+      onError(new Error(`npm install failed (exit ${installExit}):\n${installOutput.slice(-20).join("")}`));
       return;
     }
 
     // npm run dev
     const devProcess = await container.spawn("npm", ["run", "dev"]);
+    const devOutput: string[] = [];
+    devProcess.output.pipeTo(new WritableStream({
+      write(chunk) {
+        devOutput.push(chunk);
+        // Log Vite errors to console for debugging
+        if (chunk.includes("Error") || chunk.includes("error")) {
+          console.error("[WebContainer:vite]", chunk);
+        }
+      }
+    })).catch(() => {});
 
     container.on("server-ready", (_port, url) => {
       onServerReady(url);
@@ -256,7 +270,7 @@ export async function mountAndStart(
 
     devProcess.exit.then((code) => {
       if (code !== 0) {
-        onError(new Error(`Dev server exited with code ${code}`));
+        onError(new Error(`Dev server exited (code ${code}):\n${devOutput.slice(-20).join("")}`));
       }
     });
   } catch (err) {
