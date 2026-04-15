@@ -4,6 +4,7 @@ import type {
   EngineerProgress,
   ErrorCode,
   LiveFileStream,
+  PipelineState,
 } from "@/lib/types";
 
 export interface GenerationSession {
@@ -19,6 +20,14 @@ export interface GenerationSession {
   lastPrompt: string;
   lastEventAt: number | null;
   stallWarning: boolean;
+  pipelineState: PipelineState;
+  currentModule: string | null;
+  moduleProgress: {
+    total: number;
+    completed: string[];
+    failed: string[];
+    current: string | null;
+  } | null;
 }
 
 function makeEmptySession(projectId: string = ""): GenerationSession {
@@ -40,6 +49,9 @@ function makeEmptySession(projectId: string = ""): GenerationSession {
     lastPrompt: "",
     lastEventAt: null,
     stallWarning: false,
+    pipelineState: "IDLE",
+    currentModule: null,
+    moduleProgress: null,
   };
 }
 
@@ -62,6 +74,9 @@ export const EMPTY_SESSION: GenerationSession = {
   lastPrompt: "",
   lastEventAt: null,
   stallWarning: false,
+  pipelineState: "IDLE",
+  currentModule: null,
+  moduleProgress: null,
 };
 
 const sessions = new Map<string, GenerationSession>();
