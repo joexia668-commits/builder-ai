@@ -112,7 +112,7 @@ export function createViteConfig(): string {
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  plugins: [react({ include: /\\.(js|jsx|ts|tsx)$/ })],
+  plugins: [react()],
   server: {
     host: true,
     port: 3111,
@@ -155,6 +155,50 @@ root.render(React.createElement(React.StrictMode, null, React.createElement(App)
 }
 
 /**
+ * Renames .js files to .jsx and rewrites import paths to match.
+ * Vite's import-analysis plugin cannot parse JSX in .js files, so this
+ * ensures all JSX-containing files have the correct extension.
+ */
+function renameJsToJsx(
+  files: Record<string, string>
+): Record<string, string> {
+  // Build a set of .js paths that will be renamed
+  const jsFiles = new Set(
+    Object.keys(files).filter((p) => p.endsWith(".js"))
+  );
+  if (jsFiles.size === 0) return files;
+
+  const result: Record<string, string> = {};
+  for (const [path, contents] of Object.entries(files)) {
+    const newPath = path.endsWith(".js")
+      ? path.replace(/\.js$/, ".jsx")
+      : path;
+
+    // Rewrite import/export paths: from './Foo.js' → from './Foo.jsx'
+    const newContents = contents.replace(
+      /(from\s+['"])(\.[^'"]+)\.js(['"])/g,
+      (_match, prefix, modPath, suffix) => {
+        // Only rewrite if the target .js file exists in our file set
+        const originalImport = `${modPath}.js`;
+        // Resolve relative to current file's directory
+        const dir = path.substring(0, path.lastIndexOf("/"));
+        const resolved = originalImport.startsWith("./") || originalImport.startsWith("../")
+          ? `${dir}/${originalImport}`.replace(/\/\.\//g, "/")
+          : originalImport;
+        // Normalize: simple check if the resolved path (or something close) is a .js file
+        if (jsFiles.has(resolved) || jsFiles.has(originalImport)) {
+          return `${prefix}${modPath}.jsx${suffix}`;
+        }
+        return `${prefix}${modPath}.js${suffix}`;
+      }
+    );
+
+    result[newPath] = newContents;
+  }
+  return result;
+}
+
+/**
  * Builds full file tree, mounts to container, runs npm install and dev server.
  * Calls onServerReady(url) when the server is ready, onError on failures.
  */
@@ -167,15 +211,18 @@ export async function mountAndStart(
   try {
     const container = await getContainer();
 
+    // Rename .js → .jsx so Vite can parse JSX syntax
+    const renamedFiles = renameJsToJsx(files);
+
     // Detect entry file — prefer App.jsx, App.js, App.tsx
-    const entryFile = Object.keys(files).find((p) =>
+    const entryFile = Object.keys(renamedFiles).find((p) =>
       /^\/App\.(jsx?|tsx?)$/.test(p)
-    ) ?? "/App.js";
+    ) ?? "/App.jsx";
     const entryImport = entryFile.replace(/^\//, "./");
 
     // Build src/ files from app files
     const srcFiles: Record<string, string> = {};
-    for (const [path, contents] of Object.entries(files)) {
+    for (const [path, contents] of Object.entries(renamedFiles)) {
       // Mount app files under src/
       srcFiles[`/src${path}`] = contents;
     }
@@ -226,8 +273,9 @@ export async function mountIncremental(
 ): Promise<void> {
   const container = await getContainer();
 
+  const renamedFiles = renameJsToJsx(files);
   const srcFiles: Record<string, string> = {};
-  for (const [path, contents] of Object.entries(files)) {
+  for (const [path, contents] of Object.entries(renamedFiles)) {
     srcFiles[`/src${path}`] = contents;
   }
 
