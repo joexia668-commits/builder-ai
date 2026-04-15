@@ -94,6 +94,93 @@ function normalizeExports(
   return result;
 }
 
+/**
+ * Merge duplicate import declarations from the same module into a single
+ * statement per module. Prevents "Identifier 'X' has already been declared"
+ * errors caused by LLM emitting multiple import lines for the same package.
+ */
+function deduplicateImports(
+  files: Record<string, string>
+): Record<string, string> {
+  const result = { ...files };
+
+  for (const [path, code] of Object.entries(files)) {
+    // Map: module specifier → { named: Set<string>, hasDefault: string | null }
+    const moduleMap = new Map<
+      string,
+      { named: Set<string>; defaultName: string | null; firstIndex: number }
+    >();
+    const importLines: { line: string; module: string; index: number }[] = [];
+
+    const lines = code.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // Match: import { a, b } from 'module'  or  import Default, { a } from 'module'
+      const m = line.match(
+        /^import\s+(?:(?:(\w+)\s*,?\s*)?\{([^}]*)\}|(\w+))\s+from\s+['"]([^'"]+)['"]\s*;?\s*$/
+      );
+      if (!m) continue;
+
+      const defaultImport = m[1] || m[3] || null;
+      const namedRaw = m[2] || "";
+      const mod = m[4];
+
+      const namedTokens = namedRaw
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+
+      if (!moduleMap.has(mod)) {
+        moduleMap.set(mod, { named: new Set(), defaultName: null, firstIndex: i });
+      }
+      const entry = moduleMap.get(mod)!;
+      for (const t of namedTokens) entry.named.add(t);
+      if (defaultImport && !entry.defaultName) entry.defaultName = defaultImport;
+
+      importLines.push({ line, module: mod, index: i });
+    }
+
+    // Only process if there are actual duplicates
+    const duplicatedModules = new Set<string>();
+    const seenModules = new Set<string>();
+    for (const { module } of importLines) {
+      if (seenModules.has(module)) duplicatedModules.add(module);
+      seenModules.add(module);
+    }
+    if (duplicatedModules.size === 0) continue;
+
+    // Rebuild: remove all import lines for duplicated modules, insert merged at first occurrence
+    const linesToRemove = new Set<number>();
+    for (const { module, index } of importLines) {
+      if (duplicatedModules.has(module)) linesToRemove.add(index);
+    }
+
+    const newLines: string[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (linesToRemove.has(i)) {
+        // Check if this is the first occurrence of a duplicated module
+        const entry = [...moduleMap.entries()].find(
+          ([mod, e]) => e.firstIndex === i && duplicatedModules.has(mod)
+        );
+        if (entry) {
+          const [mod, e] = entry;
+          const namedPart = e.named.size > 0 ? `{ ${[...e.named].join(", ")} }` : "";
+          const defaultPart = e.defaultName || "";
+          const importParts = [defaultPart, namedPart].filter(Boolean).join(", ");
+          newLines.push(`import ${importParts} from '${mod}';`);
+        }
+        // Skip other duplicate lines
+      } else {
+        newLines.push(lines[i]);
+      }
+    }
+
+    result[path] = newLines.join("\n");
+  }
+
+  return result;
+}
+
 const PLACEHOLDER_APP = `export default function App() {
   return (
     <div className="flex items-center justify-center h-screen text-gray-400">
@@ -166,6 +253,10 @@ export function buildSandpackConfig(
   if (typeof input !== "string") {
     userFiles = normalizeExports(userFiles);
   }
+
+  // Deduplicate imports: merge multiple import statements from the same module
+  // into one, preventing "Identifier 'X' has already been declared" errors.
+  userFiles = deduplicateImports(userFiles);
 
   // Ensure /App.js has a value (Sandpack entry point)
   if (!userFiles["/App.js"]) {
