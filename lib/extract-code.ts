@@ -1,4 +1,5 @@
-import type { PartialExtractResult, ImportExportMismatch, DisallowedImport } from "@/lib/types";
+import type { PartialExtractResult, ImportExportMismatch, DisallowedImport, LucideIconFix } from "@/lib/types";
+import { LUCIDE_ICON_NAMES } from "@/lib/lucide-icon-names";
 
 /**
  * Strip single-line (//) and multi-line (/* *\/) comments from code,
@@ -644,4 +645,90 @@ export function checkDisallowedImports(
   }
 
   return violations;
+}
+
+// ---------------------------------------------------------------------------
+// Lucide icon auto-fix
+// ---------------------------------------------------------------------------
+
+const ICON_SUFFIXES = ["Icon", "Outline", "Solid", "Filled"];
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+function findClosestIcon(name: string): string {
+  // 1. Suffix stripping
+  for (const suffix of ICON_SUFFIXES) {
+    if (name.endsWith(suffix)) {
+      const stripped = name.slice(0, -suffix.length);
+      if (stripped && LUCIDE_ICON_NAMES.has(stripped)) return stripped;
+    }
+  }
+
+  // 2. Levenshtein ≤ 3
+  let bestMatch = "";
+  let bestDist = 4;
+  for (const icon of LUCIDE_ICON_NAMES) {
+    if (Math.abs(icon.length - name.length) > 3) continue;
+    const d = levenshtein(name, icon);
+    if (d < bestDist) {
+      bestDist = d;
+      bestMatch = icon;
+    }
+  }
+  if (bestMatch) return bestMatch;
+
+  // 3. Fallback
+  return "CircleAlert";
+}
+
+const LUCIDE_IMPORT_RE = /\bimport\s+\{([^}]+)\}\s+from\s+["']lucide-react["']/g;
+
+export function checkUndefinedLucideIcons(
+  files: Readonly<Record<string, string>>
+): LucideIconFix[] {
+  const fixes: LucideIconFix[] = [];
+
+  for (const [filePath, code] of Object.entries(files)) {
+    LUCIDE_IMPORT_RE.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = LUCIDE_IMPORT_RE.exec(code)) !== null) {
+      const names = match[1].split(",").map((s) => s.trim()).filter(Boolean);
+      for (const name of names) {
+        const originalName = name.split(/\s+as\s+/)[0].trim();
+        if (!originalName || LUCIDE_ICON_NAMES.has(originalName)) continue;
+        fixes.push({
+          filePath,
+          original: originalName,
+          replacement: findClosestIcon(originalName),
+        });
+      }
+    }
+  }
+
+  return fixes;
+}
+
+export function applyLucideIconFixes(
+  files: Record<string, string>,
+  fixes: readonly LucideIconFix[]
+): void {
+  for (const fix of fixes) {
+    if (!files[fix.filePath]) continue;
+    const re = new RegExp(`\\b${fix.original}\\b`, "g");
+    files[fix.filePath] = files[fix.filePath].replace(re, fix.replacement);
+  }
 }

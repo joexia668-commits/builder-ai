@@ -186,6 +186,12 @@ export interface DisallowedImport {
   readonly packageName: string;
 }
 
+export interface LucideIconFix {
+  readonly filePath: string;
+  readonly original: string;
+  readonly replacement: string;
+}
+
 // Structured output schemas for PM and Architect agents
 export interface PmOutput {
   readonly intent: string;
