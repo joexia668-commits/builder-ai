@@ -234,6 +234,8 @@ export interface ScaffoldFile {
   readonly exports: readonly string[];
   readonly deps: readonly string[];
   readonly hints: string;
+  readonly maxLines?: number;
+  readonly complexity?: "normal" | "high";
 }
 
 export interface ScaffoldData {
@@ -241,6 +243,7 @@ export interface ScaffoldData {
   readonly sharedTypes: string;
   readonly designNotes: string;
   readonly removeFiles?: readonly string[];
+  readonly dependencies?: Readonly<Record<string, string>>;
 }
 
 export interface ScaffoldValidationResult {
