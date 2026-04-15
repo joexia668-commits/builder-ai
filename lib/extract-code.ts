@@ -681,7 +681,7 @@ function findClosestIcon(name: string): string {
   // 2. Levenshtein ≤ 3
   let bestMatch = "";
   let bestDist = 4;
-  for (const icon of LUCIDE_ICON_NAMES) {
+  for (const icon of Array.from(LUCIDE_ICON_NAMES)) {
     if (Math.abs(icon.length - name.length) > 3) continue;
     const d = levenshtein(name, icon);
     if (d < bestDist) {

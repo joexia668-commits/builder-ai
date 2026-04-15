@@ -29,7 +29,7 @@ import {
 import { classifyIntent } from "@/lib/intent-classifier";
 import { classifySceneFromPrompt, classifySceneFromPm } from "@/lib/scene-classifier";
 import { getEngineerSceneRules, getArchitectSceneHint } from "@/lib/scene-rules";
-import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency, checkDisallowedImports } from "@/lib/extract-code";
+import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency, checkDisallowedImports, checkUndefinedLucideIcons, applyLucideIconFixes } from "@/lib/extract-code";
 import { ERROR_DISPLAY } from "@/lib/error-codes";
 import { computeChangedFiles } from "@/lib/version-files";
 import type { ErrorCode } from "@/lib/types";
@@ -961,6 +961,15 @@ export function ChatArea({
                 });
                 // Intentionally do NOT return here — stubs were injected by buildSandpackConfig
                 // so the preview renders with partial functionality instead of a blank screen.
+              }
+              // Fix invalid lucide-react icon names (static replacement, no LLM call)
+              const lucideFixes = checkUndefinedLucideIcons(allCompletedFiles);
+              if (lucideFixes.length > 0) {
+                updateAgentState("engineer", {
+                  status: "streaming",
+                  output: `正在修复 lucide 图标引用: ${lucideFixes.map((f) => `${f.original} → ${f.replacement}`).join(", ")}`,
+                });
+                applyLucideIconFixes(allCompletedFiles, lucideFixes);
               }
               // Check import/export consistency and retry mismatched files (≤ MAX_PATCH_FILES)
               const importMismatches = checkImportExportConsistency(allCompletedFiles);
