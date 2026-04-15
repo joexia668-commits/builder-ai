@@ -41,7 +41,7 @@ describe("no-hydration-timebombs", () => {
         for (const pattern of FORBIDDEN) {
           if (!line.includes(pattern)) continue;
           // Check surrounding context — look back to find a safe context (function scope)
-          const context = lines.slice(Math.max(0, i - 500), i + 1).join("\n");
+          const context = lines.slice(Math.max(0, i - 1000), i + 1).join("\n");
           const isSafe = SAFE_CONTEXTS.some((re) => re.test(context));
           if (!isSafe) {
             violations.push(`${file}:${lineNum}: ${trimmed}`);

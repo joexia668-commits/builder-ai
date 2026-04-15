@@ -226,8 +226,8 @@ describe("VersionTimeline", () => {
     expect(previewNode.querySelector(".bg-amber-400")).toBeInTheDocument();
   });
 
-  // VT-08: AC-8 — Horizontal scroll: overflow-x-auto + min-w-max present
-  it("VT-08: scroll container has overflow-x-auto class (AC-8)", () => {
+  // VT-08: AC-8 — Horizontal scroll: timeline-scroll class present
+  it("VT-08: scroll container has timeline-scroll class (AC-8)", () => {
     const manyVersions = Array.from({ length: 12 }, (_, i) =>
       makeVersion(i + 1)
     );
@@ -239,7 +239,7 @@ describe("VersionTimeline", () => {
         onRestoreVersion={jest.fn()}
       />
     );
-    const scrollContainer = container.querySelector(".overflow-x-auto");
+    const scrollContainer = container.querySelector(".timeline-scroll");
     expect(scrollContainer).toBeInTheDocument();
   });
 
