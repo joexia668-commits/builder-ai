@@ -79,8 +79,34 @@ export function filesToWebContainerTree(
  * Returns a package.json JSON string with base React deps merged with
  * scaffoldDependencies.
  */
+/**
+ * Scans file contents for npm package imports and returns them as dependencies.
+ * Skips relative/absolute imports and known built-in modules.
+ */
+function detectNpmImports(files: Record<string, string>): Record<string, string> {
+  const builtins = new Set(["react", "react-dom", "lucide-react"]);
+  const detected: Record<string, string> = {};
+
+  const importRe = /(?:import|from)\s+['"]([^./][^'"]*)['"]/g;
+  for (const contents of Object.values(files)) {
+    let m: RegExpExecArray | null;
+    while ((m = importRe.exec(contents)) !== null) {
+      const raw = m[1];
+      const pkgName = raw.startsWith("@")
+        ? raw.split("/").slice(0, 2).join("/")
+        : raw.split("/")[0];
+      if (!builtins.has(pkgName) && !detected[pkgName]) {
+        detected[pkgName] = "latest";
+      }
+    }
+    importRe.lastIndex = 0;
+  }
+  return detected;
+}
+
 export function createPackageJson(
-  scaffoldDependencies: Record<string, string>
+  scaffoldDependencies: Record<string, string>,
+  detectedDeps?: Record<string, string>
 ): string {
   const pkg = {
     name: "generated-app",
@@ -94,7 +120,8 @@ export function createPackageJson(
       react: "^18.2.0",
       "react-dom": "^18.2.0",
       "lucide-react": "^0.300.0",
-      ...scaffoldDependencies,
+      ...detectedDeps,
+      ...scaffoldDependencies, // scaffold versions take precedence
     },
     devDependencies: {
       "@vitejs/plugin-react": "^4.2.0",
@@ -213,7 +240,7 @@ export async function mountAndStart(
     // so that absolute imports like "/modules/..." resolve correctly in Vite
     const allFiles: Record<string, string> = {
       ...renamedFiles,
-      "/package.json": createPackageJson(dependencies),
+      "/package.json": createPackageJson(dependencies, detectNpmImports(renamedFiles)),
       "/vite.config.js": createViteConfig(),
       "/index.html": createIndexHtml(),
       "/main.jsx": createMainJsx(entryImport),
