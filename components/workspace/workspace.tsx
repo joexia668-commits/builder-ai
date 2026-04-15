@@ -58,6 +58,7 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
   const [fixAttempt, setFixAttempt] = useState(0);
   const [errorFixEnabled, setErrorFixEnabled] = useState(false);
   const [isFixingError, setIsFixingError] = useState(false);
+  const [scaffoldDependencies, setScaffoldDependencies] = useState<Record<string, string> | undefined>();
   const errorFixTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Open error detection window when generation finishes
@@ -70,7 +71,11 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
       setFixAttempt(0);
       setErrorFixEnabled(true);
       if (errorFixTimerRef.current) clearTimeout(errorFixTimerRef.current);
-      errorFixTimerRef.current = setTimeout(() => setErrorFixEnabled(false), 5000);
+      console.log("[runtime-fix] error detection window opened (15s)");
+      errorFixTimerRef.current = setTimeout(() => {
+        console.log("[runtime-fix] error detection window closed");
+        setErrorFixEnabled(false);
+      }, 15000);
     }
 
     return () => {
@@ -225,6 +230,7 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
               setVersions((prev) => [...prev, version]);
               setPreviewingVersion(null);
             }}
+            onScaffoldDependenciesChange={setScaffoldDependencies}
             onNewProject={() => router.push("/")}
           />
         </div>
@@ -249,6 +255,7 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
             errorFixEnabled={errorFixEnabled}
             onSandpackError={handleSandpackError}
             isFixingError={isFixingError}
+            scaffoldDependencies={scaffoldDependencies}
           />
         </div>
       </div>

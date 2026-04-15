@@ -61,9 +61,12 @@ interface ChatAreaProps {
   iterationContext?: IterationContext | null;
   onIterationContextChange?: (ctx: IterationContext) => void;
   onNewProject?: () => void;
+  onScaffoldDependenciesChange?: (deps: Record<string, string> | undefined) => void;
 }
 
-const MAX_PATCH_FILES = 3;
+function computeMaxPatchFiles(totalFiles: number): number {
+  return Math.min(8, Math.max(3, Math.ceil(totalFiles * 0.3)));
+}
 
 async function triageAffectedFiles(
   prompt: string,
@@ -183,6 +186,7 @@ export function ChatArea({
   iterationContext,
   onIterationContextChange,
   onNewProject,
+  onScaffoldDependenciesChange,
 }: ChatAreaProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const persistModelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -412,6 +416,8 @@ export function ChatArea({
     try {
       // Direct path: bug_fix / style_change skips PM + Architect
       if (intent === "bug_fix" || intent === "style_change") {
+        // Direct path does not use scaffold — reset any previously stored deps
+        onScaffoldDependenciesChange?.(undefined);
         updateAgentState("engineer", { status: "thinking", output: "" });
 
         // Multi-file V1: use FILE separator format so the server can parse with
@@ -424,7 +430,7 @@ export function ChatArea({
           const triagePaths = await triageAffectedFiles(
             prompt, currentFiles, project.id, selectedModel, abortController.signal
           );
-          if (triagePaths.length > 0 && triagePaths.length <= MAX_PATCH_FILES) {
+          if (triagePaths.length > 0 && triagePaths.length <= computeMaxPatchFiles(Object.keys(currentFiles).length)) {
             triageFiles = Object.fromEntries(
               triagePaths.map((p) => [p, currentFiles[p]])
             );
@@ -683,6 +689,11 @@ export function ChatArea({
           }
 
           if (scaffold && scaffold.files.length > 1) {
+            // Thread scaffold dependencies to Sandpack config via workspace state
+            onScaffoldDependenciesChange?.(
+              scaffold.dependencies ? { ...scaffold.dependencies } as Record<string, string> : undefined
+            );
+
             // === MULTI-FILE PATH ===
             updateAgentState("engineer", { status: "thinking", output: "" });
 
@@ -906,7 +917,7 @@ export function ChatArea({
 
               // Attempt to patch missing files before falling back to stubs
               const missingMap = findMissingLocalImportsWithNames(allCompletedFiles);
-              if (missingMap.size > 0 && missingMap.size <= MAX_PATCH_FILES) {
+              if (missingMap.size > 0 && missingMap.size <= computeMaxPatchFiles(Object.keys(allCompletedFiles).length)) {
                 updateAgentState("engineer", {
                   status: "streaming",
                   output: `正在补全缺失文件: ${Array.from(missingMap.keys()).map((p) => p.split("/").pop()).join(", ")}`,
@@ -979,7 +990,7 @@ export function ChatArea({
                   involvedPaths.add(m.importerPath);
                   involvedPaths.add(m.exporterPath);
                 });
-                if (involvedPaths.size <= MAX_PATCH_FILES) {
+                if (involvedPaths.size <= computeMaxPatchFiles(Object.keys(allCompletedFiles).length)) {
                   const involvedPathsArray = Array.from(involvedPaths);
                   updateAgentState("engineer", {
                     status: "streaming",
@@ -1021,7 +1032,7 @@ export function ChatArea({
               const pkgViolations = checkDisallowedImports(allCompletedFiles);
               if (pkgViolations.length > 0) {
                 const violatedPaths = Array.from(new Set(pkgViolations.map((v) => v.filePath)));
-                if (violatedPaths.length <= MAX_PATCH_FILES) {
+                if (violatedPaths.length <= computeMaxPatchFiles(Object.keys(allCompletedFiles).length)) {
                   updateAgentState("engineer", {
                     status: "streaming",
                     output: `正在修复禁止包引用: ${violatedPaths.map((p) => p.split("/").pop()).join(", ")}`,
