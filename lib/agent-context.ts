@@ -1,4 +1,4 @@
-import type { Intent, PmOutput, IterationRound, Scene } from "@/lib/types";
+import type { Intent, PmOutput, IterationRound, Scene, SkeletonDefinition, ModuleDefinition } from "@/lib/types";
 
 /**
  * Builds the full context string passed to the Engineer agent.
@@ -321,4 +321,88 @@ export function deriveArchFromFiles(files: Record<string, string>): string {
   sections.push(`持久化：${persistStr}`);
 
   return sections.join("\n");
+}
+
+/**
+ * Builds Architect context for the skeleton phase of the complex pipeline.
+ * Instructs the Architect to produce only skeleton/layout files with placeholder modules.
+ */
+export function buildSkeletonArchitectContext(
+  pmOutput: PmOutput,
+  skeleton: SkeletonDefinition,
+  existingFiles: Record<string, string>,
+  sceneTypes: Scene[]
+): string {
+  const parts: string[] = [];
+  parts.push("## 项目 PRD");
+  parts.push(`意图: ${pmOutput.intent}`);
+  parts.push(`功能: ${pmOutput.features.join(", ")}`);
+  parts.push(`持久化: ${pmOutput.persistence}`);
+
+  parts.push("\n## 骨架要求");
+  parts.push(`描述: ${skeleton.description}`);
+  parts.push(`文件: ${skeleton.files.join(", ")}`);
+  if (skeleton.sharedTypes) {
+    parts.push(`共享类型:\n${skeleton.sharedTypes}`);
+  }
+
+  if (Object.keys(existingFiles).length > 0) {
+    const archSummary = deriveArchFromFiles(existingFiles);
+    if (archSummary) parts.push(`\n## 已有架构\n${archSummary}`);
+  }
+
+  const nonGeneral = sceneTypes.filter((s) => s !== "general");
+  if (nonGeneral.length > 0) {
+    parts.push(`\n## 场景类型: ${nonGeneral.join(", ")}`);
+  }
+
+  parts.push("\n## 注意");
+  parts.push("只生成骨架文件。功能模块用 placeholder 组件（显示模块名称即可）。");
+  return parts.join("\n");
+}
+
+/**
+ * Builds Architect context for a single module in the complex pipeline.
+ * Provides the module definition, skeleton files for context, and export signatures
+ * of already-completed modules so the Architect can define correct interfaces.
+ */
+export function buildModuleArchitectContext(
+  pmOutput: PmOutput,
+  module: ModuleDefinition,
+  skeletonFiles: Record<string, string>,
+  completedModuleFiles: Record<string, string>,
+  sceneTypes: Scene[]
+): string {
+  const parts: string[] = [];
+  parts.push("## 项目 PRD（摘要）");
+  parts.push(`意图: ${pmOutput.intent}`);
+  parts.push(`持久化: ${pmOutput.persistence}`);
+
+  parts.push("\n## 当前模块");
+  parts.push(`名称: ${module.name}`);
+  parts.push(`描述: ${module.description}`);
+  parts.push(`预计文件数: ${module.estimatedFiles}`);
+  parts.push(`导出: ${module.interface.exports.join(", ")}`);
+  parts.push(`消费: ${module.interface.consumes.join(", ")}`);
+  parts.push(`状态契约: ${module.interface.stateContract}`);
+
+  parts.push("\n## 骨架文件（已完成）");
+  for (const [path, code] of Object.entries(skeletonFiles)) {
+    parts.push(`// === ${path} ===\n${code}`);
+  }
+
+  if (Object.keys(completedModuleFiles).length > 0) {
+    parts.push("\n## 已完成模块的导出签名");
+    for (const [path, code] of Object.entries(completedModuleFiles)) {
+      const exportLines = code.match(/^export\s+.+$/gm);
+      if (exportLines) parts.push(`// ${path}: ${exportLines.join("; ")}`);
+    }
+  }
+
+  const nonGeneral = sceneTypes.filter((s) => s !== "general");
+  if (nonGeneral.length > 0) {
+    parts.push(`\n## 场景类型: ${nonGeneral.join(", ")}`);
+  }
+
+  return parts.join("\n");
 }

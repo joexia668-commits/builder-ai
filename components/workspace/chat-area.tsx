@@ -25,7 +25,11 @@ import {
   buildPmHistoryContext,
   deriveArchFromFiles,
   buildTriageContext,
+  buildSkeletonArchitectContext,
+  buildModuleArchitectContext,
 } from "@/lib/agent-context";
+import { createPipelineController } from "@/lib/pipeline-controller";
+import { parseDecomposerOutput, validateDecomposerOutput, buildDecomposerContext } from "@/lib/decomposer";
 import { classifyIntent } from "@/lib/intent-classifier";
 import { classifySceneFromPrompt, classifySceneFromPm } from "@/lib/scene-classifier";
 import { getEngineerSceneRules, getArchitectSceneHint } from "@/lib/scene-rules";
@@ -45,6 +49,7 @@ import type {
   IterationContext,
   IterationRound,
   Scene,
+  Complexity,
 } from "@/lib/types";
 import { AGENT_ORDER, AGENTS } from "@/lib/types";
 
@@ -1114,6 +1119,9 @@ export function ChatArea({
           // scaffold parse failed or single file → fall through to legacy single-file flow below
         }
 
+        // Decomposer is handled inside the complex path above or skipped in simple path
+        if (agentRole === "decomposer") continue;
+
         updateAgentState(agentRole, { status: "thinking", output: "" });
 
         const rounds = iterationContext?.rounds ?? [];
@@ -1212,6 +1220,562 @@ export function ChatArea({
         if (handoff) {
           updateSession(project.id, { transitionText: handoff });
           await delay(800);
+        }
+
+        // ── After PM completes, determine complexity and potentially enter complex path ──
+        if (agentRole === "pm" && parsedPm) {
+          const complexity: Complexity = parsedPm.modules.length > 3 || parsedPm.features.length > 5
+            ? "complex"
+            : (parsedPm.complexity ?? "simple");
+
+          if (complexity === "complex") {
+            // === COMPLEX PATH: Decomposer → Skeleton → Module-filling ===
+            const pipeline = createPipelineController({
+              onStateChange: (state, message) => {
+                updateSession(project.id, { pipelineState: state, transitionText: message });
+              },
+            });
+            pipeline.start(prompt);
+            pipeline.onPmComplete(parsedPm);
+
+            // ── A) Call Decomposer ──
+            updateAgentState("decomposer", { status: "thinking", output: "" });
+            updateSession(project.id, { pipelineState: "DECOMPOSING", transitionText: "正在拆解模块..." });
+
+            const decomposerContext = buildDecomposerContext(
+              parsedPm,
+              Object.keys(currentFiles),
+              detectedScenes
+            );
+
+            const decomposerResponse = await fetch("/api/generate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agent: "decomposer",
+                prompt,
+                context: decomposerContext,
+                projectId: project.id,
+                modelId: selectedModel,
+              }),
+              signal: abortController.signal,
+            });
+
+            if (!decomposerResponse.ok) {
+              const errorText = await decomposerResponse.text();
+              throw new Error(`HTTP ${decomposerResponse.status}: ${errorText.slice(0, 200)}`);
+            }
+            if (!decomposerResponse.body) throw new Error("No response body from decomposer");
+
+            let decomposerRaw = "";
+            await readSSEBody<{ type: string; content?: string; code?: string; error?: string; errorCode?: ErrorCode }>(
+              decomposerResponse.body,
+              (event) => {
+                if (event.type === "chunk" && event.content) {
+                  decomposerRaw += event.content;
+                  updateAgentState("decomposer", { status: "streaming", output: decomposerRaw });
+                } else if (event.type === "code_complete" && event.code) {
+                  decomposerRaw = event.code;
+                } else if (event.type === "error") {
+                  throw Object.assign(
+                    new Error(event.error ?? "Decomposer error"),
+                    { errorCode: event.errorCode ?? "unknown" }
+                  );
+                }
+              },
+              { tag: "decomposer", onStall: () => updateSession(project.id, { stallWarning: true }) }
+            );
+
+            updateAgentState("decomposer", { status: "done", output: decomposerRaw });
+            outputs.decomposer = decomposerRaw;
+
+            // Persist decomposer message
+            const decomposerMsg: ProjectMessage = {
+              id: makeTempId("temp-agent-decomposer"),
+              projectId: project.id,
+              role: "decomposer",
+              content: decomposerRaw,
+              metadata: null,
+              createdAt: getEpochDate(),
+            };
+            currentMessages = [...currentMessages, decomposerMsg];
+            onMessagesChange(currentMessages);
+            await persistMessage("decomposer", decomposerRaw, {
+              agentName: AGENTS.decomposer.name,
+              agentColor: AGENTS.decomposer.color,
+            });
+
+            const decomposed = parseDecomposerOutput(decomposerRaw);
+
+            // ── B) If Decomposer fails, fall back to simple path ──
+            if (!decomposed) {
+              updateSession(project.id, {
+                pipelineState: "ARCHITECTING",
+                transitionText: "模块拆解失败，降级为简单模式...",
+              });
+              pipeline.onDecomposerFailed();
+              // Continue the AGENT_ORDER loop — it will proceed to architect then engineer
+              continue;
+            }
+
+            // ── C) Decomposer succeeded — run Skeleton → Module-filling ──
+            const validated = validateDecomposerOutput(decomposed);
+            pipeline.onDecomposerComplete(validated);
+
+            const moduleQueue = validated.generateOrder.flat();
+            const allModuleFiles: Record<string, string> = {};
+            const skeletonFiles: Record<string, string> = {};
+            const failedModules: string[] = [];
+
+            // ── SKELETON phase ──
+            updateSession(project.id, { pipelineState: "SKELETON", transitionText: "正在生成应用骨架..." });
+            updateAgentState("architect", { status: "thinking", output: "" });
+
+            const skeletonArchContext = buildSkeletonArchitectContext(
+              parsedPm, validated.skeleton, currentFiles, detectedScenes
+            );
+
+            const skeletonArchResponse = await fetch("/api/generate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                projectId: project.id,
+                prompt,
+                agent: "architect",
+                context: skeletonArchContext,
+                modelId: selectedModel,
+              }),
+              signal: abortController.signal,
+            });
+
+            if (!skeletonArchResponse.ok) {
+              const errText = await skeletonArchResponse.text();
+              throw new Error(`HTTP ${skeletonArchResponse.status}: ${errText.slice(0, 200)}`);
+            }
+            if (!skeletonArchResponse.body) throw new Error("No response body from skeleton architect");
+
+            let skeletonArchOutput = "";
+            await readSSEBody<{ type: string; content?: string; error?: string; errorCode?: ErrorCode }>(
+              skeletonArchResponse.body,
+              (event) => {
+                if (event.type === "chunk") {
+                  skeletonArchOutput += event.content ?? "";
+                  updateAgentState("architect", { output: skeletonArchOutput });
+                } else if (event.type === "error") {
+                  throw Object.assign(
+                    new Error(event.error ?? "Skeleton architect error"),
+                    { errorCode: event.errorCode ?? "unknown" }
+                  );
+                }
+              },
+              { tag: "architect:skeleton", onStall: () => updateSession(project.id, { stallWarning: true }) }
+            );
+
+            updateAgentState("architect", { status: "done", output: skeletonArchOutput });
+            outputs.architect = skeletonArchOutput;
+
+            const skeletonScaffoldRaw = extractScaffoldFromTwoPhase(skeletonArchOutput);
+            const skeletonScaffoldFiltered = skeletonScaffoldRaw
+              ? { ...skeletonScaffoldRaw, files: skeletonScaffoldRaw.files.filter((f) => f.path !== "/supabaseClient.js") }
+              : null;
+
+            if (skeletonScaffoldFiltered) capturedScaffold = skeletonScaffoldFiltered;
+
+            const { scaffold: skeletonScaffold } = skeletonScaffoldFiltered
+              ? validateScaffold(skeletonScaffoldFiltered)
+              : { scaffold: null };
+
+            if (skeletonScaffold && skeletonScaffold.files.length > 0) {
+              onScaffoldDependenciesChange?.(
+                skeletonScaffold.dependencies ? { ...skeletonScaffold.dependencies } as Record<string, string> : undefined
+              );
+
+              // Generate skeleton files via Engineer
+              updateAgentState("engineer", { status: "thinking", output: "正在生成骨架代码..." });
+              const skeletonLayers = topologicalSort(skeletonScaffold.files);
+
+              for (let layerIdx = 0; layerIdx < skeletonLayers.length; layerIdx++) {
+                const layerPaths = skeletonLayers[layerIdx];
+                const layerFiles = layerPaths
+                  .map((p) => skeletonScaffold.files.find((f) => f.path === p))
+                  .filter((f): f is ScaffoldFile => f !== undefined);
+
+                updateAgentState("engineer", {
+                  status: "streaming",
+                  output: `骨架: 第 ${layerIdx + 1}/${skeletonLayers.length} 层`,
+                });
+
+                const layerResult = await runLayerWithFallback(
+                  layerFiles,
+                  async (files, meta) => {
+                    const engineerPrompt = getMultiFileEngineerPrompt({
+                      projectId: project.id,
+                      targetFiles: files,
+                      sharedTypes: skeletonScaffold.sharedTypes,
+                      completedFiles: skeletonFiles,
+                      designNotes: skeletonScaffold.designNotes,
+                      existingFiles: hasExistingCode ? currentFiles : undefined,
+                      sceneRules: getEngineerSceneRules(detectedScenes),
+                      retryHint: meta.attempt > 1
+                        ? { attempt: meta.attempt, reason: "string_truncated" as const, priorTail: undefined }
+                        : undefined,
+                    });
+                    const resp = await fetch("/api/generate", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        projectId: project.id,
+                        prompt,
+                        agent: "engineer",
+                        context: engineerPrompt,
+                        modelId: selectedModel,
+                        targetFiles: files,
+                        completedFiles: skeletonFiles,
+                        scaffold: { sharedTypes: skeletonScaffold.sharedTypes, designNotes: skeletonScaffold.designNotes },
+                      }),
+                      signal: abortController.signal,
+                    });
+                    if (!resp.ok) {
+                      const errText = await resp.text();
+                      throw new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+                    }
+                    if (!resp.body) throw new Error("No response body");
+                    const sseResult = await readEngineerSSE(resp.body, `engineer:skeleton:layer-${layerIdx + 1}`);
+                    return { files: sseResult.files, failed: sseResult.failedInResponse };
+                  },
+                  abortController.signal,
+                  () => { /* no retry UI for skeleton */ }
+                );
+
+                Object.assign(skeletonFiles, layerResult.files);
+              }
+
+              Object.assign(allModuleFiles, skeletonFiles);
+              pipeline.onSkeletonComplete(skeletonFiles);
+            }
+
+            // ── MODULE_FILLING phase ──
+            for (let mi = 0; mi < moduleQueue.length; mi++) {
+              const moduleName = moduleQueue[mi];
+              const moduleDef = validated.modules.find((m) => m.name === moduleName);
+              if (!moduleDef) continue;
+
+              updateSession(project.id, {
+                pipelineState: "MODULE_FILLING",
+                transitionText: `正在生成模块: ${moduleName}...`,
+                currentModule: moduleName,
+                moduleProgress: {
+                  total: moduleQueue.length,
+                  completed: moduleQueue.slice(0, mi).filter((n) => !failedModules.includes(n)),
+                  failed: failedModules,
+                  current: moduleName,
+                },
+              });
+
+              try {
+                // Call Architect for this module
+                updateAgentState("architect", { status: "thinking", output: "" });
+                const moduleArchContext = buildModuleArchitectContext(
+                  parsedPm, moduleDef, skeletonFiles, allModuleFiles, detectedScenes
+                );
+
+                const moduleArchResponse = await fetch("/api/generate", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    projectId: project.id,
+                    prompt: `生成模块: ${moduleName} - ${moduleDef.description}`,
+                    agent: "architect",
+                    context: moduleArchContext,
+                    modelId: selectedModel,
+                  }),
+                  signal: abortController.signal,
+                });
+
+                if (!moduleArchResponse.ok) {
+                  throw new Error(`HTTP ${moduleArchResponse.status}`);
+                }
+                if (!moduleArchResponse.body) throw new Error("No response body");
+
+                let moduleArchOutput = "";
+                await readSSEBody<{ type: string; content?: string; error?: string; errorCode?: ErrorCode }>(
+                  moduleArchResponse.body,
+                  (event) => {
+                    if (event.type === "chunk") {
+                      moduleArchOutput += event.content ?? "";
+                      updateAgentState("architect", { output: moduleArchOutput });
+                    } else if (event.type === "error") {
+                      throw Object.assign(
+                        new Error(event.error ?? "Module architect error"),
+                        { errorCode: event.errorCode ?? "unknown" }
+                      );
+                    }
+                  },
+                  { tag: `architect:module:${moduleName}`, onStall: () => updateSession(project.id, { stallWarning: true }) }
+                );
+
+                updateAgentState("architect", { status: "done", output: moduleArchOutput });
+
+                const moduleScaffoldRaw = extractScaffoldFromTwoPhase(moduleArchOutput);
+                const moduleScaffoldFiltered = moduleScaffoldRaw
+                  ? { ...moduleScaffoldRaw, files: moduleScaffoldRaw.files.filter((f) => f.path !== "/supabaseClient.js") }
+                  : null;
+                const { scaffold: moduleScaffold } = moduleScaffoldFiltered
+                  ? validateScaffold(moduleScaffoldFiltered)
+                  : { scaffold: null };
+
+                if (moduleScaffold && moduleScaffold.files.length > 0) {
+                  // Engineer for this module's files
+                  updateAgentState("engineer", { status: "thinking", output: `正在生成模块 ${moduleName} 代码...` });
+                  const moduleLayers = topologicalSort(moduleScaffold.files);
+
+                  for (let layerIdx = 0; layerIdx < moduleLayers.length; layerIdx++) {
+                    const layerPaths = moduleLayers[layerIdx];
+                    const layerFiles = layerPaths
+                      .map((p) => moduleScaffold.files.find((f) => f.path === p))
+                      .filter((f): f is ScaffoldFile => f !== undefined);
+
+                    updateAgentState("engineer", {
+                      status: "streaming",
+                      output: `模块 ${moduleName}: 第 ${layerIdx + 1}/${moduleLayers.length} 层`,
+                    });
+
+                    const layerResult = await runLayerWithFallback(
+                      layerFiles,
+                      async (files, meta) => {
+                        const engineerPrompt = getMultiFileEngineerPrompt({
+                          projectId: project.id,
+                          targetFiles: files,
+                          sharedTypes: moduleScaffold.sharedTypes,
+                          completedFiles: allModuleFiles,
+                          designNotes: moduleScaffold.designNotes,
+                          existingFiles: hasExistingCode ? currentFiles : undefined,
+                          sceneRules: getEngineerSceneRules(detectedScenes),
+                          retryHint: meta.attempt > 1
+                            ? { attempt: meta.attempt, reason: "string_truncated" as const, priorTail: undefined }
+                            : undefined,
+                        });
+                        const resp = await fetch("/api/generate", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            projectId: project.id,
+                            prompt: `生成模块 ${moduleName}`,
+                            agent: "engineer",
+                            context: engineerPrompt,
+                            modelId: selectedModel,
+                            targetFiles: files,
+                            completedFiles: allModuleFiles,
+                            scaffold: { sharedTypes: moduleScaffold.sharedTypes, designNotes: moduleScaffold.designNotes },
+                          }),
+                          signal: abortController.signal,
+                        });
+                        if (!resp.ok) {
+                          const errText = await resp.text();
+                          throw new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
+                        }
+                        if (!resp.body) throw new Error("No response body");
+                        const sseResult = await readEngineerSSE(resp.body, `engineer:module:${moduleName}:layer-${layerIdx + 1}`);
+                        return { files: sseResult.files, failed: sseResult.failedInResponse };
+                      },
+                      abortController.signal,
+                      () => { /* retry UI handled via moduleProgress */ }
+                    );
+
+                    Object.assign(allModuleFiles, layerResult.files);
+                  }
+                }
+
+                pipeline.onModuleComplete(moduleName, allModuleFiles);
+              } catch (err) {
+                if (err instanceof DOMException && err.name === "AbortError") throw err;
+                failedModules.push(moduleName);
+                pipeline.onModuleFailed(moduleName, err instanceof Error ? err.message : "unknown");
+                continue; // skip to next module
+              }
+            }
+
+            // ── POST_PROCESSING (reuse existing post-processing logic) ──
+            updateSession(project.id, { pipelineState: "POST_PROCESSING", transitionText: "正在检查代码一致性..." });
+
+            // Merge existing files into allModuleFiles for full-set post-processing
+            if (hasExistingCode) {
+              const preserved = { ...currentFiles };
+              for (const [p, code] of Object.entries(allModuleFiles)) {
+                preserved[p] = code;
+              }
+              Object.keys(allModuleFiles).forEach((k) => delete allModuleFiles[k]);
+              Object.assign(allModuleFiles, preserved);
+            }
+
+            // Patch missing files
+            const missingMap = findMissingLocalImportsWithNames(allModuleFiles);
+            if (missingMap.size > 0 && missingMap.size <= computeMaxPatchFiles(Object.keys(allModuleFiles).length)) {
+              updateAgentState("engineer", {
+                status: "streaming",
+                output: `正在补全缺失文件: ${Array.from(missingMap.keys()).map((p) => p.split("/").pop()).join(", ")}`,
+              });
+              try {
+                const patchPrompt = buildMissingFileEngineerPrompt(missingMap, allModuleFiles, project.id);
+                const patchResponse = await fetchAPI("/api/generate", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    projectId: project.id,
+                    prompt: "补全缺失文件",
+                    agent: "engineer",
+                    context: patchPrompt,
+                    modelId: selectedModel,
+                  }),
+                  signal: abortController.signal,
+                });
+                if (patchResponse.body) {
+                  const patchSSE = await readEngineerSSE(patchResponse.body, "engineer:complex:patch");
+                  Object.assign(allModuleFiles, patchSSE.files);
+                }
+              } catch {
+                // Patch failed — fall through to stub injection
+              }
+            }
+
+            // Remaining missing imports check
+            const remainingMissing = findMissingLocalImports(allModuleFiles);
+            if (remainingMissing.length > 0) {
+              updateSession(project.id, {
+                generationError: {
+                  code: "missing_imports",
+                  raw: `AI 生成的代码引用了未创建的文件：${remainingMissing.join("、")}`,
+                },
+              });
+            }
+
+            // Lucide icon fixes
+            const lucideFixes = checkUndefinedLucideIcons(allModuleFiles);
+            if (lucideFixes.length > 0) {
+              applyLucideIconFixes(allModuleFiles, lucideFixes);
+            }
+
+            // Import/export consistency
+            const importMismatches = checkImportExportConsistency(allModuleFiles);
+            if (importMismatches.length > 0) {
+              const involvedPaths = new Set<string>();
+              importMismatches.forEach((m) => { involvedPaths.add(m.importerPath); involvedPaths.add(m.exporterPath); });
+              if (involvedPaths.size <= computeMaxPatchFiles(Object.keys(allModuleFiles).length)) {
+                const involvedPathsArray = Array.from(involvedPaths);
+                try {
+                  const fixPrompt = buildMismatchedFilesEngineerPrompt(involvedPathsArray, allModuleFiles, importMismatches, project.id);
+                  const fixResponse = await fetchAPI("/api/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      projectId: project.id,
+                      prompt: "修复 import/export 不一致",
+                      agent: "engineer",
+                      context: fixPrompt,
+                      modelId: selectedModel,
+                    }),
+                    signal: abortController.signal,
+                  });
+                  if (fixResponse.body) {
+                    const fixSSE = await readEngineerSSE(fixResponse.body, "engineer:complex:fix-imports");
+                    Object.assign(allModuleFiles, fixSSE.files);
+                  }
+                } catch { /* fix failed */ }
+              }
+            }
+
+            // Disallowed imports
+            const pkgViolations = checkDisallowedImports(allModuleFiles);
+            if (pkgViolations.length > 0) {
+              const violatedPaths = Array.from(new Set(pkgViolations.map((v) => v.filePath)));
+              if (violatedPaths.length <= computeMaxPatchFiles(Object.keys(allModuleFiles).length)) {
+                try {
+                  const fixPrompt = buildDisallowedImportsEngineerPrompt(violatedPaths, allModuleFiles, pkgViolations, project.id);
+                  const fixResponse = await fetchAPI("/api/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      projectId: project.id,
+                      prompt: "修复禁止包引用",
+                      agent: "engineer",
+                      context: fixPrompt,
+                      modelId: selectedModel,
+                    }),
+                    signal: abortController.signal,
+                  });
+                  if (fixResponse.body) {
+                    const fixSSE = await readEngineerSSE(fixResponse.body, "engineer:complex:fix-packages");
+                    Object.assign(allModuleFiles, fixSSE.files);
+                  }
+                } catch { /* fix failed */ }
+              }
+            }
+
+            // Apply removeFiles from scaffold
+            const finalFiles = allModuleFiles;
+            if (capturedScaffold?.removeFiles) {
+              for (const removePath of capturedScaffold.removeFiles) {
+                delete finalFiles[removePath];
+              }
+            }
+
+            // Create summary message
+            const completedList = Object.keys(finalFiles).join(", ");
+            const failedNote = failedModules.length > 0
+              ? `\n\n⚠️ 以下模块生成失败: ${failedModules.join(", ")}`
+              : "";
+            const complexSummary = `✅ 模块化生成完成 (${Object.keys(finalFiles).length} 个文件):\n${completedList}${failedNote}`;
+
+            updateAgentState("engineer", { status: "done", output: complexSummary });
+            updateSession(project.id, { pipelineState: "COMPLETE", engineerProgress: null });
+
+            const complexEngineerMsg: ProjectMessage = {
+              id: makeTempId("temp-agent-engineer-complex"),
+              projectId: project.id,
+              role: "engineer",
+              content: complexSummary,
+              metadata: null,
+              createdAt: getEpochDate(),
+            };
+            currentMessages = [...currentMessages, complexEngineerMsg];
+            onMessagesChange(currentMessages);
+            await persistMessage("engineer", complexSummary, {
+              agentName: AGENTS.engineer.name,
+              agentColor: AGENTS.engineer.color,
+            });
+
+            // Save version
+            const complexRound: IterationRound = {
+              userPrompt: prompt,
+              intent,
+              pmSummary: parsedPm,
+              timestamp: roundTimestamp,
+            };
+            const complexUpdatedCtx = appendRound(iterationContext, complexRound);
+            onIterationContextChange?.(complexUpdatedCtx);
+            fetchAPI(`/api/projects/${project.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ iterationContext: complexUpdatedCtx }),
+            }).catch((err: unknown) => {
+              console.error("[iterationContext] PATCH failed — context may lag DB:", err);
+            });
+
+            const res = await fetchAPI("/api/versions", {
+              method: "POST",
+              body: JSON.stringify({
+                projectId: project.id,
+                files: finalFiles,
+                description: prompt.slice(0, 80),
+                changedFiles: computeChangedFiles(currentFiles, finalFiles),
+                iterationSnapshot: complexUpdatedCtx,
+              }),
+            });
+            const version = await res.json();
+            onFilesGenerated(finalFiles, version);
+
+            // Break out of AGENT_ORDER loop — complex path is done
+            break;
+          }
         }
       }
 
