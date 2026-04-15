@@ -67,6 +67,8 @@ interface ChatAreaProps {
   onIterationContextChange?: (ctx: IterationContext) => void;
   onNewProject?: () => void;
   onScaffoldDependenciesChange?: (deps: Record<string, string> | undefined) => void;
+  /** Called during complex-path generation to update preview files incrementally (no version creation). */
+  onFilesChange?: (files: Record<string, string>) => void;
 }
 
 function computeMaxPatchFiles(totalFiles: number): number {
@@ -192,6 +194,7 @@ export function ChatArea({
   onIterationContextChange,
   onNewProject,
   onScaffoldDependenciesChange,
+  onFilesChange,
 }: ChatAreaProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const persistModelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1452,6 +1455,9 @@ export function ChatArea({
 
               Object.assign(allModuleFiles, skeletonFiles);
               pipeline.onSkeletonComplete(skeletonFiles);
+
+              // Progressive delivery: mount skeleton in preview immediately
+              onFilesChange?.({ ...currentFiles, ...skeletonFiles });
             }
 
             // ── MODULE_FILLING phase ──
@@ -1587,6 +1593,9 @@ export function ChatArea({
                 }
 
                 pipeline.onModuleComplete(moduleName, allModuleFiles);
+
+                // Progressive delivery: update preview with module files as they complete
+                onFilesChange?.({ ...allModuleFiles });
               } catch (err) {
                 if (err instanceof DOMException && err.name === "AbortError") throw err;
                 failedModules.push(moduleName);

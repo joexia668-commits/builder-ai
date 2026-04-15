@@ -136,6 +136,7 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
             }}
             onScaffoldDependenciesChange={setScaffoldDependencies}
             onNewProject={() => router.push("/")}
+            onFilesChange={setCurrentFiles}
           />
         </div>
 
