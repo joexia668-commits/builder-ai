@@ -1,7 +1,7 @@
 import type { ScaffoldData, ScaffoldFile, ScaffoldValidationResult } from "@/lib/types";
 import { BLOCKED_PACKAGES } from "@/lib/extract-code";
 
-// /supabaseClient.js is a virtual file injected by buildSandpackConfig at runtime —
+// /supabaseClient.js is a virtual file injected by PreviewFrame at runtime —
 // it is never part of the Architect scaffold but is always available to generated code.
 const WHITELISTED_DEPS = new Set(["/supabaseClient.js"]);
 

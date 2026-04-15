@@ -203,7 +203,7 @@ export function PreviewPanel({
               )}
             </>
           )}
-          <span className="text-xs text-gray-400">⚡ Sandpack</span>
+          <span className="text-xs text-gray-400">⚡ WebContainer</span>
         </div>
       </div>
 

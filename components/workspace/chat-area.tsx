@@ -695,7 +695,7 @@ export function ChatArea({
           }
 
           if (scaffold && scaffold.files.length > 1) {
-            // Thread scaffold dependencies to Sandpack config via workspace state
+            // Thread scaffold dependencies to preview config via workspace state
             onScaffoldDependenciesChange?.(
               scaffold.dependencies ? { ...scaffold.dependencies } as Record<string, string> : undefined
             );
@@ -976,8 +976,8 @@ export function ChatArea({
                     raw: `AI 生成的代码引用了未创建的文件：${remainingMissing.join("、")}`,
                   },
                 });
-                // Intentionally do NOT return here — stubs were injected by buildSandpackConfig
-                // so the preview renders with partial functionality instead of a blank screen.
+                // Intentionally do NOT return here — stubs are injected by prepareFiles()
+                // in PreviewFrame so the preview renders with partial functionality.
               }
               // Fix invalid lucide-react icon names (static replacement, no LLM call)
               const lucideFixes = checkUndefinedLucideIcons(allCompletedFiles);
@@ -1029,7 +1029,7 @@ export function ChatArea({
                       Object.assign(allCompletedFiles, fixSSE.files);
                     }
                   } catch {
-                    // Fix failed — fall through to Sandpack with current files
+                    // Fix failed — fall through to preview with current files
                   }
                   updateAgentState("engineer", { status: "done", output: summaryOutput });
                 }
@@ -1070,7 +1070,7 @@ export function ChatArea({
                       Object.assign(allCompletedFiles, fixSSE.files);
                     }
                   } catch {
-                    // Fix failed — fall through to Sandpack with current files
+                    // Fix failed — fall through to preview with current files
                   }
                   updateAgentState("engineer", { status: "done", output: summaryOutput });
                 }

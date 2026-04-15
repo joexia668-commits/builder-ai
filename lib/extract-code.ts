@@ -417,7 +417,7 @@ const WHITELISTED_LOCAL = new Set(["/supabaseClient.js"]);
  * Scan all generated files for imports of local paths ('/...') that are not
  * present in the files map. Returns a Map from missing path to the set of
  * named exports required from that path (empty set = only default/namespace import).
- * /supabaseClient.js is always whitelisted (it is injected by buildSandpackConfig).
+ * /supabaseClient.js is always whitelisted (it is injected by PreviewFrame at runtime).
  */
 export function findMissingLocalImportsWithNames(
   files: Readonly<Record<string, string>>
@@ -465,7 +465,7 @@ export function findMissingLocalImportsWithNames(
 /**
  * Scan all generated files for imports of local paths ('/...') that are not
  * present in the files map. Returns a deduplicated list of missing paths.
- * /supabaseClient.js is always whitelisted (it is injected by buildSandpackConfig).
+ * /supabaseClient.js is always whitelisted (it is injected by PreviewFrame at runtime).
  */
 export function findMissingLocalImports(
   files: Readonly<Record<string, string>>
