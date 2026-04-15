@@ -159,12 +159,12 @@ function deduplicateImports(
     for (let i = 0; i < lines.length; i++) {
       if (linesToRemove.has(i)) {
         // Check if this is the first occurrence of a duplicated module
-        const entry = [...moduleMap.entries()].find(
+        const entry = Array.from(moduleMap.entries()).find(
           ([mod, e]) => e.firstIndex === i && duplicatedModules.has(mod)
         );
         if (entry) {
           const [mod, e] = entry;
-          const namedPart = e.named.size > 0 ? `{ ${[...e.named].join(", ")} }` : "";
+          const namedPart = e.named.size > 0 ? `{ ${Array.from(e.named).join(", ")} }` : "";
           const defaultPart = e.defaultName || "";
           const importParts = [defaultPart, namedPart].filter(Boolean).join(", ");
           newLines.push(`import ${importParts} from '${mod}';`);
