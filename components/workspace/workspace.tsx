@@ -42,6 +42,15 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
     };
   }, []);
 
+  useEffect(() => {
+    // Pre-boot WebContainer so it's ready when generation completes
+    import("@/lib/container-runtime").then(({ getContainer }) => {
+      getContainer().catch(() => {
+        // Silent failure — will retry when preview needs it
+      });
+    });
+  }, []);
+
   const lastVersion = project.versions[project.versions.length - 1];
   const [currentFiles, setCurrentFiles] = useState<Record<string, string>>(
     lastVersion ? getVersionFiles(lastVersion as { code: string; files?: Record<string, string> | null }) : {}
