@@ -140,7 +140,7 @@ export function createIndexHtml(): string {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Generated App</title>
-    <script crossorigin="anonymous" src="https://cdn.tailwindcss.com"><\/script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
   </head>
   <body>
     <div id="root"></div>
