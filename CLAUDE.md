@@ -212,3 +212,7 @@ data: {"type":"done"}
 | Supabase `DynamicAppData` RLS 需要 `x-app-id` header | 0007 | ✅ 已修复（`buildSupabaseClientCode` 注入 header） |
 | `iterationSnapshot` 缺少当前轮次，恢复后上下文少一轮 | 0020 | ✅ 已修复（appendRound 提前到版本创建之前） |
 | 复杂游戏类项目 — 动态行数上限 + 第三方包黑名单机制已解锁，但 AI 代码质量在 300+ 行文件时可能下降 | — | ✅ 基本解决（动态 maxLines + 包黑名单 + 动态补全上限） |
+| Dashboard 场景从空 Supabase 表读数据导致 NaN 崩溃 | 0021 | ✅ 已修复（dashboard 场景规则强制 hardcoded mock 数据） |
+| 自定义 Hook 返回值格式不一致（对象 vs 数组）导致 TypeError | 0022 | ✅ 已修复（prompt 规则强制 hook 返回对象） |
+| LLM 生成重复 import 声明导致 SyntaxError | 0023 | ✅ 已修复（`deduplicateImports` 后处理自动合并） |
+| 平台游戏/物理模拟类项目（如超级马里奥）— 需要精确物理逻辑、碰撞检测、视口滚动，且 Sandpack 沙箱禁用游戏引擎（phaser/pixi.js），纯 React+SVG 实现可玩游戏超出单次 LLM 生成能力 | — | ⚠️ 已知限制（需多轮迭代修复方案） |
