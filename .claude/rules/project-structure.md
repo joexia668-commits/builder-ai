@@ -74,9 +74,7 @@ builder-ai/
 │   │   └── walking-cat.tsx             # 加载动画（装饰性）
 │   │
 │   └── timeline/
-│       ├── version-timeline.tsx        # Horizontal timeline at bottom
-│       ├── version-node.tsx            # Individual version dot
-│       └── version-detail-popover.tsx  # Click-to-show version info
+│       └── version-timeline.tsx        # 水平时间线 + 恢复标记（↩ 图标、← vN 来源标签、changedFiles 摘要）
 │
 ├── hooks/
 │   ├── use-generation-session.ts   # useSyncExternalStore 订阅生成会话状态

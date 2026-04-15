@@ -88,7 +88,7 @@ ChatArea
                            →  checkDisallowedImports()  →  ≤3 文件时发起修复请求（禁止包引用）
                            →  apply scaffold.removeFiles (delete old paths)
                            →  buildSandpackConfig(files, projectId)  →  Sandpack (normalizeExports bidirectional)
-                           →  POST /api/versions  { code, files }  (immutable snapshot)
+                           →  POST /api/versions  { code, files, changedFiles, iterationSnapshot }  (immutable snapshot with context)
 ```
 
 ### Export & Deploy flow
@@ -133,7 +133,9 @@ Context injected per path:
 - **Engineer** (direct, single-file V1): `buildDirectEngineerContext` with `<source file="…">` XML tags
 - **Engineer** (direct, multi-file V1): `buildDirectMultiFileEngineerContext` with `targetFiles` = V1 paths → `extractMultiFileCode` on server
 
-`iterationContext` is loaded from `Project.iterationContext` (Json? column, FIFO max 5 rounds) at page load and held in `Workspace` state. After each generation (both direct and full pipeline), a new `IterationRound` is appended and fire-and-forget PATCHed to `/api/projects/[id]`. Architecture context is derived at runtime from existing files via `deriveArchFromFiles()`, not stored in `iterationContext`.
+`iterationContext` is loaded from `Project.iterationContext` (Json? column, FIFO max 5 rounds) at page load and held in `Workspace` state. After each generation (both direct and full pipeline), a new `IterationRound` is appended **before** version creation so that `iterationSnapshot` includes the current round, then fire-and-forget PATCHed to `/api/projects/[id]`. Architecture context is derived at runtime from existing files via `deriveArchFromFiles()`, not stored in `iterationContext`.
+
+Version restore (`POST /api/versions/[id]/restore`) writes `parentVersionId` pointing to the source version, copies `iterationSnapshot` from the source, and syncs `Project.iterationContext` back to the source's snapshot. If the source version has no snapshot (old data), the context is left unchanged (degraded).
 
 ### API conventions
 
@@ -172,7 +174,7 @@ data: {"type":"done"}
 
 | File | Why |
 |------|-----|
-| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput`, `RequestMeta`, `AttemptInfo` |
+| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput`, `RequestMeta`, `AttemptInfo`, `ChangedFiles` |
 | `lib/intent-classifier.ts` | `classifyIntent(prompt, hasExistingCode)` — keyword router that selects pipeline path |
 | `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildTriageContext`, `buildPmIterationContext`, `deriveArchFromFiles` |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
@@ -191,6 +193,7 @@ data: {"type":"done"}
 | `lib/zip-exporter.ts` | `createProjectZip()` — 将生成文件打包为可下载 ZIP |
 | `lib/file-tree.ts` | `buildFileTree()` — 平铺路径 → 层级文件树（供文件资源管理器 UI 使用）|
 | `lib/guest-cleanup.ts` | `deleteStaleGuestUsers()` — 定时清理 >5 天未活跃 Guest 账户 |
+| `lib/version-files.ts` | `getVersionFiles()` (legacy/multi-file 统一读取) + `computeChangedFiles()` (版本间文件差异计算) |
 | `lib/extract-json.ts` | 从 LLM 输出安全提取 JSON，含 fence 剥离与错误恢复 |
 | `app/api/generate/handler.ts` | `createHandler()` — SSE 生成编排器；Agent 路由、stream tap、代码提取、重试逻辑 |
 
@@ -203,3 +206,4 @@ data: {"type":"done"}
 | `generationError.raw` 具体错误详情需要在 UI 展示，方便线上排查 | 0017 | ✅ 已修复 |
 | `bug_fix` 直接路径缺少架构感知，Engineer 可能过度修复导致功能丢失 | 0018 | ✅ 已修复（方向 A：架构摘要注入） |
 | Supabase `DynamicAppData` RLS 需要 `x-app-id` header | 0007 | ✅ 已修复（`buildSupabaseClientCode` 注入 header） |
+| `iterationSnapshot` 缺少当前轮次，恢复后上下文少一轮 | 0020 | ✅ 已修复（appendRound 提前到版本创建之前） |

@@ -29,7 +29,7 @@ BuilderAI is an AI-powered code generation platform. Describe your idea in natur
 - **迭代上下文记忆** — 最近 5 轮历史 + 实时架构推导，PM 写增量 PRD，刷新后上下文不丢失 → [详情](docs/features/context-memory.md)
 - **代码实时流式预览** — 生成期间文件标签页实时跟随写入进度，文件树同步显示状态指示器 → [详情](docs/features/live-streaming.md)
 - **Sandpack 沙箱预览** — 多文件 React 应用在浏览器内编译运行，零服务器开销 → [详情](docs/features/sandpack-preview.md)
-- **版本时间线** — 每次生成自动快照，可浏览历史并一键回滚 → [详情](docs/features/version-timeline.md)
+- **版本管理** — 每次生成自动快照，父版本追踪，恢复时自动同步迭代上下文，变更文件记录，时间线标注恢复来源 → [详情](docs/features/version-timeline.md)
 - **导出与部署** — ZIP 下载完整项目，或一键部署到 Vercel → [详情](docs/features/export-deploy.md)
 - **多模型支持** — DeepSeek V3 / Gemini 2.0 Flash / Groq Llama 3.3 70B，工作区内随时切换 → [详情](docs/features/multi-model.md)
 - **Scaffold 校验** — 自动修复 Architect 输出中的幽灵依赖、循环依赖、路径错误 → [详情](docs/features/scaffold-validation.md)
