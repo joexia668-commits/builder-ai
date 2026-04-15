@@ -1,4 +1,5 @@
-import type { AgentRole, AttemptReason, ScaffoldFile, ImportExportMismatch, DisallowedImport } from "@/lib/types";
+import type { AgentRole, AttemptReason, ScaffoldFile, ImportExportMismatch, DisallowedImport, SandpackRuntimeError } from "@/lib/types";
+import { extractFileImports } from "@/lib/extract-code";
 
 export function getSystemPrompt(agent: AgentRole, projectId: string): string {
   const prompts: Record<AgentRole, string> = {
@@ -560,4 +561,48 @@ ${fileBlocks}
 - 紧接着是该文件的完整代码
 - 不得包含 \`\`\`jsx、\`\`\`js、\`\`\` 等 Markdown 代码围栏
 - 不输出任何解释性文字，代码即全部内容`;
+}
+
+const MAX_RUNTIME_FIX_DEPS = 5;
+
+export function buildRuntimeErrorFixPrompt(
+  error: SandpackRuntimeError,
+  allFiles: Readonly<Record<string, string>>,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _projectId: string
+): string {
+  const errorFileCode = allFiles[error.path] ?? "";
+
+  const deps = extractFileImports(errorFileCode)
+    .map((imp) => imp.path)
+    .filter((p) => p in allFiles && p !== error.path)
+    .slice(0, MAX_RUNTIME_FIX_DEPS);
+
+  const contextFiles = [error.path, ...deps];
+  const contextEntries = contextFiles
+    .map((path) => `// === EXISTING FILE: ${path} ===\n${allFiles[path] ?? ""}`)
+    .join("\n\n");
+
+  return `你是一位全栈工程师。以下代码在浏览器运行时出现了错误，请修复。
+
+【运行时错误】
+错误信息: ${error.message}
+出错文件: ${error.path}
+出错位置: 第 ${error.line} 行, 第 ${error.column} 列
+
+【当前代码】
+${contextEntries}
+
+【修复要求】
+- 只修复导致运行时错误的问题，不要改变功能逻辑
+- 对可能为 undefined/null 的值加防御性检查（可选链 ?. 或默认值 ??）
+- 不要引入新的外部包（只能用 react、react-dom、lucide-react）
+- 确保所有变量在使用前已正确初始化
+
+【输出格式】
+只输出修复后的文件，格式：
+// === FILE: /path ===
+(修复后的完整文件代码)
+
+不要输出 Markdown 代码块，不要输出解释文字。`;
 }

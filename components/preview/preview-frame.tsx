@@ -8,6 +8,8 @@ import {
 } from "@codesandbox/sandpack-react";
 import { SandpackErrorBoundary } from "@/components/preview/error-boundary";
 import { buildSandpackConfig } from "@/lib/sandpack-config";
+import { useSandpackError } from "@/hooks/use-sandpack-error";
+import type { SandpackRuntimeError } from "@/lib/types";
 
 const PROVIDER_STYLE: CSSProperties = {
   height: "100%",
@@ -18,9 +20,22 @@ const PROVIDER_STYLE: CSSProperties = {
 interface PreviewFrameProps {
   files: Record<string, string>;
   projectId: string;
+  errorFixEnabled?: boolean;
+  onSandpackError?: (error: SandpackRuntimeError) => void;
 }
 
-export function PreviewFrame({ files, projectId }: PreviewFrameProps) {
+function SandpackErrorListener({
+  enabled,
+  onError,
+}: {
+  enabled: boolean;
+  onError: (error: SandpackRuntimeError) => void;
+}) {
+  useSandpackError({ enabled, onError });
+  return null;
+}
+
+export function PreviewFrame({ files, projectId, errorFixEnabled = false, onSandpackError }: PreviewFrameProps) {
   const config = buildSandpackConfig(files, projectId);
   const appCode = files["/App.js"] ?? "";
   const sandpackKey = `${Object.keys(files).length}-${appCode.length}-${appCode.slice(0, 40)}`;
@@ -37,6 +52,12 @@ export function PreviewFrame({ files, projectId }: PreviewFrameProps) {
           theme={config.theme as "auto"}
           style={PROVIDER_STYLE}
         >
+          {onSandpackError && (
+            <SandpackErrorListener
+              enabled={errorFixEnabled}
+              onError={onSandpackError}
+            />
+          )}
           <SandpackLayout style={{ flex: 1, height: "100%", minHeight: 0, border: "none" }}>
             <SandpackPreview
               style={{ flex: 1, height: "100%", minHeight: 0 }}

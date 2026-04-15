@@ -5,7 +5,7 @@ import { PreviewFrame } from "@/components/preview/preview-frame";
 import { FileTreeCodeViewer } from "@/components/preview/file-tree-code-viewer";
 import { VersionTimeline } from "@/components/timeline/version-timeline";
 import { fetchAPI } from "@/lib/api-client";
-import type { ProjectVersion, LiveFileStream, EngineerProgress } from "@/lib/types";
+import type { ProjectVersion, LiveFileStream, EngineerProgress, SandpackRuntimeError } from "@/lib/types";
 
 type Tab = "preview" | "code";
 type DeployState = "idle" | "building" | "ready" | "error";
@@ -21,6 +21,9 @@ interface PreviewPanelProps {
   latestVersionId?: string;
   liveStreams: Record<string, LiveFileStream>;
   engineerProgress: EngineerProgress | null;
+  errorFixEnabled?: boolean;
+  onSandpackError?: (error: SandpackRuntimeError) => void;
+  isFixingError?: boolean;
 }
 
 export function PreviewPanel({
@@ -34,6 +37,9 @@ export function PreviewPanel({
   latestVersionId,
   liveStreams,
   engineerProgress,
+  errorFixEnabled = false,
+  onSandpackError,
+  isFixingError = false,
 }: PreviewPanelProps) {
   const [tab, setTab] = useState<Tab>("preview");
   const [isExporting, setIsExporting] = useState(false);
@@ -210,7 +216,12 @@ export function PreviewPanel({
         {tab === "preview" ? (
           <div className="flex-1 overflow-hidden relative">
             {hasCode ? (
-              <PreviewFrame files={files} projectId={projectId} />
+              <PreviewFrame
+                files={files}
+                projectId={projectId}
+                errorFixEnabled={errorFixEnabled}
+                onSandpackError={onSandpackError}
+              />
             ) : (
               <div className="flex flex-col items-center justify-center h-full gap-3 bg-[#f9fafb] text-center px-8">
                 <div className="w-[44px] h-[44px] rounded-[12px] bg-gradient-to-br from-[#eef2ff] to-[#ede9fe] border border-[#e0e7ff] flex items-center justify-center text-xl">
@@ -226,6 +237,14 @@ export function PreviewPanel({
                   <div className="w-48 h-4 bg-gray-200 rounded animate-pulse" />
                   <div className="w-32 h-4 bg-gray-200 rounded animate-pulse" />
                   <p className="text-sm text-muted-foreground">正在生成中...</p>
+                </div>
+              </div>
+            )}
+            {isFixingError && (
+              <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-sm flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-48 h-4 bg-amber-200 rounded animate-pulse" />
+                  <p className="text-sm text-amber-700">正在修复运行时错误...</p>
                 </div>
               </div>
             )}
