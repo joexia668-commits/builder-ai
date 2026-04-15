@@ -613,8 +613,17 @@ export function checkImportExportConsistency(
   return mismatches;
 }
 
-// Packages the Sandpack environment provides. Everything else is disallowed.
-const ALLOWED_EXTERNAL_PACKAGES = new Set(["react", "react-dom", "lucide-react"]);
+// Packages that cannot run in the Sandpack browser sandbox. Everything else is allowed.
+export const BLOCKED_PACKAGES = new Set([
+  // Node native modules
+  "fs", "path", "child_process", "crypto", "os", "net", "http", "https",
+  // Requires native compilation
+  "sharp", "canvas", "puppeteer", "playwright", "better-sqlite3",
+  // Oversized (>5MB)
+  "three", "tensorflow", "@tensorflow/tfjs",
+  // Server-only frameworks
+  "express", "fastify", "koa", "next", "prisma",
+]);
 
 /**
  * Scan generated files for imports of external packages not available in Sandpack.
@@ -638,7 +647,7 @@ export function checkDisallowedImports(
       const basePkg = fullPkg.startsWith("@")
         ? fullPkg.split("/").slice(0, 2).join("/")
         : fullPkg.split("/")[0];
-      if (!ALLOWED_EXTERNAL_PACKAGES.has(basePkg)) {
+      if (BLOCKED_PACKAGES.has(basePkg)) {
         violations.push({ filePath, packageName: fullPkg });
       }
     }
