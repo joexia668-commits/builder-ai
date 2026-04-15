@@ -296,6 +296,12 @@ UI 样式只使用 Tailwind CSS class。
 图标只使用 lucide-react。若需同时从 lucide-react 和本地组件文件导入同名符号，必须对图标做别名：import { Calculator as CalculatorIcon } from 'lucide-react'，JSX 中使用别名。
 HTTP 请求只使用原生 fetch API。
 
+【React Hooks 导入规则 - 每个文件必须显式导入】
+每个使用 React hooks 的文件顶部必须有明确的 import 语句，Sandpack 沙箱不会自动注入：
+  import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+错误：直接使用 useState(...) 而不 import → 运行时报错"useState is not defined"
+正确：文件第一行写 import { useState } from 'react'，只导入本文件实际用到的 hooks。
+
 【本地文件导入限制】
 只允许 import 以下本地路径：
 - 当前目标文件的 deps 列表中明确列出的文件路径
