@@ -252,6 +252,74 @@ describe("POST /api/versions", () => {
     );
   });
 
+  it("API-02g: stores changedFiles and iterationSnapshot when provided", async () => {
+    mockSession.mockResolvedValue(session);
+    mockProjectFindFirst.mockResolvedValue(mockProject);
+    mockVersionFindFirst.mockResolvedValue(null);
+    const changedFiles = {
+      added: { "/New.js": "new" },
+      modified: { "/App.js": "updated" },
+      removed: ["/Old.js"],
+    };
+    const iterationSnapshot = {
+      rounds: [{ userPrompt: "test", intent: "new_project", pmSummary: null, timestamp: "2026-04-15T00:00:00Z" }],
+    };
+    mockVersionCreate.mockResolvedValue({
+      id: "v1",
+      projectId: "proj-1",
+      versionNumber: 1,
+      code: "app code",
+      files: { "/App.js": "app code" },
+      changedFiles,
+      iterationSnapshot,
+      description: "test",
+      createdAt: new Date(),
+    });
+    mockProjectUpdate.mockResolvedValue({});
+
+    const res = await POST(
+      makePostRequest({
+        projectId: "proj-1",
+        files: { "/App.js": "app code" },
+        description: "test",
+        changedFiles,
+        iterationSnapshot,
+      })
+    );
+    expect(res.status).toBe(201);
+
+    expect(mockVersionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          changedFiles,
+          iterationSnapshot,
+        }),
+      })
+    );
+  });
+
+  it("API-02h: omitted changedFiles and iterationSnapshot default to undefined (backward compat)", async () => {
+    mockSession.mockResolvedValue(session);
+    mockProjectFindFirst.mockResolvedValue(mockProject);
+    mockVersionFindFirst.mockResolvedValue(null);
+    mockVersionCreate.mockResolvedValue({
+      id: "v1",
+      projectId: "proj-1",
+      versionNumber: 1,
+      code: "code",
+      description: "no extras",
+      createdAt: new Date(),
+    });
+    mockProjectUpdate.mockResolvedValue({});
+
+    const res = await POST(makePostRequest({ projectId: "proj-1", code: "code", description: "no extras" }));
+    expect(res.status).toBe(201);
+
+    const createCall = mockVersionCreate.mock.calls[0][0];
+    expect(createCall.data.changedFiles).toBeUndefined();
+    expect(createCall.data.iterationSnapshot).toBeUndefined();
+  });
+
   // API-02f: returns 201 with the created version object
   it("API-02f: 成功时返回 201 和新版本对象", async () => {
     mockSession.mockResolvedValue(session);
@@ -314,6 +382,7 @@ describe("POST /api/versions/[id]/restore", () => {
       description: "从 v2 恢复",
       createdAt: new Date(),
     });
+    mockProjectUpdate.mockResolvedValue({});
 
     const res = await RESTORE(makeRestoreRequest("v2"), { params: { id: "v2" } });
     expect(res.status).toBe(201);
@@ -341,6 +410,7 @@ describe("POST /api/versions/[id]/restore", () => {
       description: "从 v2 恢复",
       createdAt: new Date(),
     });
+    mockProjectUpdate.mockResolvedValue({});
 
     await RESTORE(makeRestoreRequest("v2"), { params: { id: "v2" } });
 
@@ -364,6 +434,7 @@ describe("POST /api/versions/[id]/restore", () => {
       description: "从 v3 恢复",
       createdAt: new Date(),
     });
+    mockProjectUpdate.mockResolvedValue({});
 
     await RESTORE(makeRestoreRequest("v3"), { params: { id: "v3" } });
 
@@ -388,6 +459,7 @@ describe("POST /api/versions/[id]/restore", () => {
       description: "从 v1 恢复",
       createdAt: new Date(),
     });
+    mockProjectUpdate.mockResolvedValue({});
 
     const res = await RESTORE(makeRestoreRequest("v1"), { params: { id: "v1" } });
     const body = await res.json();
@@ -395,6 +467,122 @@ describe("POST /api/versions/[id]/restore", () => {
     expect(body.code).toBe(sourceCode);
     expect(mockVersionCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ code: sourceCode }) })
+    );
+  });
+
+  it("API-03g: restored version has parentVersionId pointing to source", async () => {
+    mockSession.mockResolvedValue(session);
+    const sourceVersion = {
+      id: "v2",
+      projectId: "proj-1",
+      versionNumber: 2,
+      code: "v2-code",
+      files: null,
+      iterationSnapshot: { rounds: [{ userPrompt: "test", intent: "new_project", pmSummary: null, timestamp: "2026-04-15T00:00:00Z" }] },
+    };
+    mockVersionFindFirst
+      .mockResolvedValueOnce(sourceVersion)
+      .mockResolvedValueOnce({ versionNumber: 4 });
+    mockVersionCreate.mockResolvedValue({
+      id: "v5",
+      projectId: "proj-1",
+      versionNumber: 5,
+      code: "v2-code",
+      parentVersionId: "v2",
+      description: "从 v2 恢复",
+      createdAt: new Date(),
+    });
+    mockProjectUpdate.mockResolvedValue({});
+
+    await RESTORE(makeRestoreRequest("v2"), { params: { id: "v2" } });
+
+    expect(mockVersionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          parentVersionId: "v2",
+        }),
+      })
+    );
+  });
+
+  it("API-03h: restore copies iterationSnapshot from source and syncs Project.iterationContext", async () => {
+    mockSession.mockResolvedValue(session);
+    const snapshot = { rounds: [{ userPrompt: "hello", intent: "new_project", pmSummary: null, timestamp: "2026-04-15T00:00:00Z" }] };
+    const sourceVersion = {
+      id: "v2",
+      projectId: "proj-1",
+      versionNumber: 2,
+      code: "v2-code",
+      files: null,
+      iterationSnapshot: snapshot,
+    };
+    mockVersionFindFirst
+      .mockResolvedValueOnce(sourceVersion)
+      .mockResolvedValueOnce({ versionNumber: 3 });
+    mockVersionCreate.mockResolvedValue({
+      id: "v4",
+      projectId: "proj-1",
+      versionNumber: 4,
+      code: "v2-code",
+      parentVersionId: "v2",
+      iterationSnapshot: snapshot,
+      description: "从 v2 恢复",
+      createdAt: new Date(),
+    });
+    mockProjectUpdate.mockResolvedValue({});
+
+    await RESTORE(makeRestoreRequest("v2"), { params: { id: "v2" } });
+
+    expect(mockVersionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          iterationSnapshot: snapshot,
+        }),
+      })
+    );
+    expect(mockProjectUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "proj-1" },
+        data: expect.objectContaining({
+          iterationContext: snapshot,
+        }),
+      })
+    );
+  });
+
+  it("API-03i: restore with null iterationSnapshot does not write iterationContext to Project", async () => {
+    mockSession.mockResolvedValue(session);
+    const sourceVersion = {
+      id: "v1",
+      projectId: "proj-1",
+      versionNumber: 1,
+      code: "v1-code",
+      files: null,
+      iterationSnapshot: null,
+    };
+    mockVersionFindFirst
+      .mockResolvedValueOnce(sourceVersion)
+      .mockResolvedValueOnce({ versionNumber: 2 });
+    mockVersionCreate.mockResolvedValue({
+      id: "v3",
+      projectId: "proj-1",
+      versionNumber: 3,
+      code: "v1-code",
+      parentVersionId: "v1",
+      description: "从 v1 恢复",
+      createdAt: new Date(),
+    });
+    mockProjectUpdate.mockResolvedValue({});
+
+    await RESTORE(makeRestoreRequest("v1"), { params: { id: "v1" } });
+
+    // Project update should still happen (for updatedAt) but WITHOUT iterationContext
+    expect(mockProjectUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          iterationContext: expect.anything(),
+        }),
+      })
     );
   });
 });

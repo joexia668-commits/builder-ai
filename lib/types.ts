@@ -65,6 +65,15 @@ export interface ProjectVersion {
   description?: string | null;
   agentMessages?: unknown;
   createdAt: Date;
+  parentVersionId?: string | null;
+  changedFiles?: ChangedFiles | null;
+  iterationSnapshot?: IterationContext | null;
+}
+
+export interface ChangedFiles {
+  readonly added: Record<string, string>;
+  readonly modified: Record<string, string>;
+  readonly removed: readonly string[];
 }
 
 export interface Project {

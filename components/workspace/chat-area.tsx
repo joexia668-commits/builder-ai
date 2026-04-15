@@ -31,6 +31,7 @@ import { classifySceneFromPrompt, classifySceneFromPm } from "@/lib/scene-classi
 import { getEngineerSceneRules, getArchitectSceneHint } from "@/lib/scene-rules";
 import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency, checkDisallowedImports } from "@/lib/extract-code";
 import { ERROR_DISPLAY } from "@/lib/error-codes";
+import { computeChangedFiles } from "@/lib/version-files";
 import type { ErrorCode } from "@/lib/types";
 import type {
   Project,
@@ -599,6 +600,8 @@ export function ChatArea({
               projectId: project.id,
               files: mergedFiles,
               description: prompt.slice(0, 80),
+              changedFiles: computeChangedFiles(currentFiles, mergedFiles),
+              iterationSnapshot: iterationContext ?? undefined,
             }),
           });
           const version = await res.json();
@@ -610,6 +613,8 @@ export function ChatArea({
               projectId: project.id,
               code: directCode,
               description: prompt.slice(0, 80),
+              changedFiles: computeChangedFiles(currentFiles, { "/App.js": directCode }),
+              iterationSnapshot: iterationContext ?? undefined,
             }),
           });
           const version = await res.json();
@@ -1056,6 +1061,8 @@ export function ChatArea({
                   projectId: project.id,
                   files: finalFiles,
                   description: prompt.slice(0, 80),
+                  changedFiles: computeChangedFiles(currentFiles, finalFiles),
+                  iterationSnapshot: iterationContext ?? undefined,
                 }),
               });
               const version = await res.json();
@@ -1177,6 +1184,8 @@ export function ChatArea({
             projectId: project.id,
             code: lastCode,
             description: prompt.slice(0, 80),
+            changedFiles: computeChangedFiles(currentFiles, { "/App.js": lastCode }),
+            iterationSnapshot: iterationContext ?? undefined,
           }),
         });
         const version = await res.json();

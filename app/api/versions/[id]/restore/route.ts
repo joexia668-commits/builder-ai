@@ -16,12 +16,13 @@ export async function POST(
   });
   if (!sourceVersion) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Immutable: create a new version instead of overwriting
   const lastVersion = await prisma.version.findFirst({
     where: { projectId: sourceVersion.projectId },
     orderBy: { versionNumber: "desc" },
   });
   const versionNumber = (lastVersion?.versionNumber ?? 0) + 1;
+
+  const sourceSnapshot = sourceVersion.iterationSnapshot as Record<string, unknown> | null;
 
   const newVersion = await prisma.version.create({
     data: {
@@ -30,6 +31,16 @@ export async function POST(
       ...(sourceVersion.files ? { files: sourceVersion.files as Record<string, string> } : {}),
       description: `从 v${sourceVersion.versionNumber} 恢复`,
       versionNumber,
+      parentVersionId: sourceVersion.id,
+      ...(sourceSnapshot ? { iterationSnapshot: sourceSnapshot } : {}),
+    },
+  });
+
+  await prisma.project.update({
+    where: { id: sourceVersion.projectId },
+    data: {
+      updatedAt: new Date(),
+      ...(sourceSnapshot ? { iterationContext: sourceSnapshot } : {}),
     },
   });
 
