@@ -135,7 +135,7 @@ export function createIndexHtml(): string {
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"><\/script>
+    <script type="module" src="/main.jsx"><\/script>
   </body>
 </html>
 `;
@@ -174,22 +174,11 @@ function renameJsToJsx(
       ? path.replace(/\.js$/, ".jsx")
       : path;
 
-    // Rewrite import/export paths: from './Foo.js' → from './Foo.jsx'
+    // Rewrite import/export paths: .js → .jsx for both relative and absolute imports
     const newContents = contents.replace(
-      /(from\s+['"])(\.[^'"]+)\.js(['"])/g,
+      /(from\s+['"])([\./][^'"]+)\.js(['"])/g,
       (_match, prefix, modPath, suffix) => {
-        // Only rewrite if the target .js file exists in our file set
-        const originalImport = `${modPath}.js`;
-        // Resolve relative to current file's directory
-        const dir = path.substring(0, path.lastIndexOf("/"));
-        const resolved = originalImport.startsWith("./") || originalImport.startsWith("../")
-          ? `${dir}/${originalImport}`.replace(/\/\.\//g, "/")
-          : originalImport;
-        // Normalize: simple check if the resolved path (or something close) is a .js file
-        if (jsFiles.has(resolved) || jsFiles.has(originalImport)) {
-          return `${prefix}${modPath}.jsx${suffix}`;
-        }
-        return `${prefix}${modPath}.js${suffix}`;
+        return `${prefix}${modPath}.jsx${suffix}`;
       }
     );
 
@@ -220,20 +209,14 @@ export async function mountAndStart(
     ) ?? "/App.jsx";
     const entryImport = entryFile.replace(/^\//, "./");
 
-    // Build src/ files from app files
-    const srcFiles: Record<string, string> = {};
-    for (const [path, contents] of Object.entries(renamedFiles)) {
-      // Mount app files under src/
-      srcFiles[`/src${path}`] = contents;
-    }
-
-    // Build full file tree
+    // Build full file tree — mount app files at project root (not under src/)
+    // so that absolute imports like "/modules/..." resolve correctly in Vite
     const allFiles: Record<string, string> = {
-      ...srcFiles,
+      ...renamedFiles,
       "/package.json": createPackageJson(dependencies),
       "/vite.config.js": createViteConfig(),
       "/index.html": createIndexHtml(),
-      "/src/main.jsx": createMainJsx(entryImport),
+      "/main.jsx": createMainJsx(entryImport),
     };
 
     const tree = filesToWebContainerTree(allFiles);
@@ -287,12 +270,8 @@ export async function mountIncremental(
 ): Promise<void> {
   const container = await getContainer();
 
+  // Mount at project root (not under src/) to match absolute imports
   const renamedFiles = renameJsToJsx(files);
-  const srcFiles: Record<string, string> = {};
-  for (const [path, contents] of Object.entries(renamedFiles)) {
-    srcFiles[`/src${path}`] = contents;
-  }
-
-  const tree = filesToWebContainerTree(srcFiles);
+  const tree = filesToWebContainerTree(renamedFiles);
   await container.mount(tree);
 }
