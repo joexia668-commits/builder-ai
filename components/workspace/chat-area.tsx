@@ -1038,7 +1038,7 @@ export function ChatArea({
                 }
               }
               // Check for disallowed external package imports and retry affected files (≤ MAX_PATCH_FILES)
-              const pkgViolations = checkDisallowedImports(allCompletedFiles);
+              const pkgViolations = checkDisallowedImports(allCompletedFiles, detectedScenes);
               if (pkgViolations.length > 0) {
                 const violatedPaths = Array.from(new Set(pkgViolations.map((v) => v.filePath)));
                 if (violatedPaths.length <= computeMaxPatchFiles(Object.keys(allCompletedFiles).length)) {
@@ -1694,7 +1694,7 @@ export function ChatArea({
             }
 
             // Disallowed imports
-            const pkgViolations = checkDisallowedImports(allModuleFiles);
+            const pkgViolations = checkDisallowedImports(allModuleFiles, detectedScenes);
             if (pkgViolations.length > 0) {
               const violatedPaths = Array.from(new Set(pkgViolations.map((v) => v.filePath)));
               if (violatedPaths.length <= computeMaxPatchFiles(Object.keys(allModuleFiles).length)) {

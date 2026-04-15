@@ -1,4 +1,4 @@
-import type { PartialExtractResult, ImportExportMismatch, DisallowedImport, LucideIconFix } from "@/lib/types";
+import type { PartialExtractResult, ImportExportMismatch, DisallowedImport, LucideIconFix, Scene } from "@/lib/types";
 import { LUCIDE_ICON_NAMES } from "@/lib/lucide-icon-names";
 
 /**
@@ -632,9 +632,20 @@ export const BLOCKED_PACKAGES = new Set([
  * Returns one entry per (file, package) violation found.
  */
 export function checkDisallowedImports(
-  files: Readonly<Record<string, string>>
+  files: Readonly<Record<string, string>>,
+  sceneTypes: Scene[] = ["general"]
 ): DisallowedImport[] {
   const violations: DisallowedImport[] = [];
+
+  // Build a scene-based allow list — packages that are normally blocked but
+  // are permitted when the detected scene indicates they're appropriate.
+  const sceneAllowList = new Set<string>();
+  if (sceneTypes.includes("game-engine") || sceneTypes.includes("game")) {
+    sceneAllowList.add("phaser");
+  }
+  if (sceneTypes.includes("dashboard")) {
+    sceneAllowList.add("recharts");
+  }
 
   for (const [filePath, code] of Object.entries(files)) {
     // Match: import ... from 'pkg' — external packages only (no leading / or .)
@@ -647,7 +658,7 @@ export function checkDisallowedImports(
       const basePkg = fullPkg.startsWith("@")
         ? fullPkg.split("/").slice(0, 2).join("/")
         : fullPkg.split("/")[0];
-      if (BLOCKED_PACKAGES.has(basePkg)) {
+      if (BLOCKED_PACKAGES.has(basePkg) && !sceneAllowList.has(basePkg)) {
         violations.push({ filePath, packageName: fullPkg });
       }
     }
