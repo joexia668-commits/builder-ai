@@ -327,6 +327,14 @@ ${completedSection}
 需要实现的目标文件：
 ${targetFileList}
 
+【自定义 Hook 返回值规则 - 违反将导致运行时 TypeError】
+自定义 hook（use 开头的函数）必须返回**对象**而非数组，消费方必须用对象解构：
+  正确（hook 文件）：return { data, loading, update };
+  正确（调用方）：const { data, loading, update } = useGameData();
+  错误（hook 文件）：return [data, update];  // 数组解构顺序脆弱，容易与调用方不一致
+  错误（调用方）：const [data, update] = useGameData();  // 如果 hook 返回对象会报 "not iterable"
+原因：多文件并行生成时 hook 和调用方无法协调，对象解构靠名字匹配不会出错。
+
 【导出规则 - 严格遵守，防止 undefined 组件错误】
 每个组件/工具文件必须同时提供具名导出和默认导出：
   export function ComponentName(props) { ... }   // 具名导出（必须）
