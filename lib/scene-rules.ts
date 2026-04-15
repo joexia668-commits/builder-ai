@@ -106,14 +106,33 @@ const SCENE_ENGINEER_RULES: Record<Exclude<Scene, "general">, string> = {
 正确示例：
   useEffect(() => { supabase.from('DynamicAppData').select('*').eq('appId', APP_ID).then(({ data }) => data && setItems(data)); }, []);`,
 
-  "game-engine": "",
-  "game-canvas": "",
+  "game-engine": `## 游戏引擎规则 (Phaser.js)
+- 使用 Phaser 3 框架，import Phaser from 'phaser'
+- 入口文件创建 Phaser.Game 实例并挂载到 DOM 容器
+- 场景用 class extends Phaser.Scene，实现 preload/create/update
+- 物理引擎用 Arcade Physics (this.physics.add)
+- 素材用几何图形（this.add.rectangle/circle）或 emoji（this.add.text）
+- 不要在 React 组件内写游戏逻辑
+- 碰撞检测用 this.physics.add.collider / overlap
+- 相机跟随用 this.cameras.main.startFollow(player)
+- 输入用 this.input.keyboard.createCursorKeys()`,
+
+  "game-canvas": `## 游戏规则 (Canvas 原生)
+- 使用 Canvas 2D API，不引入游戏引擎
+- Canvas 元素通过 useRef 获取
+- 游戏循环用 requestAnimationFrame，在 useEffect 中启动
+- useEffect cleanup 必须 cancelAnimationFrame
+- 游戏状态用普通对象（不用 useState），通过 useRef 持有
+- 只用 useState 触发 UI 重渲染（分数、游戏结束状态）
+- 碰撞检测用 AABB（轴对齐包围盒）
+- 输入用 addEventListener('keydown'/'keyup')，cleanup 时 removeEventListener
+- 绘制用 ctx.fillRect / ctx.arc / ctx.fillText`,
 };
 
 const SCENE_ARCHITECT_HINTS: Record<Exclude<Scene, "general">, string> = {
   game: "本项目为 game 类型，建议将游戏逻辑（状态机/碰撞检测）与 UI 渲染拆分为独立文件。",
-  "game-engine": "本项目为 game-engine 类型，建议将引擎逻辑（物理/碰撞/循环）与渲染层分离。",
-  "game-canvas": "本项目为 game-canvas 类型，建议用 Canvas 2D API 实现渲染，游戏状态与渲染函数分离。",
+  "game-engine": "使用 Phaser 3 框架。场景用 Phaser.Scene 类。物理用 Arcade Physics。素材用几何图形。",
+  "game-canvas": "使用 Canvas 2D API。游戏循环用 requestAnimationFrame。状态用普通对象不用 React state。",
   dashboard: "本项目为 dashboard 类型，图表须用纯 SVG 实现，建议每种图表类型拆为独立组件。",
   crud: "本项目为 crud 类型，建议将表单组件、列表组件、数据操作逻辑分离为独立文件。",
   multiview: "本项目为 multiview 类型，建议在 App.js 用 useState 统一管理视图路由，每个视图为独立组件。",
