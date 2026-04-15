@@ -215,3 +215,99 @@ describe("removeFiles validation", () => {
     expect(scaffold.removeFiles).toBeUndefined();
   });
 });
+
+describe("Rule 6: maxLines clamping", () => {
+  it("clamps maxLines below 50 to 50", () => {
+    const input: ScaffoldData = {
+      files: [
+        { path: "/a.js", description: "test", exports: ["default"], deps: [], hints: "", maxLines: 10 },
+      ],
+      sharedTypes: "",
+      designNotes: "",
+    };
+    const { scaffold, warnings } = validateScaffold(input);
+    expect(scaffold.files[0].maxLines).toBe(50);
+    expect(warnings).toContainEqual(expect.stringContaining("maxLines"));
+  });
+
+  it("clamps maxLines above 500 to 500", () => {
+    const input: ScaffoldData = {
+      files: [
+        { path: "/a.js", description: "test", exports: ["default"], deps: [], hints: "", maxLines: 800 },
+      ],
+      sharedTypes: "",
+      designNotes: "",
+    };
+    const { scaffold, warnings } = validateScaffold(input);
+    expect(scaffold.files[0].maxLines).toBe(500);
+    expect(warnings).toContainEqual(expect.stringContaining("maxLines"));
+  });
+
+  it("leaves valid maxLines unchanged", () => {
+    const input: ScaffoldData = {
+      files: [
+        { path: "/a.js", description: "test", exports: ["default"], deps: [], hints: "", maxLines: 300 },
+      ],
+      sharedTypes: "",
+      designNotes: "",
+    };
+    const { scaffold, warnings } = validateScaffold(input);
+    expect(scaffold.files[0].maxLines).toBe(300);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("leaves undefined maxLines unchanged", () => {
+    const input: ScaffoldData = {
+      files: [
+        { path: "/a.js", description: "test", exports: ["default"], deps: [], hints: "" },
+      ],
+      sharedTypes: "",
+      designNotes: "",
+    };
+    const { scaffold } = validateScaffold(input);
+    expect(scaffold.files[0].maxLines).toBeUndefined();
+  });
+});
+
+describe("Rule 7: blocked dependencies removal", () => {
+  it("removes blacklisted packages from dependencies", () => {
+    const input: ScaffoldData = {
+      files: [
+        { path: "/a.js", description: "test", exports: ["default"], deps: [], hints: "" },
+      ],
+      sharedTypes: "",
+      designNotes: "",
+      dependencies: { "recharts": "^2.0.0", "express": "^4.0.0", "fs": "latest" },
+    };
+    const { scaffold, warnings } = validateScaffold(input);
+    expect(scaffold.dependencies).toEqual({ "recharts": "^2.0.0" });
+    expect(warnings).toContainEqual(expect.stringContaining("express"));
+    expect(warnings).toContainEqual(expect.stringContaining("fs"));
+  });
+
+  it("leaves clean dependencies unchanged", () => {
+    const input: ScaffoldData = {
+      files: [
+        { path: "/a.js", description: "test", exports: ["default"], deps: [], hints: "" },
+      ],
+      sharedTypes: "",
+      designNotes: "",
+      dependencies: { "recharts": "^2.0.0", "framer-motion": "^11.0.0" },
+    };
+    const { scaffold, warnings } = validateScaffold(input);
+    expect(scaffold.dependencies).toEqual({ "recharts": "^2.0.0", "framer-motion": "^11.0.0" });
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("handles undefined dependencies", () => {
+    const input: ScaffoldData = {
+      files: [
+        { path: "/a.js", description: "test", exports: ["default"], deps: [], hints: "" },
+      ],
+      sharedTypes: "",
+      designNotes: "",
+    };
+    const { scaffold } = validateScaffold(input);
+    expect(scaffold.dependencies).toBeUndefined();
+  });
+});
