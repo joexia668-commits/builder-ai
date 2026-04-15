@@ -207,3 +207,4 @@ data: {"type":"done"}
 | `bug_fix` 直接路径缺少架构感知，Engineer 可能过度修复导致功能丢失 | 0018 | ✅ 已修复（方向 A：架构摘要注入） |
 | Supabase `DynamicAppData` RLS 需要 `x-app-id` header | 0007 | ✅ 已修复（`buildSupabaseClientCode` 注入 header） |
 | `iterationSnapshot` 缺少当前轮次，恢复后上下文少一轮 | 0020 | ✅ 已修复（appendRound 提前到版本创建之前） |
+| 复杂游戏类项目（如超级玛丽）无法生成可玩内容 — 每文件 150 行限制 + Sandpack 禁止游戏框架（Phaser/PixiJS）+ AI 倾向搭框架跳过核心逻辑 | — | ⚠️ 已知限制（系统设计目标为中小型 React UI 应用） |
