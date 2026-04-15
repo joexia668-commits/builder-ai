@@ -1,5 +1,45 @@
 import type { AgentRole, AttemptReason, ScaffoldFile, ImportExportMismatch, DisallowedImport } from "@/lib/types";
 
+/**
+ * System prompt for the Decomposer agent.
+ * Instructs the LLM to decompose a project into independently-generatable modules.
+ */
+export function getDecomposerSystemPrompt(): string {
+  return `你是一个项目模块拆解专家。根据 PM 的产品需求文档，将项目拆解为可独立生成的模块。
+
+输出格式（严格 JSON）:
+{
+  "skeleton": {
+    "description": "骨架描述（路由、布局、共享类型）",
+    "files": ["/App.js", "/types.ts", "/Layout.js"],
+    "sharedTypes": "完整的 TypeScript 类型定义代码"
+  },
+  "modules": [
+    {
+      "name": "模块名（kebab-case）",
+      "description": "模块功能描述（50字以内）",
+      "estimatedFiles": 3,
+      "deps": ["依赖的其他模块名"],
+      "interface": {
+        "exports": ["导出的组件/函数名"],
+        "consumes": ["消费的外部类型/组件"],
+        "stateContract": "本模块的状态结构描述"
+      }
+    }
+  ],
+  "generateOrder": [["无依赖模块"], ["依赖第一层的模块"]]
+}
+
+规则:
+1. 模块数量 ≤ 5，每模块文件数 ≤ 8
+2. skeleton 包含真实代码骨架：路由配置、布局组件、共享类型定义
+3. 模块间通过 props + shared types 通信，不用事件总线
+4. generateOrder 是二维数组：同一层可并行生成，层间串行
+5. deps 只能引用同 modules 数组内的其他模块名
+6. 每个模块必须是独立可渲染的（挂载到骨架后即可预览）
+7. skeleton 的 sharedTypes 包含所有模块共用的类型定义`;
+}
+
 export function getSystemPrompt(agent: AgentRole, projectId: string): string {
   const prompts: Record<AgentRole, string> = {
     pm: `你是一位专业的产品经理（PM）。用户会描述他们想要的应用，你需要分析需求并输出结构化产品需求文档（PRD）。
@@ -124,17 +164,7 @@ HTTP 请求只使用原生 fetch API。
 - 代码必须完整可运行，UI 要美观现代
 - 代码行数控制在 320 行以内，使用紧凑写法`,
 
-    decomposer: `你是一位模块拆解专家。你会收到用户需求和 PM 的 PRD，需要将复杂项目分解为独立模块，输出结构化的模块拆解方案。
-
-输出格式：严格输出单个 JSON 对象，不得包含任何 Markdown 代码围栏、解释性文字或其他内容。
-
-JSON schema：
-{"skeleton":{"description":"string","files":["string"],"sharedTypes":"string"},"modules":[{"name":"string","description":"string","estimatedFiles":1,"deps":["string"],"interface":{"exports":["string"],"consumes":["string"],"stateContract":"string"}}],"generateOrder":[["string"]]}
-
-字段说明：
-- skeleton：骨架文件列表（App.js、类型定义、全局样式等）
-- modules：模块列表，每个模块包含名称、描述、预计文件数、依赖关系和接口契约
-- generateOrder：按依赖顺序排列的模块组，每组内的模块可并行生成`,
+    decomposer: getDecomposerSystemPrompt(),
   };
 
   return prompts[agent];

@@ -1,4 +1,4 @@
-import type { Intent, PmOutput, IterationRound } from "@/lib/types";
+import type { Intent, PmOutput, IterationRound, Scene } from "@/lib/types";
 
 /**
  * Builds the full context string passed to the Engineer agent.
@@ -199,6 +199,47 @@ ${pathList}
 
 只输出一个 JSON 数组，包含需要修改的文件路径，不输出其他内容。
 示例：["/App.js", "/components/Layout.js"]`;
+}
+
+/**
+ * Builds context for the Decomposer agent from structured PM output.
+ * Formats PM PRD summary, existing file paths, and scene types.
+ */
+export function buildDecomposerContext(
+  pmOutput: PmOutput,
+  existingFiles: string[],
+  sceneTypes: Scene[]
+): string {
+  const sections: string[] = [];
+
+  // PM PRD summary
+  const prdLines = [
+    `[意图]: ${pmOutput.intent}`,
+    `[功能]: ${pmOutput.features.join(" / ")}`,
+    `[持久化]: ${pmOutput.persistence}`,
+    `[模块]: ${pmOutput.modules.join(" / ")}`,
+  ];
+  if (pmOutput.dataModel && pmOutput.dataModel.length > 0) {
+    prdLines.push(`[数据模型]: ${pmOutput.dataModel.join(" / ")}`);
+  }
+  if (pmOutput.gameType) {
+    prdLines.push(`[游戏类型]: ${pmOutput.gameType}`);
+  }
+  sections.push(`PM 产品需求文档（PRD）：\n${prdLines.join("\n")}`);
+
+  // Existing file paths (for feature_add scenario)
+  if (existingFiles.length > 0) {
+    const fileList = existingFiles.map((p) => `- ${p}`).join("\n");
+    sections.push(`当前已有文件（迭代时保留现有模块，只拆解新增部分）：\n${fileList}`);
+  }
+
+  // Scene types (if not general)
+  const nonGeneralScenes = sceneTypes.filter((s) => s !== "general");
+  if (nonGeneralScenes.length > 0) {
+    sections.push(`场景类型：${nonGeneralScenes.join(", ")}`);
+  }
+
+  return sections.join("\n\n");
 }
 
 /**
