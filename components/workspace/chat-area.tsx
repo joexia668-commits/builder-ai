@@ -591,6 +591,15 @@ export function ChatArea({
           agentColor: AGENTS.engineer.color,
         });
 
+        // Compute updated context BEFORE saving version so snapshot includes this round
+        const directRound: IterationRound = {
+          userPrompt: prompt,
+          intent,
+          pmSummary: null,
+          timestamp: roundTimestamp,
+        };
+        const directUpdatedCtx = appendRound(iterationContext, directRound);
+
         if (isMultiFileV1 && directFiles) {
           // Merge: LLM re-emits all files; output overrides V1 for each path.
           const mergedFiles = { ...currentFiles, ...(directFiles as Record<string, string>) };
@@ -601,7 +610,7 @@ export function ChatArea({
               files: mergedFiles,
               description: prompt.slice(0, 80),
               changedFiles: computeChangedFiles(currentFiles, mergedFiles),
-              iterationSnapshot: iterationContext ?? undefined,
+              iterationSnapshot: directUpdatedCtx,
             }),
           });
           const version = await res.json();
@@ -614,7 +623,7 @@ export function ChatArea({
               code: directCode,
               description: prompt.slice(0, 80),
               changedFiles: computeChangedFiles(currentFiles, { "/App.js": directCode }),
-              iterationSnapshot: iterationContext ?? undefined,
+              iterationSnapshot: directUpdatedCtx,
             }),
           });
           const version = await res.json();
@@ -623,19 +632,12 @@ export function ChatArea({
           updateSession(project.id, { generationError: { code: "unknown", raw: "Engineer 未能生成可解析的代码，请重试" } });
         }
 
-        // Persist direct-path iteration round (no PM/Arch)
+        // Persist direct-path iteration round (already computed above)
         {
-          const round: IterationRound = {
-            userPrompt: prompt,
-            intent,
-            pmSummary: null,
-            timestamp: roundTimestamp,
-          };
-          const updated = appendRound(iterationContext, round);
-          onIterationContextChange?.(updated);
+          onIterationContextChange?.(directUpdatedCtx);
           fetchAPI(`/api/projects/${project.id}`, {
             method: "PATCH",
-            body: JSON.stringify({ iterationContext: updated }),
+            body: JSON.stringify({ iterationContext: directUpdatedCtx }),
           }).catch((err: unknown) => {
             console.error("[iterationContext] PATCH failed — context may lag DB:", err);
           });
@@ -1055,6 +1057,22 @@ export function ChatArea({
                   delete finalFiles[removePath];
                 }
               }
+              // Compute updated context including this round so snapshot is complete
+              const pipelineRound: IterationRound = {
+                userPrompt: prompt,
+                intent,
+                pmSummary: parsedPm,
+                timestamp: roundTimestamp,
+              };
+              const pipelineUpdatedCtx = appendRound(iterationContext, pipelineRound);
+              onIterationContextChange?.(pipelineUpdatedCtx);
+              fetchAPI(`/api/projects/${project.id}`, {
+                method: "PATCH",
+                body: JSON.stringify({ iterationContext: pipelineUpdatedCtx }),
+              }).catch((err: unknown) => {
+                console.error("[iterationContext] PATCH failed — context may lag DB:", err);
+              });
+
               const res = await fetchAPI("/api/versions", {
                 method: "POST",
                 body: JSON.stringify({
@@ -1062,7 +1080,7 @@ export function ChatArea({
                   files: finalFiles,
                   description: prompt.slice(0, 80),
                   changedFiles: computeChangedFiles(currentFiles, finalFiles),
-                  iterationSnapshot: iterationContext ?? undefined,
+                  iterationSnapshot: pipelineUpdatedCtx,
                 }),
               });
               const version = await res.json();
@@ -1178,6 +1196,15 @@ export function ChatArea({
 
       // Legacy single-file path
       if (lastCode) {
+        // Compute updated context including this round so snapshot is complete
+        const legacyRound: IterationRound = {
+          userPrompt: prompt,
+          intent,
+          pmSummary: parsedPm,
+          timestamp: roundTimestamp,
+        };
+        const legacyUpdatedCtx = appendRound(iterationContext, legacyRound);
+
         const res = await fetchAPI("/api/versions", {
           method: "POST",
           body: JSON.stringify({
@@ -1185,26 +1212,16 @@ export function ChatArea({
             code: lastCode,
             description: prompt.slice(0, 80),
             changedFiles: computeChangedFiles(currentFiles, { "/App.js": lastCode }),
-            iterationSnapshot: iterationContext ?? undefined,
+            iterationSnapshot: legacyUpdatedCtx,
           }),
         });
         const version = await res.json();
         onFilesGenerated({ "/App.js": lastCode }, version);
-      }
 
-      // Persist iteration round for cross-round context (full pipeline)
-      {
-        const round: IterationRound = {
-          userPrompt: prompt,
-          intent,
-          pmSummary: parsedPm,
-          timestamp: roundTimestamp,
-        };
-        const updated = appendRound(iterationContext, round);
-        onIterationContextChange?.(updated);
+        onIterationContextChange?.(legacyUpdatedCtx);
         fetchAPI(`/api/projects/${project.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ iterationContext: updated }),
+          body: JSON.stringify({ iterationContext: legacyUpdatedCtx }),
         }).catch((err: unknown) => {
           console.error("[iterationContext] PATCH failed — context may lag DB:", err);
         });
