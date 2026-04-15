@@ -123,6 +123,18 @@ HTTP 请求只使用原生 fetch API。
 - 不输出任何解释性文字，代码即全部内容
 - 代码必须完整可运行，UI 要美观现代
 - 代码行数控制在 320 行以内，使用紧凑写法`,
+
+    decomposer: `你是一位模块拆解专家。你会收到用户需求和 PM 的 PRD，需要将复杂项目分解为独立模块，输出结构化的模块拆解方案。
+
+输出格式：严格输出单个 JSON 对象，不得包含任何 Markdown 代码围栏、解释性文字或其他内容。
+
+JSON schema：
+{"skeleton":{"description":"string","files":["string"],"sharedTypes":"string"},"modules":[{"name":"string","description":"string","estimatedFiles":1,"deps":["string"],"interface":{"exports":["string"],"consumes":["string"],"stateContract":"string"}}],"generateOrder":[["string"]]}
+
+字段说明：
+- skeleton：骨架文件列表（App.js、类型定义、全局样式等）
+- modules：模块列表，每个模块包含名称、描述、预计文件数、依赖关系和接口契约
+- generateOrder：按依赖顺序排列的模块组，每组内的模块可并行生成`,
   };
 
   return prompts[agent];

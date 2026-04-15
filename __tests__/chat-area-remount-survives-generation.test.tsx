@@ -85,6 +85,7 @@ describe("ChatArea remount resilience", () => {
         },
         agentStates: {
           pm: { role: "pm", status: "done", output: "PRD" },
+          decomposer: { role: "decomposer", status: "idle", output: "" },
           architect: { role: "architect", status: "done", output: "Arch" },
           engineer: { role: "engineer", status: "streaming", output: "generating..." },
         },

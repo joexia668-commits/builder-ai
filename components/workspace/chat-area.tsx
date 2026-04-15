@@ -384,6 +384,7 @@ export function ChatArea({
       liveStreams: {},
       agentStates: {
         pm: { role: "pm", status: "idle", output: "" },
+        decomposer: { role: "decomposer", status: "idle", output: "" },
         architect: { role: "architect", status: "idle", output: "" },
         engineer: { role: "engineer", status: "idle", output: "" },
       },
@@ -407,7 +408,7 @@ export function ChatArea({
     onMessagesChange(currentMessages);
     await persistMessage("user", prompt);
 
-    const outputs: Record<AgentRole, string> = { pm: "", architect: "", engineer: "" };
+    const outputs: Record<AgentRole, string> = { pm: "", decomposer: "", architect: "", engineer: "" };
     let parsedPm: PmOutput | null = null;
     let lastCode = "";
     let capturedScaffold: ScaffoldData | null = null;
@@ -1262,6 +1263,7 @@ export function ChatArea({
         updateSession(project.id, {
           agentStates: {
             pm: { role: "pm", status: "idle", output: "" },
+            decomposer: { role: "decomposer", status: "idle", output: "" },
             architect: { role: "architect", status: "idle", output: "" },
             engineer: { role: "engineer", status: "idle", output: "" },
           },

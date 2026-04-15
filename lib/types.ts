@@ -1,4 +1,4 @@
-export type AgentRole = "pm" | "architect" | "engineer";
+export type AgentRole = "pm" | "architect" | "engineer" | "decomposer";
 export type MessageRole = "user" | "system" | AgentRole;
 
 export interface Agent {
@@ -39,9 +39,18 @@ export const AGENTS: Record<AgentRole, Agent> = {
     bgColor: "bg-emerald-50 border-emerald-200",
     description: "生成完整可运行的代码",
   },
+  decomposer: {
+    id: "decomposer",
+    name: "Decomposer",
+    avatar: "🧩",
+    role: "decomposer",
+    color: "text-violet-400",
+    bgColor: "bg-violet-500/10",
+    description: "模块拆解器",
+  },
 };
 
-export const AGENT_ORDER: AgentRole[] = ["pm", "architect", "engineer"];
+export const AGENT_ORDER: AgentRole[] = ["pm", "decomposer", "architect", "engineer"];
 
 export interface ProjectMessage {
   id: string;
@@ -110,7 +119,9 @@ export type SSEEventType =
   | "error"
   | "file_start"
   | "file_chunk"
-  | "file_end";
+  | "file_end"
+  | "pipeline_state" | "skeleton_ready"
+  | "module_start" | "module_complete" | "module_failed";
 
 export type ErrorCode =
   | "rate_limited"
@@ -137,6 +148,13 @@ export interface SSEEvent {
   path?: string;
   delta?: string;
   attempt?: number;
+  // Pipeline controller fields
+  state?: PipelineState;
+  module?: string;
+  index?: number;
+  total?: number;
+  dependencies?: Record<string, string>;
+  summary?: { total: number; succeeded: number; failed: number };
 }
 
 // ---------------------------------------------------------------
@@ -199,6 +217,8 @@ export interface PmOutput {
   readonly persistence: "none" | "localStorage" | "supabase";
   readonly modules: readonly string[];
   readonly dataModel?: readonly string[];
+  readonly complexity?: Complexity;
+  readonly gameType?: string;
 }
 
 export interface ArchOutput {
@@ -218,7 +238,52 @@ export interface CompletionOptions {
 export type Intent = "new_project" | "bug_fix" | "feature_add" | "style_change";
 
 // Scene type for prompt injection categorization
-export type Scene = "game" | "dashboard" | "crud" | "multiview" | "animation" | "persistence" | "general";
+export type Scene =
+  | "game" | "game-engine" | "game-canvas"
+  | "dashboard" | "crud" | "multiview"
+  | "animation" | "persistence" | "general";
+
+// --- Pipeline Controller types ---
+
+export type PipelineState =
+  | "IDLE"
+  | "CLASSIFYING"
+  | "ARCHITECTING"
+  | "ENGINEERING"
+  | "DECOMPOSING"
+  | "SKELETON"
+  | "MODULE_FILLING"
+  | "POST_PROCESSING"
+  | "COMPLETE"
+  | "ERROR";
+
+export interface ModuleInterface {
+  readonly exports: string[];
+  readonly consumes: string[];
+  readonly stateContract: string;
+}
+
+export interface ModuleDefinition {
+  readonly name: string;
+  readonly description: string;
+  readonly estimatedFiles: number;
+  readonly deps: readonly string[];
+  readonly interface: ModuleInterface;
+}
+
+export interface SkeletonDefinition {
+  readonly description: string;
+  readonly files: readonly string[];
+  readonly sharedTypes: string;
+}
+
+export interface DecomposerOutput {
+  readonly skeleton: SkeletonDefinition;
+  readonly modules: readonly ModuleDefinition[];
+  readonly generateOrder: readonly (readonly string[])[];
+}
+
+export type Complexity = "simple" | "complex";
 
 // Multi-file scaffold types (Architect agent output)
 export interface ScaffoldFile {

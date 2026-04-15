@@ -27,6 +27,7 @@ function makeEmptySession(projectId: string = ""): GenerationSession {
     abortController: new AbortController(),
     agentStates: {
       pm: { role: "pm", status: "idle", output: "" },
+      decomposer: { role: "decomposer", status: "idle", output: "" },
       architect: { role: "architect", status: "idle", output: "" },
       engineer: { role: "engineer", status: "idle", output: "" },
     },
@@ -48,6 +49,7 @@ export const EMPTY_SESSION: GenerationSession = {
   abortController: new AbortController(),
   agentStates: {
     pm: { role: "pm", status: "idle", output: "" },
+    decomposer: { role: "decomposer", status: "idle", output: "" },
     architect: { role: "architect", status: "idle", output: "" },
     engineer: { role: "engineer", status: "idle", output: "" },
   },

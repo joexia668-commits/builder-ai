@@ -105,10 +105,15 @@ const SCENE_ENGINEER_RULES: Record<Exclude<Scene, "general">, string> = {
   const data = supabase.from('DynamicAppData').select('*') // 忘记 await
 正确示例：
   useEffect(() => { supabase.from('DynamicAppData').select('*').eq('appId', APP_ID).then(({ data }) => data && setItems(data)); }, []);`,
+
+  "game-engine": "",
+  "game-canvas": "",
 };
 
 const SCENE_ARCHITECT_HINTS: Record<Exclude<Scene, "general">, string> = {
   game: "本项目为 game 类型，建议将游戏逻辑（状态机/碰撞检测）与 UI 渲染拆分为独立文件。",
+  "game-engine": "本项目为 game-engine 类型，建议将引擎逻辑（物理/碰撞/循环）与渲染层分离。",
+  "game-canvas": "本项目为 game-canvas 类型，建议用 Canvas 2D API 实现渲染，游戏状态与渲染函数分离。",
   dashboard: "本项目为 dashboard 类型，图表须用纯 SVG 实现，建议每种图表类型拆为独立组件。",
   crud: "本项目为 crud 类型，建议将表单组件、列表组件、数据操作逻辑分离为独立文件。",
   multiview: "本项目为 multiview 类型，建议在 App.js 用 useState 统一管理视图路由，每个视图为独立组件。",

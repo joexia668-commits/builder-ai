@@ -7,6 +7,8 @@ const PROMPT_KEYWORDS: Record<Exclude<Scene, "general">, readonly string[]> = {
     "游戏", "贪吃蛇", "俄罗斯方块", "snake", "tetris", "game", "弹球",
     "打地鼠", "迷宫", "棋", "2048", "flappy", "pong", "扫雷", "消消乐",
   ],
+  "game-engine": [],
+  "game-canvas": [],
   dashboard: [
     "仪表盘", "图表", "dashboard", "chart", "统计", "可视化", "报表", "analytics",
   ],
@@ -40,6 +42,8 @@ export function classifySceneFromPrompt(prompt: string): Scene[] {
 
 const PM_FEATURE_KEYWORDS: Record<Exclude<Scene, "general">, readonly string[]> = {
   game: ["移动", "碰撞", "得分", "关卡", "生命", "游戏"],
+  "game-engine": [],
+  "game-canvas": [],
   dashboard: ["图表", "统计", "趋势", "指标", "分析"],
   crud: ["添加", "删除", "编辑", "筛选", "搜索", "管理", "记录"],
   multiview: ["切换", "导航", "页面"],
@@ -49,6 +53,8 @@ const PM_FEATURE_KEYWORDS: Record<Exclude<Scene, "general">, readonly string[]> 
 
 const PM_MODULE_KEYWORDS: Record<Exclude<Scene, "general">, readonly RegExp[]> = {
   game: [/game/i, /board/i, /loop/i, /score/i],
+  "game-engine": [],
+  "game-canvas": [],
   dashboard: [/chart/i, /graph/i, /analytics/i, /stats/i, /dashboard/i],
   crud: [/form/i, /list/i, /table/i, /editor/i],
   multiview: [],

@@ -14,6 +14,7 @@ const makeStates = (
   overrides: Partial<Record<AgentRole, Partial<AgentState>>> = {}
 ): Record<AgentRole, AgentState> => ({
   pm: { role: "pm", status: "idle", output: "", ...overrides.pm },
+  decomposer: { role: "decomposer", status: "idle", output: "", ...overrides.decomposer },
   architect: { role: "architect", status: "idle", output: "", ...overrides.architect },
   engineer: { role: "engineer", status: "idle", output: "", ...overrides.engineer },
 });
@@ -25,8 +26,8 @@ describe("AgentStatusBar", () => {
       <AgentStatusBar agentStates={makeStates()} isGenerating={true} />
     );
     const cards = container.querySelectorAll(".opacity-50");
-    // All 3 agents are idle, so all 3 should have opacity-50
-    expect(cards.length).toBe(3);
+    // All 4 agents are idle, so all 4 should have opacity-50
+    expect(cards.length).toBe(4);
   });
 
   it("isGenerating=false 时 idle agent 不添加 opacity-50", () => {
