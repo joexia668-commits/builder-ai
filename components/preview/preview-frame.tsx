@@ -24,21 +24,16 @@ interface PreviewFrameProps {
   onSandpackError?: (error: SandpackRuntimeError) => void;
 }
 
-function SandpackErrorListener({
-  enabled,
-  onError,
-}: {
-  enabled: boolean;
-  onError: (error: SandpackRuntimeError) => void;
-}) {
-  useSandpackError({ enabled, onError });
-  return null;
-}
-
 export function PreviewFrame({ files, projectId, errorFixEnabled = false, onSandpackError }: PreviewFrameProps) {
   const config = buildSandpackConfig(files, projectId);
   const appCode = files["/App.js"] ?? "";
   const sandpackKey = `${Object.keys(files).length}-${appCode.length}-${appCode.slice(0, 40)}`;
+
+  // Hook listens via window.postMessage — works outside SandpackProvider
+  useSandpackError({
+    enabled: errorFixEnabled && !!onSandpackError,
+    onError: onSandpackError ?? (() => {}),
+  });
 
   return (
     <SandpackErrorBoundary>
@@ -52,12 +47,6 @@ export function PreviewFrame({ files, projectId, errorFixEnabled = false, onSand
           theme={config.theme as "auto"}
           style={PROVIDER_STYLE}
         >
-          {onSandpackError && (
-            <SandpackErrorListener
-              enabled={errorFixEnabled}
-              onError={onSandpackError}
-            />
-          )}
           <SandpackLayout style={{ flex: 1, height: "100%", minHeight: 0, border: "none" }}>
             <SandpackPreview
               style={{ flex: 1, height: "100%", minHeight: 0 }}

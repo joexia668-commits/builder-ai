@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useSandpack } from "@codesandbox/sandpack-react";
 import type { SandpackRuntimeError } from "@/lib/types";
 
 interface UseSandpackErrorOptions {
@@ -14,35 +13,31 @@ export function useSandpackError({ enabled, onError }: UseSandpackErrorOptions):
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
 
-  // Reset dedup set when re-enabled (new fix round)
   useEffect(() => {
     if (enabled) seenRef.current.clear();
   }, [enabled]);
 
-  const { listen } = useSandpack();
-
   useEffect(() => {
     if (!enabled) return;
 
-    const unsub = listen((message) => {
-      if (
-        message.type === "action" &&
-        (message as unknown as Record<string, unknown>).action === "show-error"
-      ) {
-        const msg = message as unknown as Record<string, unknown>;
-        const errorMessage = String(msg.message ?? msg.title ?? "Unknown error");
-        const path = String(msg.path ?? "/App.js");
-        const line = Number(msg.line ?? 0);
-        const column = Number(msg.column ?? 0);
+    function handleMessage(event: MessageEvent) {
+      const data = event.data;
+      if (!data || data.type !== "sandpack-runtime-error") return;
 
-        const key = `${path}:${errorMessage}`;
-        if (seenRef.current.has(key)) return;
-        seenRef.current.add(key);
+      const errorMessage = String(data.message ?? "Unknown error");
+      const path = String(data.path ?? "/App.js");
+      const line = Number(data.line ?? 0);
+      const column = Number(data.column ?? 0);
 
-        onErrorRef.current({ message: errorMessage, path, line, column });
-      }
-    });
+      const key = `${path}:${errorMessage}`;
+      if (seenRef.current.has(key)) return;
+      seenRef.current.add(key);
 
-    return unsub;
-  }, [enabled, listen]);
+      console.log("[sandpack-error] runtime error detected:", { errorMessage, path, line, column });
+      onErrorRef.current({ message: errorMessage, path, line, column });
+    }
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [enabled]);
 }

@@ -203,6 +203,51 @@ export function buildSandpackConfig(
     hidden: true,
   };
 
+  // Inject hidden runtime error catcher — posts errors to parent via postMessage
+  sandpackFiles["/_error-catcher.js"] = {
+    code: `window.onerror = function(message, source, lineno, colno) {
+  try {
+    var path = source ? "/" + source.replace(/^.*\\//, "") : "/App.js";
+    window.parent.postMessage({
+      type: "sandpack-runtime-error",
+      message: String(message),
+      path: path,
+      line: lineno || 0,
+      column: colno || 0
+    }, "*");
+  } catch(e) {}
+};
+window.addEventListener("unhandledrejection", function(event) {
+  try {
+    var msg = event.reason instanceof Error ? event.reason.message : String(event.reason);
+    window.parent.postMessage({
+      type: "sandpack-runtime-error",
+      message: msg,
+      path: "/App.js",
+      line: 0,
+      column: 0
+    }, "*");
+  } catch(e) {}
+});`,
+    hidden: true,
+  };
+
+  // Override index.js to load error catcher before App
+  sandpackFiles["/index.js"] = {
+    code: `import "./_error-catcher.js";
+import React, { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App";
+
+const root = createRoot(document.getElementById("root"));
+root.render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);`,
+    hidden: true,
+  };
+
   return {
     template: "react",
     theme: "auto",
