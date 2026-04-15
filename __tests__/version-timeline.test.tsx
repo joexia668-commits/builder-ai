@@ -37,6 +37,9 @@ const makeVersion = (n: number, overrides: Partial<ProjectVersion> = {}): Projec
   description: `描述版本${n}`,
   agentMessages: null,
   createdAt: new Date("2026-03-29T10:00:00Z"),
+  parentVersionId: null,
+  changedFiles: null,
+  iterationSnapshot: null,
   ...overrides,
 });
 
@@ -390,5 +393,80 @@ describe("VersionTimeline", () => {
 
     // Cleanup: resolve the pending promise to avoid hanging
     resolveRestore({ json: jest.fn().mockResolvedValue(makeVersion(4)) });
+  });
+
+  // VT-11: Restored version shows restore label
+  it("VT-11: restored version shows '← vN' label when parentVersionId is set", () => {
+    const v4 = makeVersion(4, { parentVersionId: "v2", description: "从 v2 恢复" });
+    const versionsWithRestore = [v1, v2, v3, v4];
+    render(
+      <VersionTimeline
+        versions={versionsWithRestore}
+        previewingVersion={null}
+        onPreviewVersion={jest.fn()}
+        onRestoreVersion={jest.fn()}
+      />
+    );
+    expect(screen.getByText("← v2")).toBeInTheDocument();
+  });
+
+  it("VT-11b: normal version does not show restore label", () => {
+    render(
+      <VersionTimeline
+        versions={versions}
+        previewingVersion={null}
+        onPreviewVersion={jest.fn()}
+        onRestoreVersion={jest.fn()}
+      />
+    );
+    expect(screen.queryByText(/← v/)).not.toBeInTheDocument();
+  });
+
+  // VT-12: Restored version node has distinct visual style
+  it("VT-12: restored version node has restore icon indicator", () => {
+    const v4 = makeVersion(4, { parentVersionId: "v2", description: "从 v2 恢复" });
+    const versionsWithRestore = [v1, v2, v3, v4];
+    render(
+      <VersionTimeline
+        versions={versionsWithRestore}
+        previewingVersion={null}
+        onPreviewVersion={jest.fn()}
+        onRestoreVersion={jest.fn()}
+      />
+    );
+    const v4Node = screen.getByTestId("version-node-v4");
+    expect(v4Node.querySelector("[data-restore-icon]")).toBeInTheDocument();
+  });
+
+  // VT-13: Preview banner shows changedFiles summary
+  it("VT-13: preview banner shows changed files count when changedFiles is present", () => {
+    const v2WithChanges = makeVersion(2, {
+      changedFiles: {
+        added: { "/New.js": "new" },
+        modified: { "/App.js": "updated" },
+        removed: ["/Old.js"],
+      },
+    });
+    render(
+      <VersionTimeline
+        versions={[v1, v2WithChanges, v3]}
+        previewingVersion={v2WithChanges}
+        onPreviewVersion={jest.fn()}
+        onRestoreVersion={jest.fn()}
+      />
+    );
+    expect(screen.getByText(/修改了 3 个文件/)).toBeInTheDocument();
+  });
+
+  it("VT-13b: preview banner does not show file count when changedFiles is null", () => {
+    render(
+      <VersionTimeline
+        versions={versions}
+        previewingVersion={v2}
+        onPreviewVersion={jest.fn()}
+        onRestoreVersion={jest.fn()}
+      />
+    );
+    expect(screen.queryByText(/修改了/)).not.toBeInTheDocument();
   });
 });

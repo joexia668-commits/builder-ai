@@ -5,7 +5,7 @@ import { useMounted } from "@/hooks/use-mounted";
 import { cn } from "@/lib/utils";
 import { fetchAPI } from "@/lib/api-client";
 import { toast } from "sonner";
-import type { ProjectVersion } from "@/lib/types";
+import type { ProjectVersion, ChangedFiles } from "@/lib/types";
 
 interface VersionTimelineProps {
   versions: ProjectVersion[];
@@ -72,6 +72,12 @@ export function VersionTimeline({
             {previewingVersion.description
               ? ` — ${previewingVersion.description}`
               : ""}
+            {(() => {
+              const cf = previewingVersion.changedFiles as ChangedFiles | null | undefined;
+              if (!cf) return null;
+              const count = Object.keys(cf.added).length + Object.keys(cf.modified).length + cf.removed.length;
+              return count > 0 ? ` (修改了 ${count} 个文件)` : null;
+            })()}
           </span>
           <div className="flex gap-2">
             <button
@@ -105,24 +111,32 @@ export function VersionTimeline({
                   disabled={isGenerating}
                   className="flex flex-col items-center gap-1 group max-w-[60px]"
                 >
-                  <div
-                    className={cn(
-                      "rounded-full border-2 transition-all mt-0.5",
-                      isLast && !isPreviewing
-                        ? "w-3 h-3 bg-indigo-500 border-indigo-500"
-                        : isPreviewing
-                        ? "w-3 h-3 bg-amber-400 border-amber-400"
-                        : "w-2.5 h-2.5 bg-white border-gray-300 group-hover:border-indigo-400"
-                    )}
-                  />
+                  {version.parentVersionId ? (
+                    <span data-restore-icon className="text-[10px] mt-0.5 text-amber-500">↩</span>
+                  ) : (
+                    <div
+                      className={cn(
+                        "rounded-full border-2 transition-all mt-0.5",
+                        isLast && !isPreviewing
+                          ? "w-3 h-3 bg-indigo-500 border-indigo-500"
+                          : isPreviewing
+                          ? "w-3 h-3 bg-amber-400 border-amber-400"
+                          : "w-2.5 h-2.5 bg-white border-gray-300 group-hover:border-indigo-400"
+                      )}
+                    />
+                  )}
                   <span className="text-[10px] text-gray-500 font-medium">
                     v{version.versionNumber}
                   </span>
-                  {version.description && (
+                  {version.parentVersionId ? (
+                    <span className="text-[9px] text-amber-500 font-medium">
+                      ← v{versions.find(v => v.id === version.parentVersionId)?.versionNumber ?? "?"}
+                    </span>
+                  ) : version.description ? (
                     <span className="text-[9px] text-gray-400 truncate w-full text-center leading-tight">
                       {version.description}
                     </span>
-                  )}
+                  ) : null}
                   <span className="text-[9px] text-gray-300">
                     {mounted ? formatTime(version.createdAt) : "--:--"}
                   </span>
