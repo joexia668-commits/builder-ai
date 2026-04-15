@@ -192,6 +192,16 @@ export function PreviewFrame({
     setErrorMessage(null);
     setServerUrl(null);
 
+    // Pre-flight: check cross-origin isolation before attempting WebContainer boot
+    if (typeof window !== "undefined" && !window.crossOriginIsolated) {
+      setErrorMessage(
+        "预览环境不可用：页面未启用跨域隔离（Cross-Origin Isolation）。" +
+        "请使用 Chrome 96+、Firefox 119+ 或 Safari 17+ 并确保通过 HTTPS 访问。"
+      );
+      setStatus("error");
+      return;
+    }
+
     try {
       const { mountAndStart, teardownContainer } = await import(
         "@/lib/container-runtime"

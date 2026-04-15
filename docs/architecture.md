@@ -109,7 +109,7 @@ Engineer 分层并行生成与三级容错详见 [Engineer Circuit](features/eng
 
 | 决策 | 原因 |
 |------|------|
-| Sandpack 而非 WebContainer | Vercel Hobby 不支持 COOP/COEP 响应头，WebContainer 无法部署 |
+| WebContainer 预览 | 通过 next.config.mjs 在 `/project/:path*` 路径注入 COOP/COEP headers，Vercel Hobby 支持自定义 headers |
 | 一次性渲染而非流式更新 Sandpack | 频繁 remount 产生闪烁 + ChunkLoadError（webpack chunk URL 解析为 undefined） |
 | `normalizeExports` 拆分 `export default function` | Sandpack Babel 不支持 `export { default as X }` 语法（ADR 0015） |
 | 版本只 INSERT 不 UPDATE | 零数据丢失的完整时间线，回滚 = 读旧版本 → INSERT 新版本 |
