@@ -8,8 +8,14 @@ builder-ai/
 │   ├── globals.css                     # Tailwind base imports
 │   │
 │   ├── api/
-│   │   ├── auth/[...nextauth]/route.ts # NextAuth handler
-│   │   ├── generate/route.ts           # SSE: AI generation (per-agent)
+│   │   ├── auth/
+│   │   │   ├── [...nextauth]/route.ts  # NextAuth handler
+│   │   │   └── guest/
+│   │   │       ├── route.ts            # POST: Guest 匿名登录
+│   │   │       └── guest-service.ts    # Guest 用户创建/查找逻辑
+│   │   ├── generate/
+│   │   │   ├── route.ts                # SSE: AI generation (Edge Runtime entry)
+│   │   │   └── handler.ts              # createHandler() — SSE 编排、stream tap、代码提取
 │   │   ├── projects/
 │   │   │   ├── route.ts                # GET (list) / POST (create)
 │   │   │   └── [id]/route.ts           # GET (detail) / PATCH (update) / DELETE
@@ -40,6 +46,7 @@ builder-ai/
 │   │   ├── auth-guard.tsx              # Redirect to login if not authed
 │   │   ├── demo-banner.tsx             # Demo mode indicator (amber bg, read-only notice)
 │   │   ├── demo-login-button.tsx       # Quick-login for demo viewer account
+│   │   ├── guest-login-buttons.tsx    # Guest 匿名登录按钮
 │   │   └── email-login-form.tsx        # Email Magic Link form (unified sign-in/sign-up)
 │   │
 │   ├── home/
@@ -101,7 +108,13 @@ builder-ai/
 │   ├── file-tree.ts               # 平铺路径 → 层级文件树
 │   ├── guest-cleanup.ts           # Guest 账户定期清理（>5 天）
 │   ├── extract-json.ts            # LLM 输出 JSON 安全提取
-│   └── extract-arch-decisions.ts  # 从 ScaffoldData 提取架构决策摘要
+│   ├── extract-arch-decisions.ts  # 从 ScaffoldData 提取架构决策摘要
+│   ├── scene-classifier.ts       # 场景识别（game/dashboard/crud/multiview/animation/persistence）
+│   ├── scene-rules.ts            # 场景专属 prompt 规则注入
+│   ├── lucide-icon-names.ts      # Lucide 图标名称列表（自动修正 LLM 幻觉）
+│   ├── error-codes.ts            # 生成错误码常量
+│   ├── version-files.ts          # getVersionFiles() + computeChangedFiles()
+│   └── use-debounce.ts           # 通用 debounce 工具函数
 │
 ├── prisma/
 │   └── schema.prisma                   # Database schema

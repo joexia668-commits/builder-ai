@@ -180,7 +180,7 @@ data: {"type":"done"}
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
 | `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` + `getMultiFileEngineerPrompt()` (includes retry hint) + `buildMissingFileEngineerPrompt()` + `buildMismatchedFilesEngineerPrompt()` + `buildDisallowedImportsEngineerPrompt()` |
 | `lib/extract-code.ts` | Multi-layer code extraction + `extractMultiFileCodePartial()` (partial salvage) + `findMissingLocalImports()` + `findMissingLocalImportsWithNames()` + `checkImportExportConsistency()` + `checkDisallowedImports()` |
-| `lib/validate-scaffold.ts` | `validateScaffold(raw)` — 5-rule deterministic repair: self-ref → phantom dep → hints path → cycle breaking → removeFiles conflict |
+| `lib/validate-scaffold.ts` | `validateScaffold(raw)` — 7-rule deterministic repair: self-ref → phantom dep → hints path → cycle breaking → removeFiles conflict → maxLines clamp → blocked deps removal |
 | `lib/sandpack-config.ts` | `buildSandpackConfig()` + `normalizeExports()` (bidirectional export normalization for Sandpack Babel compat) |
 | `lib/engineer-circuit.ts` | `runLayerWithFallback` — 2 layer attempts → 2 per-file attempts → circuit breaker (3 consecutive failures) |
 | `components/workspace/chat-area.tsx` | Core orchestration — intent classification, direct path, PM → Architect → layered Engineer, abort, progress |
@@ -195,6 +195,10 @@ data: {"type":"done"}
 | `lib/guest-cleanup.ts` | `deleteStaleGuestUsers()` — 定时清理 >5 天未活跃 Guest 账户 |
 | `lib/version-files.ts` | `getVersionFiles()` (legacy/multi-file 统一读取) + `computeChangedFiles()` (版本间文件差异计算) |
 | `lib/extract-json.ts` | 从 LLM 输出安全提取 JSON，含 fence 剥离与错误恢复 |
+| `lib/scene-classifier.ts` | `classifySceneFromPrompt()` + `classifySceneFromPm()` — 6 种场景识别（game/dashboard/crud/multiview/animation/persistence） |
+| `lib/scene-rules.ts` | `getSceneRules()` — 场景专属 Architect/Engineer prompt 规则注入 |
+| `lib/lucide-icon-names.ts` | Lucide 图标名称列表，用于自动修正 LLM 生成的错误图标名 |
+| `lib/error-codes.ts` | 生成错误码常量定义 |
 | `app/api/generate/handler.ts` | `createHandler()` — SSE 生成编排器；Agent 路由、stream tap、代码提取、重试逻辑 |
 
 ### Known limitations & open issues

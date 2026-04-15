@@ -13,6 +13,14 @@ export type GuestUser = {
 };
 
 export async function createGuestUser(): Promise<GuestUser> {
+  const devId = process.env.DEV_GUEST_ID;
+  if (devId) {
+    return prisma.user.upsert({
+      where: { id: devId },
+      update: {},
+      create: { id: devId, name: "Guest (Dev)", isGuest: true },
+    });
+  }
   const id = `guest_${randomUUID().replace(/-/g, "")}`;
   return prisma.user.create({
     data: {

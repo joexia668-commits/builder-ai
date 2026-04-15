@@ -124,7 +124,7 @@ npm run test:e2e      # E2E（Playwright，自动启动 dev server）
 | [环境配置](docs/setup-guide.md) | 环境变量详解 + Demo 模式配置 |
 | [API 参考](docs/api-reference.md) | 所有 API 路由、请求体、响应格式 |
 | [Database Schema](docs/database-schema.md) | 表结构 + 设计原则 |
-| [Feature 文档](docs/features/) | 12 篇 per-feature 技术文档 |
+| [Feature 文档](docs/features/) | 13 篇 per-feature 技术文档 |
 | [ADR 记录](docs/adr/) | Bug 记录与架构决策 |
 
 ---

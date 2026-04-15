@@ -26,11 +26,17 @@ const SCENE_ENGINEER_RULES: Record<Exclude<Scene, "general">, string> = {
 4. 数值卡片：纯 div + Tailwind，不需要 SVG
 5. 响应式：用 viewBox="0 0 width height" + preserveAspectRatio="xMidYMid meet"
 6. 坐标轴：用 <line> + <text> 手动绘制，不依赖任何库
+7. 数据源：仪表盘必须使用 hardcoded mock 数据（直接定义在组件或常量文件中），禁止从 Supabase 或任何远程 API 读取数据。原因：沙箱环境无预置数据，远程请求必然返回空/报错导致图表渲染 NaN
 错误示例：import { BarChart, XAxis, YAxis } from 'recharts'
+错误示例：const { data } = await supabase.from('DynamicAppData').select('*')  // 禁止！表为空会导致 NaN
 正确示例：
+  const salesData = [
+    { month: '1月', value: 4200 }, { month: '2月', value: 5800 },
+    { month: '3月', value: 3900 }, { month: '4月', value: 7100 },
+  ];
   <svg viewBox="0 0 400 200" className="w-full">
-    {data.map((d, i) => (
-      <rect key={i} x={i * 50 + 10} y={200 - d.value * 2} width={40} height={d.value * 2} fill="#6366f1" rx={4} />
+    {salesData.map((d, i) => (
+      <rect key={i} x={i * 50 + 10} y={200 - d.value / 40} width={40} height={d.value / 40} fill="#6366f1" rx={4} />
     ))}
   </svg>`,
 

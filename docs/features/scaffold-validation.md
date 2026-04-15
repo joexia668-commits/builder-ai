@@ -2,7 +2,7 @@
 
 ## 概述
 
-Architect Agent 输出的 JSON scaffold 描述了所有待生成文件及其依赖关系图。在交给拓扑排序和 Engineer 之前，`lib/validate-scaffold.ts` 的 `validateScaffold()` 对 scaffold 执行 5 条确定性修复规则，防止幽灵依赖、自引用和循环依赖导致 `topologicalSort` 抛错或 Engineer 请求死循环。
+Architect Agent 输出的 JSON scaffold 描述了所有待生成文件及其依赖关系图。在交给拓扑排序和 Engineer 之前，`lib/validate-scaffold.ts` 的 `validateScaffold()` 对 scaffold 执行 7 条确定性修复规则，防止幽灵依赖、自引用、循环依赖、极端行数配置和黑名单依赖导致 `topologicalSort` 抛错或 Engineer 请求死循环。
 
 ## 设计思路
 
@@ -25,7 +25,7 @@ interface ScaffoldValidationResult {
 }
 ```
 
-### 5 条规则（按执行顺序）
+### 7 条规则（按执行顺序）
 
 **规则 4：移除自引用**（排在最前以免影响后续入度计算）
 
@@ -85,6 +85,33 @@ function breakCycles(files, warnings): readonly ScaffoldFile[] {
 // 警告：removeFiles 与 scaffold files 冲突: /old.js（已从 removeFiles 移除）
 ```
 
+**规则 6：maxLines 范围限制**
+
+```typescript
+files = files.map(f => {
+  if (f.maxLines === undefined) return f;
+  if (f.maxLines < 50) return { ...f, maxLines: 50 };
+  if (f.maxLines > 500) return { ...f, maxLines: 500 };
+  return f;
+})
+// 警告：maxLines 过小: /components/Foo.js (30 → 50)
+// 警告：maxLines 过大: /components/Bar.js (800 → 500)
+```
+
+**规则 7：移除黑名单依赖**
+
+```typescript
+// scaffold.dependencies 中包含 BLOCKED_PACKAGES（fs, path, express, three 等）的包被移除
+// 使用 extract-code.ts 中的 BLOCKED_PACKAGES 集合
+const basePkg = pkg.startsWith("@")
+  ? pkg.split("/").slice(0, 2).join("/")
+  : pkg.split("/")[0];
+if (BLOCKED_PACKAGES.has(basePkg)) {
+  // 移除
+}
+// 警告：移除黑名单依赖: three
+```
+
 ### extractScaffoldFromTwoPhase（Architect 输出解析）
 
 在 `validateScaffold` 之前，Architect 的两阶段输出先经过 `extractScaffoldFromTwoPhase(raw: string)` 解析：
@@ -109,6 +136,9 @@ function breakCycles(files, warnings): readonly ScaffoldFile[] {
 | A→B→C→A 三角循环 | 规则 3 | 找入度差最大边移除，如 C→A |
 | removeFiles: ["/old.js"] 但 scaffold 也生成 /old.js | 规则 5 | 从 removeFiles 删除 /old.js |
 | `/supabaseClient.js` 出现在 deps 中 | 规则 1 | 白名单，保留 |
+| `maxLines: 30` 过小 | 规则 6 | 钳位到 50 |
+| `maxLines: 800` 过大 | 规则 6 | 钳位到 500 |
+| dependencies 包含 `three` | 规则 7 | 从 dependencies 移除 |
 
 ## 未覆盖场景 / 已知限制
 

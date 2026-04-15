@@ -14,7 +14,8 @@ export function GuestLoginButtons() {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    setSavedGuestId(localStorage.getItem(STORAGE_KEY));
+    const devId = process.env.NEXT_PUBLIC_DEV_GUEST_ID;
+    setSavedGuestId(devId || localStorage.getItem(STORAGE_KEY));
   }, []);
 
   async function handleNewGuest() {
