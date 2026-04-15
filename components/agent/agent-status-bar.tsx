@@ -2,22 +2,41 @@
 
 import { cn } from "@/lib/utils";
 import { AGENTS, AGENT_ORDER } from "@/lib/types";
-import type { AgentRole, AgentState, EngineerProgress } from "@/lib/types";
+import type { AgentRole, AgentState, EngineerProgress, PipelineState } from "@/lib/types";
 import { ThinkingIndicator } from "@/components/agent/thinking-indicator";
 
 interface AgentStatusBarProps {
   agentStates: Record<AgentRole, AgentState>;
   isGenerating: boolean;
   engineerProgress?: EngineerProgress | null;
+  pipelineState?: PipelineState;
+  transitionText?: string | null;
+  currentModule?: string | null;
+  moduleProgress?: {
+    total: number;
+    completed: string[];
+    failed: string[];
+    current: string | null;
+  } | null;
 }
 
 export function AgentStatusBar({
   agentStates,
   isGenerating,
   engineerProgress,
+  pipelineState,
+  transitionText,
+  currentModule,
+  moduleProgress,
 }: AgentStatusBarProps) {
   return (
-    <div data-testid="agent-status-bar" className="border-b bg-white px-4 py-2 flex items-center gap-2">
+    <div data-testid="agent-status-bar" className="border-b bg-white px-4 py-2 flex flex-col gap-1">
+      {pipelineState && pipelineState !== "IDLE" && pipelineState !== "COMPLETE" && (
+        <div className="text-xs text-zinc-400">
+          {transitionText}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
       {AGENT_ORDER.map((role, index) => {
         const agent = AGENTS[role];
         const state = agentStates[role];
@@ -94,6 +113,18 @@ export function AgentStatusBar({
           </div>
         );
       })}
+      </div>
+      {moduleProgress && (
+        <div className="mt-1 text-xs text-zinc-400">
+          <span>模块 {moduleProgress.completed.length + (moduleProgress.current ? 1 : 0)}/{moduleProgress.total}</span>
+          {currentModule && (
+            <span className="ml-2 text-violet-400">{currentModule}</span>
+          )}
+          {moduleProgress.failed.length > 0 && (
+            <span className="ml-2 text-red-400">({moduleProgress.failed.length} 失败)</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
