@@ -8,8 +8,6 @@ import {
 } from "@codesandbox/sandpack-react";
 import { SandpackErrorBoundary } from "@/components/preview/error-boundary";
 import { buildSandpackConfig } from "@/lib/sandpack-config";
-import { useSandpackError } from "@/hooks/use-sandpack-error";
-import type { SandpackRuntimeError } from "@/lib/types";
 
 const PROVIDER_STYLE: CSSProperties = {
   height: "100%",
@@ -20,21 +18,13 @@ const PROVIDER_STYLE: CSSProperties = {
 interface PreviewFrameProps {
   files: Record<string, string>;
   projectId: string;
-  errorFixEnabled?: boolean;
-  onSandpackError?: (error: SandpackRuntimeError) => void;
   scaffoldDependencies?: Readonly<Record<string, string>>;
 }
 
-export function PreviewFrame({ files, projectId, errorFixEnabled = false, onSandpackError, scaffoldDependencies }: PreviewFrameProps) {
+export function PreviewFrame({ files, projectId, scaffoldDependencies }: PreviewFrameProps) {
   const config = buildSandpackConfig(files, projectId, scaffoldDependencies);
   const appCode = files["/App.js"] ?? "";
   const sandpackKey = `${Object.keys(files).length}-${appCode.length}-${appCode.slice(0, 40)}`;
-
-  // Hook listens via window.postMessage — works outside SandpackProvider
-  useSandpackError({
-    enabled: errorFixEnabled && !!onSandpackError,
-    onError: onSandpackError ?? (() => {}),
-  });
 
   return (
     <SandpackErrorBoundary>
