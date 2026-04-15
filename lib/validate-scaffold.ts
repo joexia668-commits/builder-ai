@@ -1,4 +1,5 @@
 import type { ScaffoldData, ScaffoldFile, ScaffoldValidationResult } from "@/lib/types";
+import { BLOCKED_PACKAGES } from "@/lib/extract-code";
 
 // /supabaseClient.js is a virtual file injected by buildSandpackConfig at runtime —
 // it is never part of the Architect scaffold but is always available to generated code.
@@ -179,8 +180,44 @@ export function validateScaffold(raw: ScaffoldData): ScaffoldValidationResult {
     }
   }
 
+  // Rule 6: clamp maxLines to [50, 500]
+  files = files.map((f) => {
+    if (f.maxLines === undefined) return f;
+    if (f.maxLines < 50) {
+      warnings.push(`maxLines 过小: ${f.path} (${f.maxLines} → 50)`);
+      return { ...f, maxLines: 50 };
+    }
+    if (f.maxLines > 500) {
+      warnings.push(`maxLines 过大: ${f.path} (${f.maxLines} → 500)`);
+      return { ...f, maxLines: 500 };
+    }
+    return f;
+  });
+
+  // Rule 7: strip blacklisted dependencies
+  let dependencies = raw.dependencies;
+  if (dependencies) {
+    const cleaned: Record<string, string> = {};
+    for (const [pkg, ver] of Object.entries(dependencies)) {
+      const basePkg = pkg.startsWith("@")
+        ? pkg.split("/").slice(0, 2).join("/")
+        : pkg.split("/")[0];
+      if (BLOCKED_PACKAGES.has(basePkg)) {
+        warnings.push(`移除黑名单依赖: ${pkg}`);
+      } else {
+        cleaned[pkg] = ver;
+      }
+    }
+    dependencies = Object.keys(cleaned).length > 0 ? cleaned : undefined;
+  }
+
   return {
-    scaffold: { ...raw, files, ...(removeFiles !== undefined ? { removeFiles } : {}) },
+    scaffold: {
+      ...raw,
+      files,
+      ...(removeFiles !== undefined ? { removeFiles } : {}),
+      ...(dependencies !== undefined ? { dependencies } : {}),
+    },
     warnings,
   };
 }

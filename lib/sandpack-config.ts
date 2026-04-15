@@ -153,7 +153,8 @@ export interface SandpackConfig {
 
 export function buildSandpackConfig(
   input: string | Record<string, string>,
-  projectId: string
+  projectId: string,
+  scaffoldDependencies?: Readonly<Record<string, string>>
 ): SandpackConfig {
 
   // Normalize: string input becomes single-file { "/App.js": code }
@@ -256,6 +257,7 @@ root.render(
       dependencies: {
         "@supabase/supabase-js": "^2.39.0",
         "lucide-react": "^0.300.0",
+        ...scaffoldDependencies,
       },
     },
     options: {

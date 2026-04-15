@@ -163,3 +163,41 @@ describe("normalizeExports (via buildSandpackConfig)", () => {
     expect(config.files["/Btn.jsx"].code).toBe(original);
   });
 });
+
+describe("scaffold dependencies injection", () => {
+  it("merges scaffold dependencies into customSetup", () => {
+    const files = {
+      "/App.js": "export default function App() { return null; }",
+    };
+    const deps = { "recharts": "^2.0.0", "framer-motion": "^11.0.0" };
+    const config = buildSandpackConfig(files, "proj-1", deps);
+    expect(config.customSetup?.dependencies).toEqual(
+      expect.objectContaining({
+        "@supabase/supabase-js": "^2.39.0",
+        "lucide-react": "^0.300.0",
+        "recharts": "^2.0.0",
+        "framer-motion": "^11.0.0",
+      })
+    );
+  });
+
+  it("works without scaffold dependencies (backward compatible)", () => {
+    const files = {
+      "/App.js": "export default function App() { return null; }",
+    };
+    const config = buildSandpackConfig(files, "proj-1");
+    expect(config.customSetup?.dependencies).toEqual({
+      "@supabase/supabase-js": "^2.39.0",
+      "lucide-react": "^0.300.0",
+    });
+  });
+
+  it("scaffold dependency overrides default version", () => {
+    const files = {
+      "/App.js": "export default function App() { return null; }",
+    };
+    const deps = { "lucide-react": "^0.400.0" };
+    const config = buildSandpackConfig(files, "proj-1", deps);
+    expect(config.customSetup?.dependencies?.["lucide-react"]).toBe("^0.400.0");
+  });
+});

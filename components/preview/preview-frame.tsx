@@ -22,10 +22,11 @@ interface PreviewFrameProps {
   projectId: string;
   errorFixEnabled?: boolean;
   onSandpackError?: (error: SandpackRuntimeError) => void;
+  scaffoldDependencies?: Readonly<Record<string, string>>;
 }
 
-export function PreviewFrame({ files, projectId, errorFixEnabled = false, onSandpackError }: PreviewFrameProps) {
-  const config = buildSandpackConfig(files, projectId);
+export function PreviewFrame({ files, projectId, errorFixEnabled = false, onSandpackError, scaffoldDependencies }: PreviewFrameProps) {
+  const config = buildSandpackConfig(files, projectId, scaffoldDependencies);
   const appCode = files["/App.js"] ?? "";
   const sandpackKey = `${Object.keys(files).length}-${appCode.length}-${appCode.slice(0, 40)}`;
 

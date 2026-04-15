@@ -24,6 +24,7 @@ interface PreviewPanelProps {
   errorFixEnabled?: boolean;
   onSandpackError?: (error: SandpackRuntimeError) => void;
   isFixingError?: boolean;
+  scaffoldDependencies?: Readonly<Record<string, string>>;
 }
 
 export function PreviewPanel({
@@ -40,6 +41,7 @@ export function PreviewPanel({
   errorFixEnabled = false,
   onSandpackError,
   isFixingError = false,
+  scaffoldDependencies,
 }: PreviewPanelProps) {
   const [tab, setTab] = useState<Tab>("preview");
   const [isExporting, setIsExporting] = useState(false);
@@ -221,6 +223,7 @@ export function PreviewPanel({
                 projectId={projectId}
                 errorFixEnabled={errorFixEnabled}
                 onSandpackError={onSandpackError}
+                scaffoldDependencies={scaffoldDependencies}
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-full gap-3 bg-[#f9fafb] text-center px-8">

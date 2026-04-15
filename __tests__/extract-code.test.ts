@@ -5,7 +5,7 @@
  * This utility handles the fallback case where fences slip through.
  */
 
-import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced, hasUnterminatedLiteral, extractFileExports, extractFileImports, checkImportExportConsistency } from "@/lib/extract-code";
+import { extractReactCode, extractMultiFileCode, findMissingLocalImports, findMissingLocalImportsWithNames, extractMultiFileCodePartial, deduplicateDefaultExport, isDelimitersBalanced, hasUnterminatedLiteral, extractFileExports, extractFileImports, checkImportExportConsistency, checkDisallowedImports } from "@/lib/extract-code";
 
 describe("extractReactCode", () => {
   it("extracts code from ```jsx fences", () => {
@@ -719,5 +719,55 @@ describe("checkImportExportConsistency", () => {
       "/X.js": "export function X() {}\nexport default X;",
     };
     expect(checkImportExportConsistency(files)).toHaveLength(0);
+  });
+});
+
+describe("checkDisallowedImports — blacklist mode", () => {
+  it("allows a non-blacklisted external package (recharts)", () => {
+    const files = { "/App.js": "import { LineChart } from 'recharts';" };
+    expect(checkDisallowedImports(files)).toHaveLength(0);
+  });
+
+  it("blocks a blacklisted Node native module (fs)", () => {
+    const files = { "/App.js": "import fs from 'fs';" };
+    expect(checkDisallowedImports(files)).toHaveLength(1);
+  });
+
+  it("blocks a blacklisted server framework (express)", () => {
+    const files = { "/App.js": "import express from 'express';" };
+    expect(checkDisallowedImports(files)).toHaveLength(1);
+  });
+
+  it("blocks a blacklisted oversized package (three)", () => {
+    const files = { "/App.js": "import * as THREE from 'three';" };
+    expect(checkDisallowedImports(files)).toHaveLength(1);
+  });
+
+  it("allows react, react-dom, lucide-react as always", () => {
+    const files = {
+      "/App.js":
+        "import React from 'react'; import { createRoot } from 'react-dom/client'; import { Home } from 'lucide-react';",
+    };
+    expect(checkDisallowedImports(files)).toHaveLength(0);
+  });
+
+  it("allows framer-motion (previously blocked)", () => {
+    const files = { "/App.js": "import { motion } from 'framer-motion';" };
+    expect(checkDisallowedImports(files)).toHaveLength(0);
+  });
+
+  it("allows recharts (previously blocked)", () => {
+    const files = { "/App.js": "import { BarChart } from 'recharts';" };
+    expect(checkDisallowedImports(files)).toHaveLength(0);
+  });
+
+  it("allows zustand (previously blocked)", () => {
+    const files = { "/App.js": "import { create } from 'zustand';" };
+    expect(checkDisallowedImports(files)).toHaveLength(0);
+  });
+
+  it("blocks child_process", () => {
+    const files = { "/App.js": "import { exec } from 'child_process';" };
+    expect(checkDisallowedImports(files)).toHaveLength(1);
   });
 });
