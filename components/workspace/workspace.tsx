@@ -64,6 +64,10 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
     );
     setVersions((prev) => [...prev, newVersion]);
     setPreviewingVersion(null);
+    // Sync iterationContext if the restored version carried a snapshot
+    if (newVersion.iterationSnapshot) {
+      setIterationContext(newVersion.iterationSnapshot);
+    }
   }
 
   return (
