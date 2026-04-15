@@ -106,20 +106,20 @@ describe("getSystemPrompt", () => {
     expect(prompt).toContain("lucide-react");
   });
 
-  // GP-PKG-02: engineer prompt 包含 recharts 在禁止列表中
-  it("GP-PKG-02: engineer 提示词明确禁止使用 recharts", () => {
+  // GP-PKG-02: engineer prompt 包含 express 在禁止列表中（黑名单方式）
+  it("GP-PKG-02: engineer 提示词明确禁止使用 express（黑名单中）", () => {
     const prompt = getSystemPrompt("engineer", projectId);
-    expect(prompt).toContain("recharts");
+    expect(prompt).toContain("express");
     const forbiddenIdx = prompt.indexOf("绝对禁止");
-    const rechartsIdx = prompt.indexOf("recharts");
+    const expressIdx = prompt.indexOf("express");
     expect(forbiddenIdx).toBeGreaterThanOrEqual(0);
-    expect(rechartsIdx).toBeGreaterThan(forbiddenIdx);
+    expect(expressIdx).toBeGreaterThan(forbiddenIdx);
   });
 
-  // GP-PKG-03: engineer prompt 包含 framer-motion 在禁止列表中
-  it("GP-PKG-03: engineer 提示词明确禁止使用 framer-motion", () => {
+  // GP-PKG-03: engineer prompt 包含 prisma 在禁止列表中
+  it("GP-PKG-03: engineer 提示词明确禁止使用 prisma（黑名单中）", () => {
     const prompt = getSystemPrompt("engineer", projectId);
-    expect(prompt).toContain("framer-motion");
+    expect(prompt).toContain("prisma");
   });
 
   // GP-PKG-04: engineer prompt 包含包限制指令标识
@@ -419,14 +419,14 @@ describe("snipCompletedFiles", () => {
     expect(signature.length).toBeLessThan(completed["/Button.js"].length);
   });
 
-  // GP-SC-06: when target file has >5 direct deps (composer pattern), even
+  // GP-SC-06: when target file has >10 direct deps (composer pattern), even
   // direct deps are compressed to signatures to protect against prompt bloat.
-  it("GP-SC-06: composer 层（direct deps > 5）也压缩直接依赖", () => {
+  it("GP-SC-06: composer 层（direct deps > 10）也压缩直接依赖", () => {
     const depCode =
       "export function Dep({ a, b }) {\n  return <div />;\n}\nconst hidden = 1;";
     const completed: Record<string, string> = {};
     const deps: string[] = [];
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 11; i++) {
       const path = `/dep${i}.js`;
       completed[path] = depCode;
       deps.push(path);
@@ -451,7 +451,7 @@ describe("snipCompletedFiles", () => {
 
   // GP-SC-07: normal (non-composer) layer still gets full code for direct deps,
   // confirming the threshold defense does not regress the common case.
-  it("GP-SC-07: 非 composer 层（direct deps ≤ 5）direct deps 仍保留完整代码", () => {
+  it("GP-SC-07: 非 composer 层（direct deps ≤ 10）direct deps 仍保留完整代码", () => {
     const depCode =
       "export function Dep({ a }) {\n  return <div />;\n}\nconst hidden = 1;";
     const completed = { "/dep.js": depCode };
@@ -517,13 +517,13 @@ describe("getMultiFileEngineerPrompt retryHint", () => {
     expect(prompt).toContain("const unclosed = { field:");
   });
 
-  it("retry block appears before 【严禁包限制", () => {
+  it("retry block appears before 【第三方包规则", () => {
     const prompt = _getMultiFileEngineerPrompt({
       ...baseInput,
       retryHint: { attempt: 2, reason: "parse_failed" },
     });
     const retryIdx = prompt.indexOf("【重试提示");
-    const banIdx = prompt.indexOf("【严禁包限制");
+    const banIdx = prompt.indexOf("【第三方包规则");
     expect(retryIdx).toBeGreaterThanOrEqual(0);
     expect(banIdx).toBeGreaterThan(retryIdx);
   });
@@ -577,6 +577,70 @@ describe("buildMissingFileEngineerPrompt", () => {
       "pid"
     );
     expect(prompt).toContain("lucide-react");
-    expect(prompt).toContain("严禁");
+    expect(prompt).toContain("绝对禁止");
+  });
+});
+
+describe("dynamic line limits", () => {
+  it("uses maxLines from scaffold file when provided", () => {
+    const prompt = getMultiFileEngineerPrompt({
+      projectId: "test-proj",
+      targetFiles: [
+        { path: "/game.js", description: "game loop", exports: ["default"], deps: [], hints: "core", maxLines: 400 },
+      ],
+      sharedTypes: "",
+      completedFiles: {},
+      designNotes: "test",
+    });
+    expect(prompt).toContain("400");
+    expect(prompt).not.toContain("150 行");
+  });
+
+  it("defaults to 150 when maxLines is omitted", () => {
+    const prompt = getMultiFileEngineerPrompt({
+      projectId: "test-proj",
+      targetFiles: [
+        { path: "/button.js", description: "button", exports: ["default"], deps: [], hints: "simple" },
+      ],
+      sharedTypes: "",
+      completedFiles: {},
+      designNotes: "test",
+    });
+    expect(prompt).toContain("150");
+  });
+});
+
+describe("COMPOSER_DEP_THRESHOLD at 10", () => {
+  it("does not compress direct deps when target has 7 deps (below new threshold)", () => {
+    const completedFiles: Record<string, string> = {};
+    const deps: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const path = "/dep" + i + ".js";
+      deps.push(path);
+      completedFiles[path] = "export function dep" + i + "() { return " + i + "; }";
+    }
+    const result = snipCompletedFiles(completedFiles, [
+      { path: "/app.js", description: "app", exports: ["default"], deps, hints: "" },
+    ]);
+    for (const dep of deps) {
+      expect(result[dep]).toContain("return");
+    }
+  });
+});
+
+describe("architect prompt no longer has hardcoded package whitelist", () => {
+  it("does not contain recharts in the forbidden list", () => {
+    const prompt = getSystemPrompt("architect", "test-proj");
+    expect(prompt).not.toContain("recharts");
+  });
+
+  it("contains blacklist guidance about express", () => {
+    const prompt = getSystemPrompt("architect", "test-proj");
+    expect(prompt).toContain("express");
+  });
+
+  it("mentions dependencies field", () => {
+    const prompt = getSystemPrompt("architect", "test-proj");
+    expect(prompt).toContain("dependencies");
   });
 });
