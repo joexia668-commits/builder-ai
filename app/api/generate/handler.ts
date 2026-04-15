@@ -61,14 +61,22 @@ export function createHandler(deps: GenerateDeps) {
     const resolvedModelId = resolveModelId(modelId);
     const provider = deps.createProvider(resolvedModelId);
 
-    const userContent =
-      agent === "pm"
-        ? context
+    let userContent: string;
+    switch (agent) {
+      case "pm":
+        userContent = context
           ? `用户需求：${prompt}\n\n${context}`
-          : `用户需求：${prompt}`
-        : agent === "architect"
-          ? `PM 的产品需求文档：\n\n${context}\n\n请基于以上 PRD 设计多文件 React 项目的文件结构和技术方案。`
-          : `请根据以下完整背景信息，生成完整可运行的 React 组件代码：\n\n${context}`;
+          : `用户需求：${prompt}`;
+        break;
+      case "architect":
+        userContent = `PM 的产品需求文档：\n\n${context}\n\n请基于以上 PRD 设计多文件 React 项目的文件结构和技术方案。`;
+        break;
+      case "decomposer":
+        userContent = `请根据以下产品需求文档拆解项目模块：\n\n${context}`;
+        break;
+      default:
+        userContent = `请根据以下完整背景信息，生成完整可运行的 React 组件代码：\n\n${context}`;
+    }
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -111,12 +119,12 @@ export function createHandler(deps: GenerateDeps) {
             }
           };
 
-          // PM outputs bare JSON — enable JSON mode. Architect uses two-phase <thinking>/<output>
-          // format, so JSON mode must be OFF to allow the thinking block to appear.
+          // PM and decomposer output bare JSON — enable JSON mode. Architect uses two-phase
+          // <thinking>/<output> format, so JSON mode must be OFF to allow the thinking block.
           const completionOptions: CompletionOptions =
             triageMode
               ? { jsonMode: true, maxOutputTokens: 512 }
-              : agent === "pm"
+              : agent === "pm" || agent === "decomposer"
                 ? { jsonMode: true }
                 : {};
 
@@ -156,6 +164,11 @@ export function createHandler(deps: GenerateDeps) {
           if (tap !== null) {
             pendingTapEvents.push(...tap.finalize());
             flushTapPending();
+          }
+
+          if (agent === "decomposer") {
+            // Decomposer returns raw JSON — client parses it
+            send(controller, { type: "code_complete", code: fullContent });
           }
 
           if (agent === "engineer" && !triageMode) {
