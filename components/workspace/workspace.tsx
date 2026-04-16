@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ConversationSidebar } from "@/components/sidebar/conversation-sidebar";
@@ -9,6 +9,8 @@ import { PreviewPanel } from "@/components/preview/preview-panel";
 import { DemoBanner } from "@/components/layout/demo-banner";
 import { getVersionFiles } from "@/lib/version-files";
 import { useGenerationSession } from "@/hooks/use-generation-session";
+import { createErrorCollector } from "@/lib/error-collector";
+import type { ErrorCollector } from "@/lib/error-collector";
 import type { Project, ProjectMessage, ProjectVersion, IterationContext } from "@/lib/types";
 
 interface WorkspaceProps {
@@ -63,6 +65,16 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
     project.iterationContext ?? null
   );
   const [scaffoldDependencies, setScaffoldDependencies] = useState<Record<string, string> | undefined>();
+
+  const errorCollectorRef = useRef<ErrorCollector>(createErrorCollector());
+
+  const handleViteError = useCallback((errorText: string) => {
+    errorCollectorRef.current.collect({ source: "vite", message: errorText });
+  }, []);
+
+  const handleRuntimeError = useCallback((errorText: string) => {
+    errorCollectorRef.current.collect({ source: "runtime", message: errorText });
+  }, []);
 
   const displayFiles = previewingVersion
     ? getVersionFiles(previewingVersion as { code: string; files?: Record<string, string> | null })
@@ -146,6 +158,7 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
             onScaffoldDependenciesChange={setScaffoldDependencies}
             onNewProject={() => router.push("/")}
             onFilesChange={setCurrentFiles}
+            errorCollectorRef={errorCollectorRef}
           />
         </div>
 
@@ -167,6 +180,8 @@ export function Workspace({ project, allProjects, isDemo = false }: WorkspacePro
             liveStreams={liveStreams}
             engineerProgress={engineerProgress}
             scaffoldDependencies={scaffoldDependencies}
+            onViteError={handleViteError}
+            onRuntimeError={handleRuntimeError}
           />
         </div>
       </div>

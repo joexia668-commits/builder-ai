@@ -22,6 +22,8 @@ interface PreviewPanelProps {
   liveStreams: Record<string, LiveFileStream>;
   engineerProgress: EngineerProgress | null;
   scaffoldDependencies?: Readonly<Record<string, string>>;
+  onViteError?: (errorText: string) => void;
+  onRuntimeError?: (errorText: string) => void;
 }
 
 export function PreviewPanel({
@@ -36,6 +38,8 @@ export function PreviewPanel({
   liveStreams,
   engineerProgress,
   scaffoldDependencies,
+  onViteError,
+  onRuntimeError,
 }: PreviewPanelProps) {
   const [tab, setTab] = useState<Tab>("preview");
   const [isExporting, setIsExporting] = useState(false);
@@ -216,6 +220,8 @@ export function PreviewPanel({
                 files={files}
                 projectId={projectId}
                 scaffoldDependencies={scaffoldDependencies}
+                onViteError={onViteError}
+                onRuntimeError={onRuntimeError}
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-full gap-3 bg-[#f9fafb] text-center px-8">

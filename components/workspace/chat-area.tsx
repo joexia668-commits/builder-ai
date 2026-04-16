@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback, type RefObject } from "react";
 import { useGenerationSession } from "@/hooks/use-generation-session";
 import {
   updateSession,
@@ -40,6 +40,8 @@ import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportE
 import { ERROR_DISPLAY } from "@/lib/error-codes";
 import { computeChangedFiles } from "@/lib/version-files";
 import type { ErrorCode } from "@/lib/types";
+import type { ErrorCollector } from "@/lib/error-collector";
+import { buildAutoFixContext } from "@/lib/agent-context";
 import type {
   Project,
   ProjectMessage,
@@ -73,6 +75,7 @@ interface ChatAreaProps {
   onScaffoldDependenciesChange?: (deps: Record<string, string> | undefined) => void;
   /** Called during complex-path generation to update preview files incrementally (no version creation). */
   onFilesChange?: (files: Record<string, string>) => void;
+  errorCollectorRef?: RefObject<ErrorCollector>;
 }
 
 function computeMaxPatchFiles(totalFiles: number): number {
@@ -217,9 +220,16 @@ export function ChatArea({
   onNewProject,
   onScaffoldDependenciesChange,
   onFilesChange,
+  errorCollectorRef,
 }: ChatAreaProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const persistModelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const MAX_AUTO_FIX_ATTEMPTS = 3;
+  const autoFixAttemptRef = useRef(0);
+  const isAutoFixingRef = useRef(false);
+  const autoFixTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestFilesRef = useRef<Record<string, string>>({});
 
   const [selectedModel, setSelectedModel] = useState<string>(
     initialModel ?? DEFAULT_MODEL_ID
@@ -237,6 +247,12 @@ export function ChatArea({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, agentStates, transitionText]);
+
+  useEffect(() => {
+    return () => {
+      if (autoFixTimerRef.current) clearTimeout(autoFixTimerRef.current);
+    };
+  }, []);
 
   function updateAgentState(role: AgentRole, update: Partial<AgentState>) {
     const current = getSession(project.id);
@@ -282,6 +298,96 @@ export function ChatArea({
   function stopGeneration() {
     abortSession(project.id);
   }
+
+  const runAutoFix = useCallback(async (
+    files: Record<string, string>,
+    attempt: number,
+    signal: AbortSignal
+  ) => {
+    const collector = errorCollectorRef?.current;
+    if (!collector || !collector.hasErrors() || attempt > MAX_AUTO_FIX_ATTEMPTS) return;
+
+    isAutoFixingRef.current = true;
+    autoFixAttemptRef.current = attempt;
+
+    updateSession(project.id, {
+      agentStates: {
+        pm: { role: "pm" as const, status: "idle" as const, output: "" },
+        decomposer: { role: "decomposer" as const, status: "idle" as const, output: "" },
+        architect: { role: "architect" as const, status: "idle" as const, output: "" },
+        engineer: { role: "engineer" as const, status: "thinking" as const, output: `自动修复中 (${attempt}/${MAX_AUTO_FIX_ATTEMPTS})...` },
+      },
+    });
+
+    try {
+      const context = buildAutoFixContext(collector.formatForContext(), files);
+
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          prompt: "auto-fix",
+          agent: "engineer",
+          context,
+          modelId: selectedModel,
+          partialMultiFile: true,
+        }),
+        signal,
+      });
+
+      if (!response.ok || !response.body) return;
+
+      let fixedFiles: Record<string, string> | null = null;
+
+      await readSSEBody<{
+        type: string;
+        files?: Record<string, string>;
+        code?: string;
+        error?: string;
+      }>(response.body, (event) => {
+        if (event.type === "files_complete" && event.files) {
+          fixedFiles = event.files as Record<string, string>;
+        }
+      });
+
+      if (fixedFiles !== null && Object.keys(fixedFiles).length > 0) {
+        const safeFixedFiles: Record<string, string> = fixedFiles;
+        const mergedFiles = { ...files, ...safeFixedFiles };
+        latestFilesRef.current = mergedFiles;
+
+        // Reset collector for next round
+        collector.reset();
+
+        // Mount the fixed files — HMR will trigger and may produce new errors
+        const { mountIncremental } = await import("@/lib/container-runtime");
+        await mountIncremental(mergedFiles);
+
+        // Wait 3 seconds for errors to accumulate, then check again
+        await new Promise<void>((resolve) => {
+          autoFixTimerRef.current = setTimeout(resolve, 3000);
+        });
+
+        if (collector.hasErrors() && attempt < MAX_AUTO_FIX_ATTEMPTS) {
+          await runAutoFix(mergedFiles, attempt + 1, signal);
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        console.error("[auto-fix] attempt", attempt, "failed:", err);
+      }
+    } finally {
+      isAutoFixingRef.current = false;
+      updateSession(project.id, {
+        agentStates: {
+          pm: { role: "pm" as const, status: "idle" as const, output: "" },
+          decomposer: { role: "decomposer" as const, status: "idle" as const, output: "" },
+          architect: { role: "architect" as const, status: "idle" as const, output: "" },
+          engineer: { role: "engineer" as const, status: "done" as const, output: "" },
+        },
+      });
+    }
+  }, [project.id, errorCollectorRef, selectedModel, MAX_AUTO_FIX_ATTEMPTS]);
 
   interface EngineerSSEResult {
     files: Record<string, string>;
@@ -1147,6 +1253,19 @@ export function ChatArea({
               });
               const version = await res.json();
               onFilesGenerated(finalFiles, version);
+
+              // Start error collection for auto-fix
+              if (errorCollectorRef?.current) {
+                latestFilesRef.current = finalFiles;
+                errorCollectorRef.current.reset();
+                if (autoFixTimerRef.current) clearTimeout(autoFixTimerRef.current);
+                autoFixTimerRef.current = setTimeout(() => {
+                  const collector = errorCollectorRef.current;
+                  if (collector && collector.hasErrors() && !isAutoFixingRef.current) {
+                    runAutoFix(finalFiles, 1, getSession(project.id).abortController.signal);
+                  }
+                }, 3000);
+              }
             }
 
             // Skip normal engineer loop iteration
