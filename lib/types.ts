@@ -283,6 +283,61 @@ export interface DecomposerOutput {
   readonly generateOrder: readonly (readonly string[])[];
 }
 
+// --- Orchestrator types ---
+
+export interface ExportEntry {
+  readonly name: string;
+  readonly kind: "function" | "class" | "const" | "type" | "interface" | "default" | "unknown";
+  readonly filePath: string;
+}
+
+export type ModuleStatus = "pending" | "generating" | "completed" | "failed" | "degraded";
+
+export interface ModuleContract {
+  readonly declared: {
+    readonly exports: readonly string[];
+    readonly consumes: readonly string[];
+    readonly stateContract: string;
+  };
+  actual: {
+    readonly exports: readonly ExportEntry[];
+    readonly filePaths: readonly string[];
+  } | null;
+  status: ModuleStatus;
+  failureReason?: string;
+  degradedExports?: readonly string[];
+}
+
+export interface ContractVerifyResult {
+  readonly satisfied: boolean;
+  readonly missingExports: readonly string[];
+  readonly extraExports: readonly string[];
+}
+
+export interface PlanRevision {
+  readonly type: "absorb" | "skip_cascade" | "stub" | "retry";
+  readonly description: string;
+  readonly timestamp: number;
+  readonly affected: readonly string[];
+}
+
+export interface FailedModule {
+  readonly name: string;
+  readonly reason: string;
+  readonly attempt: number;
+}
+
+export interface ExecutionPlan {
+  readonly original: DecomposerOutput;
+  modules: ModuleDefinition[];
+  pending: string[];
+  executing: string | null;
+  completed: string[];
+  failed: FailedModule[];
+  skipped: Array<{ name: string; reason: string }>;
+  revisions: PlanRevision[];
+}
+
 export type Complexity = "simple" | "complex";
 
 // Multi-file scaffold types (Architect agent output)
