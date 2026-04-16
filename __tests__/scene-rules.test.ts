@@ -133,3 +133,38 @@ describe("getArchitectSceneHint with gameSubtype", () => {
     expect(hint).not.toContain("GameBoard");
   });
 });
+
+describe("scene filtering by gameSubtype", () => {
+  it("SR-F-01: match3 excludes game-canvas and animation rules", () => {
+    const rules = getEngineerSceneRules(["game", "game-canvas", "animation"], "match3");
+    expect(rules).toContain("match3");
+    expect(rules).not.toContain("Canvas 2D API");
+    expect(rules).not.toContain("framer-motion");
+  });
+
+  it("SR-F-02: match3 excludes game-canvas architect hint", () => {
+    const hint = getArchitectSceneHint(["game", "game-canvas", "animation"], "match3");
+    expect(hint).toContain("GameBoard");
+    expect(hint).not.toContain("Canvas 2D API");
+    expect(hint).not.toContain("animation 类型");
+  });
+
+  it("SR-F-03: snake keeps game-canvas rules but excludes animation", () => {
+    const rules = getEngineerSceneRules(["game", "game-canvas", "animation"], "snake");
+    expect(rules).toContain("snake");
+    expect(rules).toContain("Canvas 2D API");
+    expect(rules).not.toContain("framer-motion");
+  });
+
+  it("SR-F-04: platformer keeps game-engine rules but excludes game-canvas", () => {
+    const rules = getEngineerSceneRules(["game-engine", "game-canvas"], "platformer");
+    expect(rules).toContain("Phaser 3");
+    expect(rules).not.toContain("Canvas 2D API");
+  });
+
+  it("SR-F-05: no filtering when gameSubtype is generic", () => {
+    const rules = getEngineerSceneRules(["game", "game-canvas", "animation"], "generic");
+    expect(rules).toContain("Canvas 2D API");
+    expect(rules).toContain("framer-motion");
+  });
+});

@@ -256,9 +256,33 @@ const GAME_SUBTYPE_ARCHITECT_HINTS: Record<Exclude<GameSubtype, "generic">, stri
 
 const GAME_SCENES = new Set<Scene>(["game", "game-engine", "game-canvas"]);
 
+/**
+ * When a known game subtype is active, filter out scenes that would inject
+ * contradictory rules (e.g. Canvas rules for a CSS-based match3 game).
+ * Also removes "animation" when any game scene is present — game subtypes
+ * already include their own animation guidance.
+ */
+const SUBTYPE_EXCLUDED_SCENES: Partial<Record<GameSubtype, ReadonlySet<Scene>>> = {
+  match3: new Set(["game-canvas", "game-engine", "animation"]),
+  snake: new Set(["game-engine", "animation"]),
+  tetris: new Set(["game-engine", "animation"]),
+  board: new Set(["game-engine", "game-canvas", "animation"]),
+  card: new Set(["game-engine", "game-canvas", "animation"]),
+  platformer: new Set(["game-canvas", "animation"]),
+};
+
+function filterScenes(scenes: Scene[], gameSubtype?: GameSubtype): Exclude<Scene, "general">[] {
+  const excluded = gameSubtype ? SUBTYPE_EXCLUDED_SCENES[gameSubtype] : undefined;
+  return scenes.filter((s): s is Exclude<Scene, "general"> => {
+    if (s === "general") return false;
+    if (excluded && excluded.has(s)) return false;
+    return true;
+  });
+}
+
 export function getEngineerSceneRules(scenes: Scene[], gameSubtype?: GameSubtype): string {
-  const blocks = scenes
-    .filter((s): s is Exclude<Scene, "general"> => s !== "general")
+  const filtered = filterScenes(scenes, gameSubtype);
+  const blocks = filtered
     .map((s) => SCENE_ENGINEER_RULES[s])
     .filter(Boolean);
 
@@ -272,8 +296,8 @@ export function getEngineerSceneRules(scenes: Scene[], gameSubtype?: GameSubtype
 }
 
 export function getArchitectSceneHint(scenes: Scene[], gameSubtype?: GameSubtype): string {
-  const hints = scenes
-    .filter((s): s is Exclude<Scene, "general"> => s !== "general")
+  const filtered = filterScenes(scenes, gameSubtype);
+  const hints = filtered
     .map((s) => SCENE_ARCHITECT_HINTS[s])
     .filter(Boolean);
 
