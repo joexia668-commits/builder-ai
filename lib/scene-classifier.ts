@@ -1,4 +1,4 @@
-import type { Scene, PmOutput } from "@/lib/types";
+import type { Scene, PmOutput, GameSubtype } from "@/lib/types";
 
 const MAX_SCENES = 3;
 
@@ -95,4 +95,43 @@ export function classifySceneFromPm(pm: PmOutput): Scene[] {
 
   if (matched.length === 0) return ["general"];
   return matched.slice(0, MAX_SCENES);
+}
+
+const GAME_SUBTYPE_KEYWORDS: Record<Exclude<GameSubtype, "generic">, readonly string[]> = {
+  match3: ["消消乐", "三消", "match-3", "match3", "candy crush", "bejeweled", "宝石迷阵", "宝石"],
+  snake: ["贪吃蛇", "snake"],
+  tetris: ["俄罗斯方块", "tetris", "方块下落"],
+  platformer: ["马里奥", "mario", "平台跳跃", "platformer", "超级玛丽"],
+  card: ["纸牌", "扑克", "solitaire", "card game", "卡牌"],
+  board: ["棋", "chess", "围棋", "五子棋", "gomoku", "tic-tac", "tictac", "井字棋"],
+};
+
+const PM_GAMETYPE_MAP: Record<string, GameSubtype> = {
+  puzzle: "match3",
+  platformer: "platformer",
+  shooter: "generic",
+  card: "card",
+  simple2d: "generic",
+};
+
+/**
+ * Classifies the specific game subtype from user prompt and optional PM output.
+ * Only meaningful when scene includes "game", "game-engine", or "game-canvas".
+ * Prompt keywords take priority; PM gameType is fallback for ambiguous prompts.
+ */
+export function classifyGameSubtype(prompt: string, pm?: PmOutput): GameSubtype {
+  const lower = prompt.toLowerCase();
+
+  for (const [subtype, keywords] of Object.entries(GAME_SUBTYPE_KEYWORDS) as [Exclude<GameSubtype, "generic">, readonly string[]][]) {
+    if (keywords.some((kw) => lower.includes(kw))) {
+      return subtype;
+    }
+  }
+
+  // Fallback to PM gameType if no prompt keyword matched
+  if (pm?.gameType) {
+    return PM_GAMETYPE_MAP[pm.gameType] ?? "generic";
+  }
+
+  return "generic";
 }

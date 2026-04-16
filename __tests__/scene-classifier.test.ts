@@ -1,5 +1,5 @@
 import type { Scene } from "@/lib/types";
-import { classifySceneFromPrompt, classifySceneFromPm } from "@/lib/scene-classifier";
+import { classifySceneFromPrompt, classifySceneFromPm, classifyGameSubtype } from "@/lib/scene-classifier";
 import type { PmOutput } from "@/lib/types";
 
 describe("Scene type", () => {
@@ -137,5 +137,53 @@ describe("classifySceneFromPm", () => {
       modules: ["Home", "Settings", "Profile", "GameBoard"],
     };
     expect(classifySceneFromPm(pm).length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe("classifyGameSubtype", () => {
+  it("GS-01: detects match3 from Chinese keyword 消消乐", () => {
+    expect(classifyGameSubtype("做一个消消乐游戏")).toBe("match3");
+  });
+
+  it("GS-02: detects match3 from English keyword", () => {
+    expect(classifyGameSubtype("build a match-3 puzzle")).toBe("match3");
+  });
+
+  it("GS-03: detects match3 from candy crush keyword", () => {
+    expect(classifyGameSubtype("make a candy crush clone")).toBe("match3");
+  });
+
+  it("GS-04: detects snake subtype", () => {
+    expect(classifyGameSubtype("做一个贪吃蛇")).toBe("snake");
+  });
+
+  it("GS-05: detects tetris subtype", () => {
+    expect(classifyGameSubtype("做俄罗斯方块")).toBe("tetris");
+  });
+
+  it("GS-06: detects platformer subtype", () => {
+    expect(classifyGameSubtype("做一个马里奥平台跳跃游戏")).toBe("platformer");
+  });
+
+  it("GS-07: detects card subtype", () => {
+    expect(classifyGameSubtype("做一个纸牌游戏")).toBe("card");
+  });
+
+  it("GS-08: detects board subtype", () => {
+    expect(classifyGameSubtype("做一个五子棋")).toBe("board");
+  });
+
+  it("GS-09: returns generic for unrecognized game", () => {
+    expect(classifyGameSubtype("做一个游戏")).toBe("generic");
+  });
+
+  it("GS-10: uses PM gameType when prompt keywords are ambiguous", () => {
+    const pm = { intent: "test", features: [], persistence: "none" as const, modules: [], gameType: "puzzle" };
+    expect(classifyGameSubtype("做一个游戏", pm)).toBe("match3");
+  });
+
+  it("GS-11: prompt keyword takes priority over PM gameType", () => {
+    const pm = { intent: "test", features: [], persistence: "none" as const, modules: [], gameType: "platformer" };
+    expect(classifyGameSubtype("做一个贪吃蛇游戏", pm)).toBe("snake");
   });
 });
