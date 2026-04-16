@@ -392,9 +392,23 @@ export function buildModuleArchitectContext(
 ): string {
   const parts: string[] = [];
 
+  // ── Per-module scene resolution ──
+  // If module has an explicit sceneType: use it (even "general" overrides global scenes).
+  // Only fall back to global sceneTypes when sceneType is absent (backward compat).
+  const moduleScenes: Scene[] = module.sceneType !== undefined
+    ? (module.sceneType !== "general" ? [module.sceneType] : ["general"])
+    : sceneTypes;
+  const moduleGameSubtype = module.sceneType && ["game", "game-engine", "game-canvas"].includes(module.sceneType)
+    ? gameSubtype
+    : undefined;
+
   // Inject game subtype architecture hints at the top
-  const sceneHint = getArchitectSceneHint(sceneTypes, gameSubtype);
+  const sceneHint = getArchitectSceneHint(moduleScenes, moduleGameSubtype);
   if (sceneHint) parts.push(sceneHint);
+
+  if (module.engineeringHints) {
+    parts.push(`【模块编码要点】${module.engineeringHints}`);
+  }
 
   parts.push("## 项目 PRD（摘要）");
   parts.push(`意图: ${pmOutput.intent}`);
@@ -443,7 +457,7 @@ export function buildModuleArchitectContext(
     }
   }
 
-  const nonGeneral = sceneTypes.filter((s) => s !== "general");
+  const nonGeneral = moduleScenes.filter((s) => s !== "general");
   if (nonGeneral.length > 0) {
     parts.push(`\n## 场景类型: ${nonGeneral.join(", ")}`);
   }
