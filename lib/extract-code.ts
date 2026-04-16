@@ -773,6 +773,50 @@ export function applyLucideIconFixes(
 }
 
 // ---------------------------------------------------------------------------
+// Redirect phantom type imports to sharedTypes file
+// ---------------------------------------------------------------------------
+
+const LOCAL_IMPORT_RE = /from\s+['"](\/(utils|components|lib|helpers|shared)\/types(?:\.ts|\.tsx|\.js)?)['"]/g;
+
+/**
+ * Rewrites imports pointing to non-existent type files (e.g. /utils/types,
+ * /components/types.ts) to the actual sharedTypes file (/types.ts).
+ * LLMs frequently invent these paths instead of using the existing /types.ts.
+ * Mutates `files` in place. Returns list of rewrites for logging.
+ */
+export function redirectPhantomTypeImports(files: Record<string, string>): string[] {
+  const existingPaths = new Set(Object.keys(files));
+  const rewrites: string[] = [];
+
+  for (const [filePath, code] of Object.entries(files)) {
+    const regex = new RegExp(LOCAL_IMPORT_RE.source, LOCAL_IMPORT_RE.flags);
+    let changed = false;
+    const newCode = code.replace(regex, (match, importPath: string) => {
+      // If the file actually exists, don't rewrite
+      if (existingPaths.has(importPath)) return match;
+      // Also check without extension
+      const withoutExt = importPath.replace(/\.(ts|tsx|js|jsx)$/, "");
+      for (const ext of [".ts", ".tsx", ".js", ".jsx"]) {
+        if (existingPaths.has(withoutExt + ext)) return match;
+      }
+      // File doesn't exist — redirect to /types.ts if it exists
+      if (existingPaths.has("/types.ts") || existingPaths.has("/types.js")) {
+        const target = existingPaths.has("/types.ts") ? "/types.ts" : "/types.js";
+        changed = true;
+        rewrites.push(`${filePath}: ${importPath} → ${target}`);
+        return match.replace(importPath, target);
+      }
+      return match;
+    });
+    if (changed) {
+      files[filePath] = newCode;
+    }
+  }
+
+  return rewrites;
+}
+
+// ---------------------------------------------------------------------------
 // JSX → TSX auto-rename for files containing TypeScript syntax
 // ---------------------------------------------------------------------------
 
