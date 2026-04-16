@@ -371,7 +371,11 @@ export function buildModuleArchitectContext(
   module: ModuleDefinition,
   skeletonFiles: Record<string, string>,
   completedModuleFiles: Record<string, string>,
-  sceneTypes: Scene[]
+  sceneTypes: Scene[],
+  registrySummary?: string,
+  planPosition?: { layer: number; totalLayers: number },
+  consumers?: string[],
+  failedModules?: Array<{ name: string; reason: string }>
 ): string {
   const parts: string[] = [];
   parts.push("## 项目 PRD（摘要）");
@@ -391,11 +395,33 @@ export function buildModuleArchitectContext(
     parts.push(`// === ${path} ===\n${code}`);
   }
 
-  if (Object.keys(completedModuleFiles).length > 0) {
+  if (registrySummary) {
+    parts.push(`\n${registrySummary}`);
+  } else if (Object.keys(completedModuleFiles).length > 0) {
     parts.push("\n## 已完成模块的导出签名");
     for (const [path, code] of Object.entries(completedModuleFiles)) {
       const exportLines = code.match(/^export\s+.+$/gm);
       if (exportLines) parts.push(`// ${path}: ${exportLines.join("; ")}`);
+    }
+  }
+
+  if (planPosition) {
+    parts.push(`\n## 当前模块在生成计划中的位置`);
+    parts.push(`第 ${planPosition.layer} 层 / 共 ${planPosition.totalLayers} 层`);
+  }
+
+  if (consumers && consumers.length > 0) {
+    parts.push(`\n## 下游消费者`);
+    parts.push(`以下模块将消费你的导出:`);
+    for (const c of consumers) {
+      parts.push(`- ${c}`);
+    }
+  }
+
+  if (failedModules && failedModules.length > 0) {
+    parts.push(`\n## 失败模块`);
+    for (const f of failedModules) {
+      parts.push(`${f.name}: ${f.reason}`);
     }
   }
 

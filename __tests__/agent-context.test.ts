@@ -5,8 +5,9 @@ import {
   buildDirectMultiFileEngineerContext,
   buildPmIterationContext,
   buildTriageContext,
+  buildModuleArchitectContext,
 } from "@/lib/agent-context";
-import type { PmOutput } from "@/lib/types";
+import type { PmOutput, ModuleDefinition } from "@/lib/types";
 
 describe("buildEngineerContext", () => {
   const userPrompt = "帮我做一个待办事项应用";
@@ -357,5 +358,67 @@ describe("buildTriageContext", () => {
   it("asks for JSON array output", () => {
     const result = buildTriageContext(prompt, filePaths);
     expect(result).toContain("JSON");
+  });
+});
+
+describe("buildModuleArchitectContext — enhanced params", () => {
+  const pm: PmOutput = {
+    intent: "test app",
+    features: ["f1"],
+    persistence: "none",
+    modules: ["auth"],
+  };
+  const mod: ModuleDefinition = {
+    name: "ui",
+    description: "ui components",
+    estimatedFiles: 3,
+    deps: ["auth"],
+    interface: { exports: ["Button"], consumes: ["User"], stateContract: "" },
+  };
+
+  it("AC-ENH-01: includes registry summary when provided", () => {
+    const result = buildModuleArchitectContext(
+      pm, mod, {}, {}, ["general"],
+      "## 模块接口注册表\nauth [completed]:\n  exports: User (interface)",
+    );
+    expect(result).toContain("模块接口注册表");
+    expect(result).toContain("auth [completed]");
+  });
+
+  it("AC-ENH-02: includes plan position when provided", () => {
+    const result = buildModuleArchitectContext(
+      pm, mod, {}, {}, ["general"],
+      undefined,
+      { layer: 2, totalLayers: 3 },
+    );
+    expect(result).toContain("第 2 层");
+    expect(result).toContain("共 3 层");
+  });
+
+  it("AC-ENH-03: includes consumers when provided", () => {
+    const result = buildModuleArchitectContext(
+      pm, mod, {}, {}, ["general"],
+      undefined, undefined,
+      ["dashboard", "settings"],
+    );
+    expect(result).toContain("dashboard");
+    expect(result).toContain("settings");
+  });
+
+  it("AC-ENH-04: includes failed modules when provided", () => {
+    const result = buildModuleArchitectContext(
+      pm, mod, {}, {}, ["general"],
+      undefined, undefined, undefined,
+      [{ name: "api", reason: "timeout" }],
+    );
+    expect(result).toContain("api");
+    expect(result).toContain("timeout");
+  });
+
+  it("AC-ENH-05: omits sections when optional params not provided", () => {
+    const result = buildModuleArchitectContext(pm, mod, {}, {}, ["general"]);
+    expect(result).not.toContain("模块接口注册表");
+    expect(result).not.toContain("下游消费者");
+    expect(result).toContain("当前模块");
   });
 });
