@@ -1,4 +1,5 @@
 import type { DecomposerOutput, ModuleDefinition } from "@/lib/types";
+import { breakModuleCycles, topologicalSortModules } from "@/lib/module-topo-sort";
 export { buildDecomposerContext } from "@/lib/agent-context";
 
 // ---------------------------------------------------------------------------
@@ -106,21 +107,23 @@ export function validateDecomposerOutput(output: DecomposerOutput): DecomposerOu
   const validModuleNames = new Set(clampedModules.map((m) => m.name));
 
   // Clamp estimatedFiles and remove phantom deps
-  const cleanedModules: ModuleDefinition[] = clampedModules.map((m) => ({
+  let cleanedModules: ModuleDefinition[] = clampedModules.map((m) => ({
     ...m,
     estimatedFiles: Math.min(m.estimatedFiles, MAX_FILES_PER_MODULE),
     deps: m.deps.filter((dep) => validModuleNames.has(dep)),
   }));
 
-  // Filter generateOrder to only include valid module names; remove empty layers
-  const cleanedOrder = output.generateOrder
-    .map((layer) => layer.filter((name) => validModuleNames.has(name)))
-    .filter((layer) => layer.length > 0);
+  // Step 5: detect and break module-level circular dependencies
+  const cycleWarnings: string[] = [];
+  cleanedModules = breakModuleCycles(cleanedModules, cycleWarnings);
+
+  // Step 6: recompute generateOrder from deps (ignore LLM-provided order)
+  const recomputedOrder = topologicalSortModules(cleanedModules);
 
   return {
     skeleton: output.skeleton,
     modules: cleanedModules,
-    generateOrder: cleanedOrder,
+    generateOrder: recomputedOrder,
   };
 }
 

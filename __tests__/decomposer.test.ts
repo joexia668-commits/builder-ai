@@ -163,4 +163,61 @@ describe("validateDecomposerOutput", () => {
     expect(result.generateOrder[0]).toEqual(["auth"]);
     expect(result.generateOrder[1]).toEqual(["dashboard"]);
   });
+
+  it("DC-V-06: circular deps A→B→A are broken", () => {
+    const cyclic: DecomposerOutput = {
+      ...VALID_OUTPUT,
+      modules: [
+        {
+          name: "a",
+          description: "mod a",
+          estimatedFiles: 2,
+          deps: ["b"],
+          interface: { exports: ["A"], consumes: ["B"], stateContract: "" },
+        },
+        {
+          name: "b",
+          description: "mod b",
+          estimatedFiles: 2,
+          deps: ["a"],
+          interface: { exports: ["B"], consumes: ["A"], stateContract: "" },
+        },
+      ],
+      generateOrder: [["a", "b"]],
+    };
+    const result = validateDecomposerOutput(cyclic);
+    const allNames = result.generateOrder.flat();
+    expect(allNames.sort()).toEqual(["a", "b"]);
+    const firstMod = result.modules.find((m) => m.name === result.generateOrder[0][0])!;
+    const secondNames = result.generateOrder.slice(1).flat();
+    const depsInSecond = firstMod.deps.filter((d) => secondNames.includes(d));
+    expect(depsInSecond).toEqual([]);
+  });
+
+  it("DC-V-07: generateOrder is recomputed from deps (ignoring LLM order)", () => {
+    const wrongOrder: DecomposerOutput = {
+      ...VALID_OUTPUT,
+      modules: [
+        {
+          name: "api",
+          description: "api",
+          estimatedFiles: 2,
+          deps: ["data"],
+          interface: { exports: [], consumes: [], stateContract: "" },
+        },
+        {
+          name: "data",
+          description: "data",
+          estimatedFiles: 2,
+          deps: [],
+          interface: { exports: [], consumes: [], stateContract: "" },
+        },
+      ],
+      generateOrder: [["api"], ["data"]],
+    };
+    const result = validateDecomposerOutput(wrongOrder);
+    const dataLayer = result.generateOrder.findIndex((l) => l.includes("data"));
+    const apiLayer = result.generateOrder.findIndex((l) => l.includes("api"));
+    expect(dataLayer).toBeLessThan(apiLayer);
+  });
 });
