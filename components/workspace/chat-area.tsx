@@ -36,7 +36,7 @@ import { parseDecomposerOutput, validateDecomposerOutput, buildDecomposerContext
 import { classifyIntent } from "@/lib/intent-classifier";
 import { classifySceneFromPrompt, classifySceneFromPm } from "@/lib/scene-classifier";
 import { getEngineerSceneRules, getArchitectSceneHint } from "@/lib/scene-rules";
-import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency, checkDisallowedImports, checkUndefinedLucideIcons, applyLucideIconFixes } from "@/lib/extract-code";
+import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency, checkDisallowedImports, checkUndefinedLucideIcons, applyLucideIconFixes, fixJsxWithTypeScript } from "@/lib/extract-code";
 import { ERROR_DISPLAY } from "@/lib/error-codes";
 import { computeChangedFiles } from "@/lib/version-files";
 import type { ErrorCode } from "@/lib/types";
@@ -1002,6 +1002,8 @@ export function ChatArea({
                 // Intentionally do NOT return here — stubs are injected by prepareFiles()
                 // in PreviewFrame so the preview renders with partial functionality.
               }
+              // Rename .jsx files containing TypeScript syntax to .tsx (Vite compatibility)
+              fixJsxWithTypeScript(allCompletedFiles);
               // Fix invalid lucide-react icon names (static replacement, no LLM call)
               const lucideFixes = checkUndefinedLucideIcons(allCompletedFiles);
               if (lucideFixes.length > 0) {
@@ -1711,6 +1713,9 @@ export function ChatArea({
                 },
               });
             }
+
+            // Rename .jsx files containing TypeScript syntax to .tsx (Vite compatibility)
+            fixJsxWithTypeScript(allModuleFiles);
 
             // Lucide icon fixes
             const lucideFixes = checkUndefinedLucideIcons(allModuleFiles);

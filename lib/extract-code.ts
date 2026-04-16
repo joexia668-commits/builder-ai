@@ -771,3 +771,53 @@ export function applyLucideIconFixes(
     files[fix.filePath] = files[fix.filePath].replace(re, fix.replacement);
   }
 }
+
+// ---------------------------------------------------------------------------
+// JSX → TSX auto-rename for files containing TypeScript syntax
+// ---------------------------------------------------------------------------
+
+const TS_SYNTAX_IN_JSX_RE = /(?:^|\n)\s*export\s+(?:interface|type)\s+\w+/;
+
+/**
+ * Detects .jsx files that contain TypeScript syntax (export interface/type)
+ * and renames them to .tsx. Updates import references in all other files.
+ * Mutates `files` in place — deletes old keys, adds new keys.
+ */
+export function fixJsxWithTypeScript(files: Record<string, string>): string[] {
+  const renames = new Map<string, string>();
+  for (const [path, code] of Object.entries(files)) {
+    if (path.endsWith(".jsx") && TS_SYNTAX_IN_JSX_RE.test(code)) {
+      renames.set(path, path.replace(/\.jsx$/, ".tsx"));
+    }
+  }
+  if (renames.size === 0) return [];
+
+  // Rename files and update import references
+  const renamed: string[] = [];
+  const renameEntries = Array.from(renames.entries());
+  for (const [oldPath, newPath] of renameEntries) {
+    files[newPath] = files[oldPath];
+    delete files[oldPath];
+    renamed.push(`${oldPath} → ${newPath}`);
+  }
+
+  // Update import paths in all files
+  const allPaths = Object.keys(files);
+  for (const path of allPaths) {
+    let code = files[path];
+    for (const [oldPath, newPath] of renameEntries) {
+      // Replace imports that reference the old .jsx path (with extension)
+      const oldBase = oldPath.replace(/\.jsx$/, "");
+      const newBase = newPath.replace(/\.tsx$/, "");
+      if (oldBase !== newBase) {
+        // Path stem changed — shouldn't happen since we only change extension
+        code = code.replaceAll(oldPath, newPath);
+      }
+      // Replace explicit .jsx extension references
+      code = code.replaceAll(oldPath, newPath);
+    }
+    files[path] = code;
+  }
+
+  return renamed;
+}
