@@ -341,6 +341,11 @@ UI 样式只使用 Tailwind CSS class。
 图标只使用 lucide-react。若需同时从 lucide-react 和本地组件文件导入同名符号，必须对图标做别名：import { Calculator as CalculatorIcon } from 'lucide-react'，JSX 中使用别名。
 HTTP 请求只使用原生 fetch API。
 
+【文件扩展名与 TypeScript 语法规则】
+.jsx 文件禁止使用 TypeScript 语法（interface、type、泛型参数 <T>）。
+如需定义类型，必须放在 .ts 或 .tsx 文件中。
+.jsx 文件只写纯 JavaScript + JSX。
+
 【React Hooks 导入规则 - 每个文件必须显式导入】
 每个使用 React hooks 的文件顶部必须有明确的 import 语句，Sandpack 沙箱不会自动注入：
   import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
