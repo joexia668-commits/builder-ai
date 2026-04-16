@@ -1900,7 +1900,13 @@ export function ChatArea({
             }
 
             // Disallowed imports
-            const pkgViolations = checkDisallowedImports(allModuleFiles, detectedScenes);
+            const allModuleSceneTypes: Scene[] = Array.from(new Set<Scene>([
+              ...detectedScenes,
+              ...validated.modules
+                .map((m) => m.sceneType)
+                .filter((s): s is Scene => s !== undefined),
+            ]));
+            const pkgViolations = checkDisallowedImports(allModuleFiles, allModuleSceneTypes);
             if (pkgViolations.length > 0) {
               const violatedPaths = Array.from(new Set(pkgViolations.map((v) => v.filePath)));
               if (violatedPaths.length <= computeMaxPatchFiles(Object.keys(allModuleFiles).length)) {
