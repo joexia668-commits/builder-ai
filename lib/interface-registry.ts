@@ -105,7 +105,7 @@ export function createInterfaceRegistry(output: DecomposerOutput): InterfaceRegi
 
     toContextSummary(): string {
       const lines: string[] = ["## 模块接口注册表"];
-      for (const [name, contract] of contracts) {
+      for (const [name, contract] of Array.from(contracts)) {
         const status = contract.status;
         lines.push(`${name} [${status}]:`);
 

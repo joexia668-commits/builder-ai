@@ -72,7 +72,7 @@ describe("createInterfaceRegistry", () => {
     });
     const result = registry.verifyContract("auth");
     expect(result.satisfied).toBe(false);
-    expect(result.missingExports.sort()).toEqual(["AuthProvider", "login"]);
+    expect([...result.missingExports].sort()).toEqual(["AuthProvider", "login"]);
   });
 
   it("IR-06: verifyContract — extra exports reported but still satisfied", () => {
