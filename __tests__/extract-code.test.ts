@@ -187,6 +187,35 @@ describe("findMissingLocalImports", () => {
   it("returns empty array for empty files map", () => {
     expect(findMissingLocalImports({})).toEqual([]);
   });
+
+  it("detects missing relative imports (./path)", () => {
+    const files = {
+      "/App.js": `import { HomeView } from './views/HomeView.js'`,
+    };
+    expect(findMissingLocalImports(files)).toEqual(["/views/HomeView.js"]);
+  });
+
+  it("resolves relative imports from nested files", () => {
+    const files = {
+      "/views/App.js": `import { Header } from './components/Header.js'`,
+    };
+    expect(findMissingLocalImports(files)).toEqual(["/views/components/Header.js"]);
+  });
+
+  it("resolves parent-relative imports (../path)", () => {
+    const files = {
+      "/views/Home.js": `import { utils } from '../lib/utils.js'`,
+    };
+    expect(findMissingLocalImports(files)).toEqual(["/lib/utils.js"]);
+  });
+
+  it("does not flag present paths for relative imports", () => {
+    const files = {
+      "/App.js": `import { HomeView } from './views/HomeView.js'`,
+      "/views/HomeView.js": `export function HomeView() { return null; }`,
+    };
+    expect(findMissingLocalImports(files)).toEqual([]);
+  });
 });
 
 describe("findMissingLocalImportsWithNames", () => {
@@ -249,6 +278,42 @@ describe("findMissingLocalImportsWithNames", () => {
 
   it("returns empty map for empty files", () => {
     expect(findMissingLocalImportsWithNames({}).size).toBe(0);
+  });
+
+  it("detects missing relative imports (./path) with named exports", () => {
+    const files = {
+      "/App.js": `import { HomeView } from './views/HomeView.js'\nimport { GameView } from './views/GameView.js'`,
+    };
+    const result = findMissingLocalImportsWithNames(files);
+    expect(result.size).toBe(2);
+    expect(result.get("/views/HomeView.js")!.has("HomeView")).toBe(true);
+    expect(result.get("/views/GameView.js")!.has("GameView")).toBe(true);
+  });
+
+  it("resolves relative imports from nested directories", () => {
+    const files = {
+      "/pages/Dashboard.js": `import { Chart } from './components/Chart.js'`,
+    };
+    const result = findMissingLocalImportsWithNames(files);
+    expect(result.has("/pages/components/Chart.js")).toBe(true);
+    expect(result.get("/pages/components/Chart.js")!.has("Chart")).toBe(true);
+  });
+
+  it("does not flag present paths for relative imports", () => {
+    const files = {
+      "/App.js": `import { HomeView } from './views/HomeView.js'`,
+      "/views/HomeView.js": `export function HomeView() { return null; }`,
+    };
+    expect(findMissingLocalImportsWithNames(files).size).toBe(0);
+  });
+
+  it("handles default-only relative imports", () => {
+    const files = {
+      "/App.js": `import Layout from './Layout.js'`,
+    };
+    const result = findMissingLocalImportsWithNames(files);
+    expect(result.has("/Layout.js")).toBe(true);
+    expect(result.get("/Layout.js")!.size).toBe(0);
   });
 });
 

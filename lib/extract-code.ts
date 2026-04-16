@@ -414,9 +414,28 @@ export function extractMultiFileCodePartial(
 const WHITELISTED_LOCAL = new Set(["/supabaseClient.js"]);
 
 /**
- * Scan all generated files for imports of local paths ('/...') that are not
- * present in the files map. Returns a Map from missing path to the set of
- * named exports required from that path (empty set = only default/namespace import).
+ * Resolve a relative import path (./foo or ../foo) against the importing file's
+ * directory. Absolute paths (/foo) are returned as-is.
+ */
+function resolveImportPath(importPath: string, fromFile: string): string {
+  if (importPath.startsWith("/")) return importPath;
+  // Get directory of the importing file: "/views/App.js" → "/views"
+  const dirParts = fromFile.split("/").slice(0, -1);
+  for (const seg of importPath.split("/")) {
+    if (seg === "." || seg === "") continue;
+    if (seg === "..") {
+      if (dirParts.length > 1) dirParts.pop();
+    } else {
+      dirParts.push(seg);
+    }
+  }
+  return dirParts.join("/") || "/";
+}
+
+/**
+ * Scan all generated files for imports of local paths ('/...' or './...' or '../...')
+ * that are not present in the files map. Returns a Map from missing absolute path
+ * to the set of named exports required from that path (empty set = only default/namespace import).
  * /supabaseClient.js is always whitelisted (it is injected by PreviewFrame at runtime).
  */
 export function findMissingLocalImportsWithNames(
@@ -429,32 +448,32 @@ export function findMissingLocalImportsWithNames(
     if (!missing.has(path)) missing.set(path, new Set());
   };
 
-  // Regex matches: import [Default,] { Foo, Bar as B } from '/path'
-  const namedImportRe = /import\s+(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s+from\s+['"](\/.+?)['"]/g;
+  // Regex matches: import [Default,] { Foo, Bar as B } from '/path' or './path' or '../path'
+  const namedImportRe = /import\s+(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s+from\s+['"](\.[./][^'"]*|\/[^'"]+)['"]/g;
 
-  for (const code of Object.values(files)) {
+  for (const [filePath, code] of Object.entries(files)) {
     // Pass 1: extract named import specifiers per path
     for (const m of Array.from(code.matchAll(namedImportRe))) {
-      const path = m[2];
-      if (!WHITELISTED_LOCAL.has(path) && !presentPaths.has(path)) {
-        ensurePath(path);
+      const resolved = resolveImportPath(m[2], filePath);
+      if (!WHITELISTED_LOCAL.has(resolved) && !presentPaths.has(resolved)) {
+        ensurePath(resolved);
         for (const token of m[1].split(",")) {
           const raw = token.trim();
           if (!raw) continue;
           // "Foo as Bar" → use original export name "Foo"
           const name = raw.split(/\s+as\s+/)[0].trim();
           if (name && /^[a-zA-Z_$][\w$]*$/.test(name)) {
-            missing.get(path)!.add(name);
+            missing.get(resolved)!.add(name);
           }
         }
       }
     }
 
     // Pass 2: catch default/namespace imports to ensure the path is tracked
-    for (const m of Array.from(code.matchAll(/from\s+['"](\/.+?)['"]/g))) {
-      const path = m[1];
-      if (!WHITELISTED_LOCAL.has(path) && !presentPaths.has(path)) {
-        ensurePath(path);
+    for (const m of Array.from(code.matchAll(/from\s+['"](\.[./][^'"]*|\/[^'"]+)['"]/g))) {
+      const resolved = resolveImportPath(m[1], filePath);
+      if (!WHITELISTED_LOCAL.has(resolved) && !presentPaths.has(resolved)) {
+        ensurePath(resolved);
       }
     }
   }
@@ -463,9 +482,9 @@ export function findMissingLocalImportsWithNames(
 }
 
 /**
- * Scan all generated files for imports of local paths ('/...') that are not
- * present in the files map. Returns a deduplicated list of missing paths.
- * /supabaseClient.js is always whitelisted (it is injected by PreviewFrame at runtime).
+ * Scan all generated files for imports of local paths ('/...', './...', '../...')
+ * that are not present in the files map. Returns a deduplicated list of missing
+ * absolute paths. /supabaseClient.js is always whitelisted (injected by PreviewFrame).
  */
 export function findMissingLocalImports(
   files: Readonly<Record<string, string>>
@@ -473,11 +492,11 @@ export function findMissingLocalImports(
   const presentPaths = new Set(Object.keys(files));
   const missing = new Set<string>();
 
-  for (const code of Object.values(files)) {
-    for (const match of Array.from(code.matchAll(/from\s+['"](\/.+?)['"]/g))) {
-      const importedPath = match[1];
-      if (!WHITELISTED_LOCAL.has(importedPath) && !presentPaths.has(importedPath)) {
-        missing.add(importedPath);
+  for (const [filePath, code] of Object.entries(files)) {
+    for (const match of Array.from(code.matchAll(/from\s+['"](\.[./][^'"]*|\/[^'"]+)['"]/g))) {
+      const resolved = resolveImportPath(match[1], filePath);
+      if (!WHITELISTED_LOCAL.has(resolved) && !presentPaths.has(resolved)) {
+        missing.add(resolved);
       }
     }
   }
