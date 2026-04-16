@@ -77,16 +77,20 @@ ChatArea
           │                                                                                  │
       └── POST /api/generate  { agent: "architect" }                                    └── POST /api/generate  { agent: "decomposer" }
             └── ScaffoldData → validateScaffold() → topologicalSort() → layers[][]               └── DecomposerOutput { modules[], generateOrder[][] }
-      └── for each layer (sequential):                                                            (失败时 fallback → simple path)
-            runLayerWithFallback(...)                                                         └── POST /api/generate  { agent: "architect", skeletonMode: true }
-              ├─ Attempt 1: all files in layer (parallel per file)                                     └── skeleton files (shared types + root layout only)
-              ├─ Attempt 2: only failed files                                                          └── mountAndStart(skeletonFiles) → WebContainer preview
-              └─ Per-file fallback (circuit-breaker at 3 consecutive failures)                   └── for each module in generateOrder (serial between deps, parallel within layer):
-      └── POST-PROCESSING (shared by both paths)                                                      POST /api/generate  { agent: "architect", moduleMode: true }
-                           →  findMissingLocalImportsWithNames()  →  ≤3 缺失文件时发起补全请求           └── ScaffoldData for this module
-                           →  findMissingLocalImports()  →  stub 注入 / missing_imports 错误          POST /api/generate  { agent: "engineer" } × files in module
-                           →  checkImportExportConsistency()  →  ≤3 文件时发起修复请求                     └── files_complete → mountIncremental(newFiles) → Vite HMR
-                           →  checkDisallowedImports(sceneTypes)  →  ≤3 文件时发起修复请求
+      └── for each layer (sequential):                                                            └── validateDecomposerOutput(): breakModuleCycles + topologicalSortModules
+            runLayerWithFallback(...)                                                              └── createExecutionPlan(validated) + createInterfaceRegistry(validated)
+              ├─ Attempt 1: all files in layer (parallel per file)                                 (失败时 fallback → simple path)
+              ├─ Attempt 2: only failed files                                                └── POST /api/generate  { agent: "architect", skeletonMode: true }
+              └─ Per-file fallback (circuit-breaker at 3 consecutive failures)                     └── skeleton files (shared types + root layout only)
+      └── POST-PROCESSING (shared by both paths)                                                   └── mountAndStart(skeletonFiles) → WebContainer preview
+                           →  findMissingLocalImportsWithNames()  →  ≤3 缺失文件时发起补全请求  └── ModuleOrchestrator.run() — while(plan.pending) pick→execute→observe→decide:
+                           →  findMissingLocalImports()  →  stub 注入 / missing_imports 错误        ① planNext() — 依赖前置检查
+                           →  checkImportExportConsistency()  →  ≤3 文件时发起修复请求               ② Architect(context + registry.toContextSummary + consumers)
+                           →  checkDisallowedImports(sceneTypes)  →  ≤3 文件时发起修复请求              → validateScaffold(scaffold, knownExternalPaths)
+                                                                                                     → Engineer × files (runLayerWithFallback)
+                                                                                                  ③ registry.verifyContract() — declared vs actual exports
+                                                                                                  ④ complete | patch(≤2) | degrade | fail→re-plan
+                                                                                                     retry | stub | skipCascade
                            →  apply scaffold.removeFiles (delete old paths)
                            →  prepareFiles(files, projectId)  →  WebContainer (deduplicateImports + stubs + supabase)
                            →  POST /api/versions  { code, files, changedFiles, iterationSnapshot }  (immutable snapshot with context)
@@ -133,7 +137,7 @@ Context injected per path:
 - **PM** (`feature_add`): `buildPmHistoryContext(rounds)` — formats up to 5 past rounds (userPrompt, intent summary, pmSummary) so PM writes a delta PRD
 - **Decomposer** (complex path): `buildDecomposerContext(pm)` — PM output + scaffold rules for ≤5 module decomposition
 - **Skeleton Architect** (complex path): `buildSkeletonArchitectContext(pm, decomposerOutput)` — designs shared types + root layout only
-- **Module Architect** (complex path): `buildModuleArchitectContext(pm, moduleDef, skeletonFiles, completedModuleFiles, scenes)` — designs one module at a time with interface contracts
+- **Module Architect** (complex path): `buildModuleArchitectContext(pm, moduleDef, skeletonFiles, completedModuleFiles, scenes, registrySummary?, planPosition?, consumers?, failedModules?)` — designs one module at a time; enhanced with InterfaceRegistry summary, topological position, downstream consumer list, and failed module info
 - **Architect** (simple path): `resolveArchContext(rounds, pmOutput, existingFiles)` — calls `deriveArchFromFiles(existingFiles)` to build a real-time architecture summary
 - **Engineer** (`feature_add`): `existingFiles: currentFiles` appended to `getMultiFileEngineerPrompt` as `// === EXISTING FILE: /path ===` blocks
 - **Engineer** (direct, single-file V1): `buildDirectEngineerContext` with `<source file="…">` XML tags
@@ -185,16 +189,16 @@ data: {"type":"done"}
 
 | File | Why |
 |------|-----|
-| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput`, `RequestMeta`, `AttemptInfo`, `ChangedFiles`, `PipelineState`, `Complexity`, `DecomposerOutput`, `ModuleDefinition` |
+| `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput`, `RequestMeta`, `AttemptInfo`, `ChangedFiles`, `PipelineState`, `Complexity`, `DecomposerOutput`, `ModuleDefinition`, `ExportEntry`, `ModuleContract`, `ContractVerifyResult`, `ExecutionPlan`, `PlanRevision` |
 | `lib/intent-classifier.ts` | `classifyIntent(prompt, hasExistingCode)` — keyword router that selects pipeline path |
 | `lib/pipeline-controller.ts` | `createPipelineController()` — state machine: IDLE → CLASSIFYING → DECOMPOSING → SKELETON → MODULE_FILLING → POST_PROCESSING → COMPLETE |
-| `lib/decomposer.ts` | `parseDecomposerOutput()`, `validateDecomposerOutput()` (clamps ≤5 modules, removes phantom deps), `buildDecomposerContext()` |
+| `lib/decomposer.ts` | `parseDecomposerOutput()`, `validateDecomposerOutput()` (clamps ≤5 modules, removes phantom deps, **breaks module cycles, recomputes topo order**), `buildDecomposerContext()` |
 | `lib/container-runtime.ts` | WebContainer singleton: `getContainer()`, `mountAndStart()`, `mountIncremental()`, `teardownContainer()`, `filesToWebContainerTree()` |
 | `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildTriageContext`, `buildPmIterationContext`, `deriveArchFromFiles`, `buildDecomposerContext`, `buildSkeletonArchitectContext`, `buildModuleArchitectContext` |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
 | `lib/generate-prompts.ts` | System prompts + `snipCompletedFiles()` + `getMultiFileEngineerPrompt()` (includes retry hint) + `buildMissingFileEngineerPrompt()` + `buildMismatchedFilesEngineerPrompt()` + `buildDisallowedImportsEngineerPrompt()` + `getDecomposerSystemPrompt()` |
 | `lib/extract-code.ts` | Multi-layer code extraction + `extractMultiFileCodePartial()` (partial salvage) + `findMissingLocalImports()` + `findMissingLocalImportsWithNames()` + `checkImportExportConsistency()` + `checkDisallowedImports(sceneTypes?)` |
-| `lib/validate-scaffold.ts` | `validateScaffold(raw)` — 7-rule deterministic repair: self-ref → phantom dep → hints path → cycle breaking → removeFiles conflict → maxLines clamp → blocked deps removal |
+| `lib/validate-scaffold.ts` | `validateScaffold(raw, knownExternalPaths?)` — 7-rule deterministic repair: self-ref → phantom dep → hints path → cycle breaking → removeFiles conflict → maxLines clamp → blocked deps removal. **`knownExternalPaths` preserves cross-module file refs during module-by-module generation** |
 | `lib/engineer-circuit.ts` | `runLayerWithFallback` — 2 layer attempts → 2 per-file attempts → circuit breaker (3 consecutive failures) |
 | `components/workspace/chat-area.tsx` | Core orchestration — intent classification, direct path, PM → complexity check → simple or complex pipeline, abort, progress |
 | `components/preview/preview-frame.tsx` | WebContainer preview — `prepareFiles()`, `mountAndStart()`, `mountIncremental()`, crossOriginIsolated pre-flight, status states |
@@ -213,11 +217,16 @@ data: {"type":"done"}
 | `lib/scene-rules.ts` | `getSceneRules()` — 场景专属 Architect/Engineer prompt 规则注入（game-engine 允许 Phaser.js）|
 | `lib/lucide-icon-names.ts` | Lucide 图标名称列表，用于自动修正 LLM 生成的错误图标名 |
 | `lib/error-codes.ts` | 生成错误码常量定义 |
+| `lib/module-topo-sort.ts` | `breakModuleCycles()` + `topologicalSortModules()` — 模块级循环检测（DFS + 反向流启发式断环）和拓扑排序（Kahn's algorithm），用于 `validateDecomposerOutput` |
+| `lib/extract-exports.ts` | `extractStructuredExports()` — 增强正则提取结构化导出信息（ExportEntry[]），替代单行正则匹配 |
+| `lib/interface-registry.ts` | `createInterfaceRegistry()` — 模块间接口合约中央注册表；跟踪 declared vs actual exports，`verifyContract()` 验证，`toContextSummary()` 注入 Architect context |
+| `lib/execution-plan.ts` | `createExecutionPlan()`, `planNext()`, `planComplete()`, `planSkipCascade()` — 可变执行计划，支持动态修订（retry/stub/skipCascade） |
+| `lib/module-orchestrator.ts` | `createModuleOrchestrator()` — while 循环编排器：pick→execute→observe→decide，替代 chat-area.tsx 中的 for 循环。失败处理：retry（临时错误）、stub（轻度依赖）、skipCascade（重度依赖） |
 | `app/api/generate/handler.ts` | `createHandler()` — SSE 生成编排器；Agent 路由、stream tap、代码提取、重试逻辑 |
 
 ### Known limitations & open issues
 
-详见 `docs/adr/` 目录（ADR 0001–0027）。遇到相关问题时按需读取对应 ADR 文件。
+详见 `docs/adr/` 目录（ADR 0001–0029）。遇到相关问题时按需读取对应 ADR 文件。
 
 当前未解决的限制：
 - 平台游戏/物理模拟类项目（如超级马里奥）— 需要精确物理逻辑、碰撞检测、视口滚动，Phaser.js 可用但生成单次通过率低，纯 Canvas/SVG 实现可玩游戏超出单次 LLM 生成能力（需多轮迭代修复方案）

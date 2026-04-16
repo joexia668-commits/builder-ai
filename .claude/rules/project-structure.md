@@ -114,7 +114,12 @@ builder-ai/
 │   ├── lucide-icon-names.ts      # Lucide 图标名称列表（自动修正 LLM 幻觉）
 │   ├── error-codes.ts            # 生成错误码常量
 │   ├── version-files.ts          # getVersionFiles() + computeChangedFiles()
-│   └── use-debounce.ts           # 通用 debounce 工具函数
+│   ├── use-debounce.ts           # 通用 debounce 工具函数
+│   ├── module-topo-sort.ts       # 模块级循环检测 + 拓扑排序（breakModuleCycles + topologicalSortModules）
+│   ├── extract-exports.ts        # 结构化导出提取（ExportEntry[]），替代单行正则
+│   ├── interface-registry.ts     # 模块接口合约注册表（declared vs actual exports 验证）
+│   ├── execution-plan.ts         # 可变执行计划（planNext/planComplete/planSkipCascade）
+│   └── module-orchestrator.ts    # 模块编排器（while 循环 pick→execute→observe→decide）
 │
 ├── prisma/
 │   └── schema.prisma                   # Database schema
