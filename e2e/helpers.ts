@@ -23,10 +23,8 @@ export async function createProjectAndNavigate(
   projectName: string = "[E2E] Test Project"
 ): Promise<string> {
   await page.goto("/");
-  // Look for "New Project" button or similar
-  const newProjectBtn = page.getByRole("button", {
-    name: /new project|新建项目/i,
-  });
+  // Use testid to uniquely target the sidebar "New Project" button
+  const newProjectBtn = page.getByTestId("btn-new-project");
   await newProjectBtn.click();
 
   // Fill in project name if a dialog appears

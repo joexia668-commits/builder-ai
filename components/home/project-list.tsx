@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useMounted } from "@/hooks/use-mounted";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,7 +32,6 @@ interface ProjectListProps {
 }
 
 export function ProjectList({ projects: initialProjects }: ProjectListProps) {
-  const router = useRouter();
   const [projects, setProjects] = useState(initialProjects);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -62,7 +60,8 @@ export function ProjectList({ projects: initialProjects }: ProjectListProps) {
       });
       const project = await res.json();
       toast.success("项目创建成功");
-      router.push(`/project/${project.id}`);
+      // Hard navigation so COOP/COEP headers are applied (required by WebContainer)
+      window.location.href = `/project/${project.id}`;
     } catch {
       toast.error("创建失败，请重试");
     } finally {

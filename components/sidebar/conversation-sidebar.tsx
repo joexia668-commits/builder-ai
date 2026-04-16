@@ -43,7 +43,8 @@ export function ConversationSidebar({
       const project = await res.json();
       setOpen(false);
       setName("");
-      router.push(`/project/${project.id}`);
+      // Hard navigation so COOP/COEP headers are applied (required by WebContainer)
+      window.location.href = `/project/${project.id}`;
     } catch {
       toast.error("创建失败，请重试");
     } finally {

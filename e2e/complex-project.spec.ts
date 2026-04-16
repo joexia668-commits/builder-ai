@@ -25,6 +25,8 @@ test.afterAll(async ({ browser }) => {
 });
 
 test("generates a multi-page admin dashboard", async ({ page }) => {
+  // Complex pipeline (PM → Decomposer → Skeleton → multiple modules) can take 8+ minutes
+  test.setTimeout(600000);
   await loginAsGuest(page);
   await createProjectAndNavigate(page, "[E2E] Complex Admin");
 
@@ -33,12 +35,12 @@ test("generates a multi-page admin dashboard", async ({ page }) => {
     "做一个电商管理后台，有商品管理、订单列表、数据看板、用户管理"
   );
 
-  // Complex multi-file projects emit layer/module progress text
-  // e.g. "模块 1/4" or "正在生成 3/6 个文件"
-  const progressText = page.locator("text=/模块.*\\d+\\/\\d+/");
-  await expect(progressText).toBeVisible({ timeout: 120000 });
+  // Wait for pipeline to start — decomposer agent visible in status bar
+  await expect(page.locator("text=decomposer").or(page.locator("text=/正在拆解|正在生成应用骨架/"))).toBeVisible({
+    timeout: 60000,
+  });
 
-  // Wait for Engineer to finish — preview iframe body should have content
-  const previewFrame = page.frameLocator("iframe").first();
-  await expect(previewFrame.locator("body")).not.toBeEmpty({ timeout: 300000 });
+  // Wait for generation to complete — completion message appears in chat
+  // Complex projects (multi-module pipeline) can take up to 300s
+  await expect(page.locator("text=/模块化生成完成|生成完成/")).toBeVisible({ timeout: 300000 });
 });

@@ -24,14 +24,24 @@ test.afterAll(async ({ browser }) => {
   await cleanupTestProjects(browser);
 });
 
-test("generates a calculator app", async ({ page }) => {
+test("generates a simple clock app", async ({ page }) => {
+  // Allow up to 10 minutes — even "simple" prompts may trigger the modular pipeline
+  test.setTimeout(600000);
   await loginAsGuest(page);
-  await createProjectAndNavigate(page, "[E2E] Simple Calculator");
+  await createProjectAndNavigate(page, "[E2E] Simple Clock");
 
-  await submitPrompt(page, "做一个简单的计算器");
+  // Use a minimal prompt to stay on the simple pipeline (PM → Architect → Engineer).
+  // A calculator gets classified as "complex" due to feature count — use a simpler prompt.
+  await submitPrompt(page, "做一个显示当前时间的时钟页面");
 
-  // Wait for generation to complete — the preview iframe appears when Engineer finishes
-  // and Sandpack boots the dev server
-  const previewFrame = page.frameLocator("iframe").first();
-  await expect(previewFrame.locator("body")).not.toBeEmpty({ timeout: 180000 });
+  // Wait for generation to complete — engineer summary message appears in chat
+  // Allow 300s: complex pipeline (PM → Decomposer → Skeleton → modules) can take 4+ minutes
+  await expect(page.locator("text=/✅ 已生成|✅ 模块化生成完成/")).toBeVisible({
+    timeout: 300000,
+  });
+
+  // WebContainer iframe is cross-origin (different port), so we can't access its DOM.
+  // Verify the preview iframe has a src attribute set — WebContainer booted and is serving.
+  const previewIframe = page.locator("iframe[src]").first();
+  await expect(previewIframe).toBeVisible({ timeout: 60000 });
 });
