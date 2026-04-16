@@ -36,7 +36,7 @@ import { parseDecomposerOutput, validateDecomposerOutput, buildDecomposerContext
 import { classifyIntent } from "@/lib/intent-classifier";
 import { classifySceneFromPrompt, classifySceneFromPm } from "@/lib/scene-classifier";
 import { getEngineerSceneRules, getArchitectSceneHint } from "@/lib/scene-rules";
-import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency, checkDisallowedImports, checkUndefinedLucideIcons, applyLucideIconFixes, fixJsxWithTypeScript, redirectPhantomTypeImports, fixDynamicSupabaseImport } from "@/lib/extract-code";
+import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency, checkDisallowedImports, checkUndefinedLucideIcons, applyLucideIconFixes, fixJsxWithTypeScript, redirectPhantomTypeImports, fixDynamicLocalImports } from "@/lib/extract-code";
 import { ERROR_DISPLAY } from "@/lib/error-codes";
 import { computeChangedFiles } from "@/lib/version-files";
 import type { ErrorCode } from "@/lib/types";
@@ -1007,7 +1007,7 @@ export function ChatArea({
               // Redirect phantom type imports (/utils/types → /types.ts)
               redirectPhantomTypeImports(allCompletedFiles);
               // Fix dynamic import of supabaseClient → static import
-              fixDynamicSupabaseImport(allCompletedFiles);
+              fixDynamicLocalImports(allCompletedFiles);
               // Fix invalid lucide-react icon names (static replacement, no LLM call)
               const lucideFixes = checkUndefinedLucideIcons(allCompletedFiles);
               if (lucideFixes.length > 0) {
@@ -1723,7 +1723,7 @@ export function ChatArea({
             // Redirect phantom type imports (/utils/types → /types.ts)
             redirectPhantomTypeImports(allModuleFiles);
             // Fix dynamic import of supabaseClient → static import
-            fixDynamicSupabaseImport(allModuleFiles);
+            fixDynamicLocalImports(allModuleFiles);
 
             // Lucide icon fixes
             const lucideFixes = checkUndefinedLucideIcons(allModuleFiles);

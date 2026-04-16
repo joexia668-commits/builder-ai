@@ -817,42 +817,87 @@ export function redirectPhantomTypeImports(files: Record<string, string>): strin
 }
 
 // ---------------------------------------------------------------------------
-// Fix dynamic import of supabaseClient → static import
+// Fix dynamic imports of local files → static imports
 // ---------------------------------------------------------------------------
 
-const DYNAMIC_SUPABASE_RE = /(?:const|let|var)\s+\{[^}]*supabase[^}]*\}\s*=\s*await\s+import\(\s*['"]\/supabaseClient\.js['"]\s*\)\s*;?/g;
+// Matches: const { X } = await import("/path.js");
+// Also:    const module = await import("/path.js");
+// Also:    await import("/path.js") without assignment
+const DYNAMIC_LOCAL_IMPORT_RE = /(?:(?:const|let|var)\s+(?:\{([^}]*)\}|(\w+))\s*=\s*)?await\s+import\(\s*['"](\.[^'"]*|\/[^'"]*)['"]\s*\)\s*;?/g;
 
 /**
- * Replaces dynamic `const { supabase } = await import("/supabaseClient.js")`
- * with static `import { supabase } from "/supabaseClient.js"`.
- * Vite's import analysis fails on dynamic absolute-path imports, but static
- * imports resolve correctly since the file is injected into WebContainer.
- * Mutates `files` in place. Returns count of fixes.
+ * Converts dynamic `await import("/local/path.js")` to static imports.
+ * Vite's import-analysis plugin fails on dynamic imports with absolute local paths.
+ * Static imports resolve correctly from the WebContainer filesystem.
+ *
+ * Handles three patterns:
+ *   const { a, b } = await import("/file.js")  → import { a, b } from "/file.js"
+ *   const mod = await import("/file.js")        → import * as mod from "/file.js"
+ *   await import("/file.js")                    → import "/file.js"
+ *
+ * Mutates `files` in place. Returns list of fixes for logging.
  */
-export function fixDynamicSupabaseImport(files: Record<string, string>): number {
-  let fixCount = 0;
-  for (const [path, code] of Object.entries(files)) {
-    const testRe = new RegExp(DYNAMIC_SUPABASE_RE.source);
+export function fixDynamicLocalImports(files: Record<string, string>): string[] {
+  const fixes: string[] = [];
+
+  for (const [filePath, code] of Object.entries(files)) {
+    const testRe = new RegExp(DYNAMIC_LOCAL_IMPORT_RE.source);
     if (!testRe.test(code)) continue;
-    const regex = new RegExp(DYNAMIC_SUPABASE_RE.source, DYNAMIC_SUPABASE_RE.flags);
-    const hasStaticImport = /import\s+\{[^}]*supabase[^}]*\}\s+from\s+['"]\/supabaseClient\.js['"]/.test(code);
-    let newCode = code.replace(regex, "");
-    if (!hasStaticImport) {
-      // Add static import at top (after any existing imports, or at line 0)
+
+    const importsToAdd: string[] = [];
+    const regex = new RegExp(DYNAMIC_LOCAL_IMPORT_RE.source, DYNAMIC_LOCAL_IMPORT_RE.flags);
+
+    const newCode = code.replace(regex, (match, destructured?: string, identifier?: string, importPath?: string) => {
+      if (!importPath) return match;
+
+      // Skip non-local imports (npm packages)
+      if (!importPath.startsWith("/") && !importPath.startsWith("./") && !importPath.startsWith("../")) {
+        return match;
+      }
+
+      let staticImport: string;
+      if (destructured) {
+        // const { a, b } = await import("/x") → import { a, b } from "/x"
+        const names = destructured.trim();
+        staticImport = `import { ${names} } from "${importPath}";`;
+      } else if (identifier) {
+        // const mod = await import("/x") → import * as mod from "/x"
+        staticImport = `import * as ${identifier} from "${importPath}";`;
+      } else {
+        // bare await import("/x") → import "/x"
+        staticImport = `import "${importPath}";`;
+      }
+
+      // Check if this exact static import already exists
+      const escapedPath = importPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const alreadyImported = new RegExp(`import\\s+.*from\\s+['"]${escapedPath}['"]`).test(code);
+      if (!alreadyImported) {
+        importsToAdd.push(staticImport);
+      }
+
+      fixes.push(`${filePath}: await import("${importPath}") → static`);
+      return ""; // remove the dynamic import line
+    });
+
+    if (importsToAdd.length > 0) {
+      // Insert static imports after the last existing import statement
       const lastImportIdx = newCode.lastIndexOf("\nimport ");
+      let finalCode: string;
       if (lastImportIdx >= 0) {
         const lineEnd = newCode.indexOf("\n", lastImportIdx + 1);
-        newCode = newCode.slice(0, lineEnd + 1)
-          + 'import { supabase } from "/supabaseClient.js";\n'
+        finalCode = newCode.slice(0, lineEnd + 1)
+          + importsToAdd.join("\n") + "\n"
           + newCode.slice(lineEnd + 1);
       } else {
-        newCode = 'import { supabase } from "/supabaseClient.js";\n' + newCode;
+        finalCode = importsToAdd.join("\n") + "\n" + newCode;
       }
+      files[filePath] = finalCode;
+    } else if (newCode !== code) {
+      files[filePath] = newCode;
     }
-    files[path] = newCode;
-    fixCount++;
   }
-  return fixCount;
+
+  return fixes;
 }
 
 // ---------------------------------------------------------------------------
