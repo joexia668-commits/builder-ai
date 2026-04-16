@@ -237,6 +237,9 @@ export interface CompletionOptions {
 // Intent of a user's follow-up prompt — drives pipeline routing
 export type Intent = "new_project" | "bug_fix" | "feature_add" | "style_change";
 
+// Game subtype for fine-grained game architecture templates
+export type GameSubtype = "match3" | "snake" | "tetris" | "platformer" | "card" | "board" | "generic";
+
 // Scene type for prompt injection categorization
 export type Scene =
   | "game" | "game-engine" | "game-canvas"
