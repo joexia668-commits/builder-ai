@@ -1403,7 +1403,8 @@ export function ChatArea({
             const decomposerContext = buildDecomposerContext(
               parsedPm,
               Object.keys(currentFiles),
-              detectedScenes
+              detectedScenes,
+              gameSubtype
             );
 
             const decomposerResponse = await withTimeout(

@@ -209,7 +209,8 @@ ${pathList}
 export function buildDecomposerContext(
   pmOutput: PmOutput,
   existingFiles: string[],
-  sceneTypes: Scene[]
+  sceneTypes: Scene[],
+  gameSubtype?: GameSubtype
 ): string {
   const sections: string[] = [];
 
@@ -238,6 +239,10 @@ export function buildDecomposerContext(
   const nonGeneralScenes = sceneTypes.filter((s) => s !== "general");
   if (nonGeneralScenes.length > 0) {
     sections.push(`场景类型：${nonGeneralScenes.join(", ")}`);
+  }
+
+  if (gameSubtype && gameSubtype !== "generic") {
+    sections.push(`游戏子类型：${gameSubtype}（请据此为游戏核心模块标注对应的 sceneType，非游戏模块标注 general）`);
   }
 
   return sections.join("\n\n");
