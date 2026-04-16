@@ -159,6 +159,22 @@ export function createIndexHtml(): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Generated App</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"><\/script>
+    <script>
+      window.addEventListener('error', function(e) {
+        try {
+          window.parent.postMessage({
+            type: 'runtime-error',
+            message: (e.message || '') + (e.filename ? ' at ' + e.filename + ':' + e.lineno : '')
+          }, '*');
+        } catch(_) {}
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        try {
+          var msg = e.reason instanceof Error ? e.reason.message : String(e.reason || 'Unhandled rejection');
+          window.parent.postMessage({ type: 'runtime-error', message: msg }, '*');
+        } catch(_) {}
+      });
+    <\/script>
   </head>
   <body>
     <div id="root"></div>

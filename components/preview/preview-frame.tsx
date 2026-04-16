@@ -17,6 +17,8 @@ interface PreviewFrameProps {
   readonly files: Record<string, string>;
   readonly projectId: string;
   readonly scaffoldDependencies?: Record<string, string>;
+  readonly onViteError?: (errorText: string) => void;
+  readonly onRuntimeError?: (errorText: string) => void;
 }
 
 /**
@@ -178,6 +180,8 @@ export function PreviewFrame({
   files,
   projectId,
   scaffoldDependencies,
+  onViteError,
+  onRuntimeError,
 }: PreviewFrameProps) {
   const [status, setStatus] = useState<ContainerStatus>("booting");
   const [serverUrl, setServerUrl] = useState<string | null>(null);
@@ -228,7 +232,8 @@ export function PreviewFrame({
         (err) => {
           setErrorMessage(err.message);
           setStatus("error");
-        }
+        },
+        onViteError
       );
     } catch (err) {
       const message =
@@ -282,6 +287,25 @@ export function PreviewFrame({
       )
     );
   }, [files, status, projectId]);
+
+  // Capture runtime errors from preview iframe via postMessage
+  useEffect(() => {
+    if (!onRuntimeError) return;
+
+    const handler = (event: MessageEvent) => {
+      if (
+        event.data &&
+        typeof event.data === "object" &&
+        event.data.type === "runtime-error" &&
+        typeof event.data.message === "string"
+      ) {
+        onRuntimeError(event.data.message);
+      }
+    };
+
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [onRuntimeError]);
 
   // Loading state
   if (status === "booting" || status === "installing" || status === "starting") {
