@@ -20,6 +20,8 @@ export function getDecomposerSystemPrompt(): string {
       "description": "模块功能描述（50字以内）",
       "estimatedFiles": 3,
       "deps": ["依赖的其他模块名"],
+      "sceneType": "game|game-engine|game-canvas|dashboard|crud|multiview|animation|persistence|general",
+      "engineeringHints": "该模块的编码要点和技术约束（100字以内）",
       "interface": {
         "exports": ["导出的组件/函数名"],
         "consumes": ["消费的外部类型/组件"],
@@ -37,7 +39,21 @@ export function getDecomposerSystemPrompt(): string {
 4. generateOrder 是二维数组：同一层可并行生成，层间串行
 5. deps 只能引用同 modules 数组内的其他模块名
 6. 每个模块必须是独立可渲染的（挂载到骨架后即可预览）
-7. skeleton 的 sharedTypes 包含所有模块共用的类型定义`;
+7. skeleton 的 sharedTypes 包含所有模块共用的类型定义
+8. sceneType 标注该模块的主要场景类型，决定是否注入已知编码规则：
+   - game / game-engine / game-canvas：游戏逻辑（useRef 状态、requestAnimationFrame）
+   - dashboard：数据可视化（纯 SVG 图表）
+   - crud：增删改查表单
+   - multiview：多视图切换（useState 路由）
+   - animation：动画交互
+   - persistence：数据持久化
+   - general：不属于以上任何类型
+   每个模块根据其实际功能选择最匹配的单一类型，不是项目整体类型
+9. engineeringHints 是该模块的编码要点，必须填写。描述该模块实现时需要注意的技术模式、
+   状态管理方式、常见陷阱。例如：
+   - 音乐播放器模块："Audio 实例用 useRef 持有，播放/暂停状态用 useState，进度条用 rAF 更新 currentTime"
+   - 游戏核心模块："游戏状态用 useRef 避免 re-render 导致的无限循环，只有得分/游戏结束用 useState"
+   - 纯 UI 模块："无特殊约束，标准 React 函数组件 + Tailwind"`;
 }
 
 export function getSystemPrompt(agent: AgentRole, projectId: string): string {
