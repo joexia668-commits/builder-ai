@@ -1,4 +1,4 @@
-import type { DecomposerOutput, ModuleDefinition } from "@/lib/types";
+import type { DecomposerOutput, ModuleDefinition, Scene } from "@/lib/types";
 import { breakModuleCycles, topologicalSortModules } from "@/lib/module-topo-sort";
 export { buildDecomposerContext } from "@/lib/agent-context";
 
@@ -45,6 +45,8 @@ function isModuleDefinition(val: unknown): val is ModuleDefinition {
   if (!Array.isArray(iface.exports)) return false;
   if (!Array.isArray(iface.consumes)) return false;
   if (typeof iface.stateContract !== "string") return false;
+  if ("sceneType" in obj && typeof obj.sceneType !== "string") return false;
+  if ("engineeringHints" in obj && typeof obj.engineeringHints !== "string") return false;
   return true;
 }
 
@@ -111,6 +113,19 @@ export function validateDecomposerOutput(output: DecomposerOutput): DecomposerOu
     ...m,
     estimatedFiles: Math.min(m.estimatedFiles, MAX_FILES_PER_MODULE),
     deps: m.deps.filter((dep) => validModuleNames.has(dep)),
+  }));
+
+  // Sanitize sceneType and default engineeringHints
+  const VALID_SCENE_TYPES: ReadonlySet<string> = new Set<Scene>([
+    "game", "game-engine", "game-canvas",
+    "dashboard", "crud", "multiview",
+    "animation", "persistence", "general",
+  ]);
+
+  cleanedModules = cleanedModules.map((m) => ({
+    ...m,
+    sceneType: (m.sceneType && VALID_SCENE_TYPES.has(m.sceneType) ? m.sceneType : "general") as Scene,
+    engineeringHints: m.engineeringHints ?? "",
   }));
 
   // Step 5: detect and break module-level circular dependencies

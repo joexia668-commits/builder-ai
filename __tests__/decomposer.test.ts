@@ -84,6 +84,13 @@ describe("parseDecomposerOutput", () => {
     expect(parseDecomposerOutput(JSON.stringify(bad))).toBeNull();
   });
 
+  it("DC-10: module without new fields still parses (backward compat)", () => {
+    const result = parseDecomposerOutput(JSON.stringify(VALID_OUTPUT));
+    expect(result).not.toBeNull();
+    expect(result?.modules[0]).not.toHaveProperty("sceneType");
+    expect(result?.modules[0]).not.toHaveProperty("engineeringHints");
+  });
+
   it("DC-09: parses module with sceneType and engineeringHints fields", () => {
     const withHints: DecomposerOutput = {
       ...VALID_OUTPUT,
@@ -211,6 +218,53 @@ describe("validateDecomposerOutput", () => {
     const secondNames = result.generateOrder.slice(1).flat();
     const depsInSecond = firstMod.deps.filter((d) => secondNames.includes(d));
     expect(depsInSecond).toEqual([]);
+  });
+
+  it("DC-V-08: invalid sceneType is replaced with 'general'", () => {
+    const withBadScene: DecomposerOutput = {
+      ...VALID_OUTPUT,
+      modules: VALID_OUTPUT.modules.map((m) => ({
+        ...m,
+        sceneType: "nonexistent-scene" as any,
+      })),
+    };
+    const result = validateDecomposerOutput(withBadScene);
+    expect(result.modules[0].sceneType).toBe("general");
+  });
+
+  it("DC-V-09: valid sceneType is preserved", () => {
+    const withScene: DecomposerOutput = {
+      ...VALID_OUTPUT,
+      modules: [
+        { ...VALID_OUTPUT.modules[0], sceneType: "crud" as any },
+        { ...VALID_OUTPUT.modules[1], sceneType: "dashboard" as any },
+      ],
+    };
+    const result = validateDecomposerOutput(withScene);
+    expect(result.modules[0].sceneType).toBe("crud");
+    expect(result.modules[1].sceneType).toBe("dashboard");
+  });
+
+  it("DC-V-10: missing sceneType defaults to 'general' after validation", () => {
+    const result = validateDecomposerOutput(VALID_OUTPUT);
+    expect(result.modules[0].sceneType).toBe("general");
+  });
+
+  it("DC-V-11: engineeringHints is preserved when present", () => {
+    const withHints: DecomposerOutput = {
+      ...VALID_OUTPUT,
+      modules: VALID_OUTPUT.modules.map((m) => ({
+        ...m,
+        engineeringHints: "use useRef for state",
+      })),
+    };
+    const result = validateDecomposerOutput(withHints);
+    expect(result.modules[0].engineeringHints).toBe("use useRef for state");
+  });
+
+  it("DC-V-12: missing engineeringHints defaults to empty string", () => {
+    const result = validateDecomposerOutput(VALID_OUTPUT);
+    expect(result.modules[0].engineeringHints).toBe("");
   });
 
   it("DC-V-07: generateOrder is recomputed from deps (ignoring LLM order)", () => {
