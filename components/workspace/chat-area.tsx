@@ -1641,7 +1641,7 @@ export function ChatArea({
                     },
                   });
                 },
-                patchMissingExports: async (_name, _missing, _files) => {
+                patchMissingExports: async () => {
                   // Future: use buildMissingFileEngineerPrompt to patch
                   return null;
                 },

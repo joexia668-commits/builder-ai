@@ -83,7 +83,7 @@ describe("planSkipCascade", () => {
   it("EP-07: skips module and its downstream dependents", () => {
     const plan = createExecutionPlan(TEST_OUTPUT);
     const registry = createInterfaceRegistry(TEST_OUTPUT);
-    const cascaded = planSkipCascade(plan, "ui", "auth failed", registry);
+    const cascaded = planSkipCascade(plan, "ui", "auth failed");
     expect(plan.skipped.map((s) => s.name)).toContain("ui");
     expect(plan.pending).not.toContain("ui");
   });

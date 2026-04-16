@@ -50,8 +50,7 @@ export function planComplete(plan: ExecutionPlan, moduleName: string): void {
 export function planSkipCascade(
   plan: ExecutionPlan,
   moduleName: string,
-  reason: string,
-  registry: InterfaceRegistry
+  reason: string
 ): string[] {
   const cascaded: string[] = [];
 

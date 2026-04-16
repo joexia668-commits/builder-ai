@@ -188,7 +188,7 @@ function handleModuleFailure(
       : 0;
 
     if (ratio > 0.5) {
-      const cascaded = planSkipCascade(plan, consumerName, `核心依赖 ${moduleName} 失败`, registry);
+      const cascaded = planSkipCascade(plan, consumerName, `核心依赖 ${moduleName} 失败`);
       const revision: PlanRevision = {
         type: "skip_cascade",
         description: `${moduleName} 失败 → ${[consumerName, ...cascaded].join(", ")} 级联跳过`,
