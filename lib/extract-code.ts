@@ -817,6 +817,45 @@ export function redirectPhantomTypeImports(files: Record<string, string>): strin
 }
 
 // ---------------------------------------------------------------------------
+// Fix dynamic import of supabaseClient → static import
+// ---------------------------------------------------------------------------
+
+const DYNAMIC_SUPABASE_RE = /(?:const|let|var)\s+\{[^}]*supabase[^}]*\}\s*=\s*await\s+import\(\s*['"]\/supabaseClient\.js['"]\s*\)\s*;?/g;
+
+/**
+ * Replaces dynamic `const { supabase } = await import("/supabaseClient.js")`
+ * with static `import { supabase } from "/supabaseClient.js"`.
+ * Vite's import analysis fails on dynamic absolute-path imports, but static
+ * imports resolve correctly since the file is injected into WebContainer.
+ * Mutates `files` in place. Returns count of fixes.
+ */
+export function fixDynamicSupabaseImport(files: Record<string, string>): number {
+  let fixCount = 0;
+  for (const [path, code] of Object.entries(files)) {
+    const testRe = new RegExp(DYNAMIC_SUPABASE_RE.source);
+    if (!testRe.test(code)) continue;
+    const regex = new RegExp(DYNAMIC_SUPABASE_RE.source, DYNAMIC_SUPABASE_RE.flags);
+    const hasStaticImport = /import\s+\{[^}]*supabase[^}]*\}\s+from\s+['"]\/supabaseClient\.js['"]/.test(code);
+    let newCode = code.replace(regex, "");
+    if (!hasStaticImport) {
+      // Add static import at top (after any existing imports, or at line 0)
+      const lastImportIdx = newCode.lastIndexOf("\nimport ");
+      if (lastImportIdx >= 0) {
+        const lineEnd = newCode.indexOf("\n", lastImportIdx + 1);
+        newCode = newCode.slice(0, lineEnd + 1)
+          + 'import { supabase } from "/supabaseClient.js";\n'
+          + newCode.slice(lineEnd + 1);
+      } else {
+        newCode = 'import { supabase } from "/supabaseClient.js";\n' + newCode;
+      }
+    }
+    files[path] = newCode;
+    fixCount++;
+  }
+  return fixCount;
+}
+
+// ---------------------------------------------------------------------------
 // JSX → TSX auto-rename for files containing TypeScript syntax
 // ---------------------------------------------------------------------------
 
