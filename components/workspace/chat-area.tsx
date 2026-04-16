@@ -34,7 +34,7 @@ import { createInterfaceRegistry } from "@/lib/interface-registry";
 import { createModuleOrchestrator } from "@/lib/module-orchestrator";
 import { parseDecomposerOutput, validateDecomposerOutput, buildDecomposerContext } from "@/lib/decomposer";
 import { classifyIntent } from "@/lib/intent-classifier";
-import { classifySceneFromPrompt, classifySceneFromPm } from "@/lib/scene-classifier";
+import { classifySceneFromPrompt, classifySceneFromPm, classifyGameSubtype } from "@/lib/scene-classifier";
 import { getEngineerSceneRules, getArchitectSceneHint } from "@/lib/scene-rules";
 import { findMissingLocalImports, findMissingLocalImportsWithNames, checkImportExportConsistency, checkDisallowedImports, checkUndefinedLucideIcons, applyLucideIconFixes, fixJsxWithTypeScript, redirectPhantomTypeImports, fixDynamicLocalImports } from "@/lib/extract-code";
 import { ERROR_DISPLAY } from "@/lib/error-codes";
@@ -53,6 +53,7 @@ import type {
   IterationRound,
   Scene,
   Complexity,
+  GameSubtype,
 } from "@/lib/types";
 import { AGENT_ORDER, AGENTS } from "@/lib/types";
 
@@ -190,12 +191,13 @@ function resolveArchContext(
   _rounds: readonly IterationRound[],
   pmOutput: string,
   existingFiles: Record<string, string>,
-  scenes: Scene[] = ["general"]
+  scenes: Scene[] = ["general"],
+  gameSubtype?: GameSubtype
 ): string {
   const archCtx = Object.keys(existingFiles).length > 0
     ? deriveArchFromFiles(existingFiles)
     : "";
-  const hint = getArchitectSceneHint(scenes);
+  const hint = getArchitectSceneHint(scenes, gameSubtype);
   const base = archCtx ? `${archCtx}\n\n${pmOutput}` : pmOutput;
   return hint ? `${hint}\n\n${base}` : base;
 }
@@ -441,6 +443,7 @@ export function ChatArea({
     let lastCode = "";
     let capturedScaffold: ScaffoldData | null = null;
     let detectedScenes: Scene[] = ["general"];
+    let gameSubtype: GameSubtype | undefined;
 
     try {
       // Direct path: bug_fix / style_change skips PM + Architect
@@ -473,7 +476,11 @@ export function ChatArea({
         const baseDirectContext = isMultiFileV1
           ? buildDirectMultiFileEngineerContext(prompt, triageFiles, archSummary || undefined)
           : buildDirectEngineerContext(prompt, currentFiles);
-        const directSceneRules = getEngineerSceneRules(classifySceneFromPrompt(prompt));
+        const directScenes = classifySceneFromPrompt(prompt);
+        const directGameSubtype = directScenes.some(s => s === "game" || s === "game-engine" || s === "game-canvas")
+          ? classifyGameSubtype(prompt)
+          : undefined;
+        const directSceneRules = getEngineerSceneRules(directScenes, directGameSubtype);
         const baseDirectContextWithScene = directSceneRules ? `${baseDirectContext}\n\n${directSceneRules}` : baseDirectContext;
 
         const MAX_DIRECT_ATTEMPTS = 2;
@@ -779,7 +786,7 @@ export function ChatArea({
                     completedFiles: allCompletedFiles,
                     designNotes: scaffold.designNotes,
                     existingFiles: hasExistingCode ? currentFiles : undefined,
-                    sceneRules: getEngineerSceneRules(detectedScenes),
+                    sceneRules: getEngineerSceneRules(detectedScenes, gameSubtype),
                     retryHint:
                       meta.attempt > 1
                         ? {
@@ -1157,7 +1164,7 @@ export function ChatArea({
         const baseEngineerCtx = parsedPm
           ? buildEngineerContextFromStructured(prompt, parsedPm, outputs.architect, hasExistingCode ? currentFiles : undefined)
           : buildEngineerContext(prompt, outputs.pm, outputs.architect, hasExistingCode ? currentFiles : undefined);
-        const engineerSceneRules = getEngineerSceneRules(detectedScenes);
+        const engineerSceneRules = getEngineerSceneRules(detectedScenes, gameSubtype);
         const engineerCtxWithScene = engineerSceneRules ? `${baseEngineerCtx}\n\n${engineerSceneRules}` : baseEngineerCtx;
         const context =
           agentRole === "pm"
@@ -1165,7 +1172,7 @@ export function ChatArea({
                 ? buildPmHistoryContext(rounds)
                 : undefined
             : agentRole === "architect"
-              ? resolveArchContext(rounds, outputs.pm, currentFiles, detectedScenes)
+              ? resolveArchContext(rounds, outputs.pm, currentFiles, detectedScenes, gameSubtype)
               : engineerCtxWithScene;
 
         const response = await fetch("/api/generate", {
@@ -1226,6 +1233,9 @@ export function ChatArea({
         if (agentRole === "pm") {
           parsedPm = extractPmOutput(agentOutput);
           if (parsedPm) detectedScenes = classifySceneFromPm(parsedPm);
+          if (parsedPm && detectedScenes.some(s => s === "game" || s === "game-engine" || s === "game-canvas")) {
+            gameSubtype = classifyGameSubtype(prompt, parsedPm);
+          }
         }
         updateAgentState(agentRole, { status: "done", output: agentOutput });
 
@@ -1452,7 +1462,7 @@ export function ChatArea({
                       completedFiles: skeletonFiles,
                       designNotes: skeletonScaffold.designNotes,
                       existingFiles: hasExistingCode ? currentFiles : undefined,
-                      sceneRules: getEngineerSceneRules(detectedScenes),
+                      sceneRules: getEngineerSceneRules(detectedScenes, gameSubtype),
                       retryHint: meta.attempt > 1
                         ? { attempt: meta.attempt, reason: "string_truncated" as const, priorTail: undefined }
                         : undefined,
@@ -1585,7 +1595,7 @@ export function ChatArea({
                             completedFiles: { ...allFiles, ...moduleFiles },
                             designNotes: moduleScaffold.designNotes,
                             existingFiles: hasExistingCode ? currentFiles : undefined,
-                            sceneRules: getEngineerSceneRules(detectedScenes),
+                            sceneRules: getEngineerSceneRules(detectedScenes, gameSubtype),
                             retryHint: meta.attempt > 1
                               ? { attempt: meta.attempt, reason: "string_truncated" as const, priorTail: undefined }
                               : undefined,
