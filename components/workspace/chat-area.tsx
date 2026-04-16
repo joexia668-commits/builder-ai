@@ -1494,7 +1494,7 @@ export function ChatArea({
             updateAgentState("architect", { status: "thinking", output: "" });
 
             const skeletonArchContext = buildSkeletonArchitectContext(
-              parsedPm, validated.skeleton, currentFiles, detectedScenes
+              parsedPm, validated.skeleton, currentFiles, detectedScenes, gameSubtype
             );
 
             const skeletonArchResponse = await withTimeout(
@@ -1643,6 +1643,7 @@ export function ChatArea({
                     { layer: planLayer + 1, totalLayers: validated.generateOrder.length },
                     reg.getConsumers(moduleDef.name, validated.modules),
                     execPlan.failed.map((f) => ({ name: f.name, reason: f.reason })),
+                    gameSubtype,
                   );
 
                   const moduleArchResponse = await fetch("/api/generate", {

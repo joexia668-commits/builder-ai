@@ -1,4 +1,5 @@
-import type { Intent, PmOutput, IterationRound, Scene, SkeletonDefinition, ModuleDefinition } from "@/lib/types";
+import type { Intent, PmOutput, IterationRound, Scene, SkeletonDefinition, ModuleDefinition, GameSubtype } from "@/lib/types";
+import { getArchitectSceneHint } from "@/lib/scene-rules";
 
 /**
  * Builds the full context string passed to the Engineer agent.
@@ -331,9 +332,15 @@ export function buildSkeletonArchitectContext(
   pmOutput: PmOutput,
   skeleton: SkeletonDefinition,
   existingFiles: Record<string, string>,
-  sceneTypes: Scene[]
+  sceneTypes: Scene[],
+  gameSubtype?: GameSubtype
 ): string {
   const parts: string[] = [];
+
+  // Inject game subtype architecture hints at the top
+  const sceneHint = getArchitectSceneHint(sceneTypes, gameSubtype);
+  if (sceneHint) parts.push(sceneHint);
+
   parts.push("## 项目 PRD");
   parts.push(`意图: ${pmOutput.intent}`);
   parts.push(`功能: ${pmOutput.features.join(", ")}`);
@@ -375,9 +382,15 @@ export function buildModuleArchitectContext(
   registrySummary?: string,
   planPosition?: { layer: number; totalLayers: number },
   consumers?: string[],
-  failedModules?: Array<{ name: string; reason: string }>
+  failedModules?: Array<{ name: string; reason: string }>,
+  gameSubtype?: GameSubtype
 ): string {
   const parts: string[] = [];
+
+  // Inject game subtype architecture hints at the top
+  const sceneHint = getArchitectSceneHint(sceneTypes, gameSubtype);
+  if (sceneHint) parts.push(sceneHint);
+
   parts.push("## 项目 PRD（摘要）");
   parts.push(`意图: ${pmOutput.intent}`);
   parts.push(`持久化: ${pmOutput.persistence}`);

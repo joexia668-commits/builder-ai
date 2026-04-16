@@ -46,7 +46,7 @@ export function classifySceneFromPrompt(prompt: string): Scene[] {
 
 const PM_FEATURE_KEYWORDS: Record<Exclude<Scene, "general">, readonly string[]> = {
   game: ["移动", "碰撞", "得分", "关卡", "生命", "游戏"],
-  "game-engine": ["物理引擎", "碰撞检测", "collision", "sprite", "精灵", "platform", "关卡", "level", "boss"],
+  "game-engine": ["物理引擎", "碰撞检测", "collision", "sprite", "精灵", "platform", "boss"],
   "game-canvas": ["蛇", "棋", "方块", "砖块", "弹球", "网格", "grid", "回合", "turn"],
   dashboard: ["图表", "统计", "趋势", "指标", "分析"],
   crud: ["添加", "删除", "编辑", "筛选", "搜索", "管理", "记录"],
@@ -57,7 +57,7 @@ const PM_FEATURE_KEYWORDS: Record<Exclude<Scene, "general">, readonly string[]> 
 
 const PM_MODULE_KEYWORDS: Record<Exclude<Scene, "general">, readonly RegExp[]> = {
   game: [/game/i, /board/i, /loop/i, /score/i],
-  "game-engine": [/physics/i, /engine/i, /sprite/i, /level/i, /boss/i, /enemy/i],
+  "game-engine": [/physics/i, /engine/i, /sprite/i, /boss/i, /enemy/i],
   "game-canvas": [/board/i, /grid/i, /snake/i, /piece/i, /cell/i],
   dashboard: [/chart/i, /graph/i, /analytics/i, /stats/i, /dashboard/i],
   crud: [/form/i, /list/i, /table/i, /editor/i],
