@@ -272,6 +272,8 @@ export interface ModuleDefinition {
   readonly estimatedFiles: number;
   readonly deps: readonly string[];
   readonly interface: ModuleInterface;
+  readonly sceneType?: Scene;
+  readonly engineeringHints?: string;
 }
 
 export interface SkeletonDefinition {

@@ -83,6 +83,25 @@ describe("parseDecomposerOutput", () => {
     };
     expect(parseDecomposerOutput(JSON.stringify(bad))).toBeNull();
   });
+
+  it("DC-09: parses module with sceneType and engineeringHints fields", () => {
+    const withHints: DecomposerOutput = {
+      ...VALID_OUTPUT,
+      modules: VALID_OUTPUT.modules.map((m, i) => ({
+        ...m,
+        sceneType: i === 0 ? "crud" : "dashboard",
+        engineeringHints: i === 0
+          ? "表单状态用单个 useState 对象管理"
+          : "图表用纯 SVG 实现，禁止 recharts",
+      })),
+    };
+    const result = parseDecomposerOutput(JSON.stringify(withHints));
+    expect(result).not.toBeNull();
+    expect((result?.modules[0] as any).sceneType).toBe("crud");
+    expect((result?.modules[0] as any).engineeringHints).toContain("useState");
+    expect((result?.modules[1] as any).sceneType).toBe("dashboard");
+    expect((result?.modules[1] as any).engineeringHints).toContain("SVG");
+  });
 });
 
 describe("validateDecomposerOutput", () => {
