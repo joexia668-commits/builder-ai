@@ -263,12 +263,12 @@ const GAME_SCENES = new Set<Scene>(["game", "game-engine", "game-canvas"]);
  * already include their own animation guidance.
  */
 const SUBTYPE_EXCLUDED_SCENES: Partial<Record<GameSubtype, ReadonlySet<Scene>>> = {
-  match3: new Set(["game-canvas", "game-engine", "animation"]),
-  snake: new Set(["game-engine", "animation"]),
-  tetris: new Set(["game-engine", "animation"]),
-  board: new Set(["game-engine", "game-canvas", "animation"]),
-  card: new Set(["game-engine", "game-canvas", "animation"]),
-  platformer: new Set(["game-canvas", "animation"]),
+  match3: new Set<Scene>(["game-canvas", "game-engine", "animation"]),
+  snake: new Set<Scene>(["game-engine", "animation"]),
+  tetris: new Set<Scene>(["game-engine", "animation"]),
+  board: new Set<Scene>(["game-engine", "game-canvas", "animation"]),
+  card: new Set<Scene>(["game-engine", "game-canvas", "animation"]),
+  platformer: new Set<Scene>(["game-canvas", "animation"]),
 };
 
 function filterScenes(scenes: Scene[], gameSubtype?: GameSubtype): Exclude<Scene, "general">[] {
