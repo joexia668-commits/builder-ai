@@ -1,4 +1,4 @@
-import type { Scene } from "@/lib/types";
+import type { Scene, GameSubtype } from "@/lib/types";
 
 const SCENE_ENGINEER_RULES: Record<Exclude<Scene, "general">, string> = {
   game: `【游戏/动画类应用 - useEffect 无限循环防护】
@@ -140,19 +140,149 @@ const SCENE_ARCHITECT_HINTS: Record<Exclude<Scene, "general">, string> = {
   persistence: "本项目涉及数据持久化，建议将数据读写逻辑集中到独立的 hooks 或 service 文件中。",
 };
 
-export function getEngineerSceneRules(scenes: Scene[]): string {
+const GAME_SUBTYPE_ENGINEER_RULES: Record<Exclude<GameSubtype, "generic">, string> = {
+  match3: `【match3 专属规则】
+- 棋盘用二维数组：gridRef.current = Array(8).fill(null).map(() => Array(8).fill(null).map(() => randomColor()))
+- 颜色种类 5-6 种，用字符串或数字枚举，每种颜色对应一个 Tailwind bg 色
+- swap 必须校验相邻性（上下左右，不含对角线）
+- swap 后如果没有 match，必须 swap 回来（无效交换）
+- match 检测：遍历每行每列，找连续 ≥3 同色方块
+- cascade 循环：清除 match → 上方方块下落填补空位 → 空位顶部随机生成新方块 → 再检测 match → 直到无 match
+- 点击交互：第一次点击选中（高亮边框），第二次点击如果与选中方块相邻则执行 swap，否则更换选中目标
+- 动画：swap 和下落用 CSS transition（transform + transition-all 300ms），不用 requestAnimationFrame`,
+
+  snake: `【snake 专属规则】
+- 蛇身用坐标数组：snakeRef.current = [{x:10,y:10},{x:9,y:10},{x:8,y:10}]
+- 方向用 useRef 存储，键盘事件更新方向，禁止直接反向（左→右）
+- 每 tick：蛇头按方向移动一格，蛇身跟随（unshift 新头，pop 尾巴；吃到食物不 pop）
+- 食物随机生成在非蛇身位置
+- 碰撞检测：蛇头碰墙壁或自身 → 游戏结束
+- 网格渲染：用 div grid 或 canvas fillRect，每格 20-30px`,
+
+  tetris: `【tetris 专属规则】
+- 棋盘用二维数组 (20行×10列)，0=空，非0=已固定方块颜色
+- 7 种标准方块（I/O/T/S/Z/J/L），每种用旋转矩阵表示 4 个朝向
+- 当前方块用 {type, rotation, x, y} 描述
+- 每 tick（setInterval 500-800ms）：方块下落一行，碰到底部或已固定方块则固定
+- 固定后检测满行：满行消除，上方整体下移
+- 旋转：顺时针旋转 rotation，检测旋转后是否越界或碰撞，碰撞则取消旋转（wall kick 可选）
+- 左右移动：检测目标位置是否合法
+- 预览：显示下一个方块`,
+
+  platformer: `【platformer 专属规则】
+- 使用 Phaser 3 框架（已在 game-engine scene 白名单中）
+- 玩家用 this.physics.add.sprite，启用 Arcade Physics 重力
+- 平台用 this.physics.add.staticGroup
+- 碰撞：this.physics.add.collider(player, platforms)
+- 跳跃：着地时按上键设置 player.setVelocityY(-330)，空中不能二段跳
+- 左右移动：cursors.left/right 设置 player.setVelocityX(±160)
+- 相机跟随：this.cameras.main.startFollow(player)
+- 素材用几何图形（this.add.rectangle）或 emoji text`,
+
+  card: `【card 专属规则】
+- 牌组用数组，每张牌 {suit, rank, faceUp}
+- 洗牌用 Fisher-Yates shuffle
+- 拖拽牌堆：onMouseDown 记录起始位置，onMouseMove 更新位置，onMouseUp 判断放置区域
+- 翻牌动画：CSS rotateY transition（0deg → 180deg），背面/正面用 backface-visibility
+- 牌面渲染：div + Tailwind（圆角白色卡片，花色用 emoji ♠♥♦♣）`,
+
+  board: `【board 专属规则】
+- 棋盘用二维数组，每格存储棋子状态（null/player1/player2）
+- 回合制：turnRef.current 记录当前回合，点击后切换
+- 胜负检测：每次落子后检查行/列/对角线（五子棋检查连续5子，井字棋检查3子）
+- 棋盘渲染：CSS grid，每格用 div + onClick，棋子用 emoji 或 SVG circle
+- 禁止落子在已占位置
+- 悔棋（可选）：用历史数组记录每步`,
+};
+
+const GAME_SUBTYPE_ARCHITECT_HINTS: Record<Exclude<GameSubtype, "generic">, string> = {
+  match3: `【match3 游戏架构建议】
+推荐文件结构（3 文件）：
+1. /components/GameBoard.jsx — 核心游戏逻辑 + 渲染（maxLines: 400）
+   - 8×8 网格状态（useRef）、swap、match 检测、cascade、动画、输入处理
+   导出：GameBoard (default)
+2. /components/GameUI.jsx — 得分、关卡、游戏状态 UI（maxLines: 100）
+   导出：GameUI (default)
+3. /App.jsx — 入口 + 状态胶水（maxLines: 80）
+   导出：App (default)
+关键约束：GameBoard 持有全部游戏状态（useRef），通过 onScoreChange/onGameOver 回调通知 App。不要拆分游戏核心逻辑到 utils 文件。匹配检测必须处理 cascade（消除→下落→再检测循环）。`,
+
+  snake: `【snake 游戏架构建议】
+推荐文件结构（2-3 文件）：
+1. /components/GameBoard.jsx — 蛇身移动、碰撞、食物、渲染（maxLines: 300）
+   导出：GameBoard (default)
+2. /App.jsx — 入口 + 分数/状态 UI（maxLines: 100）
+   导出：App (default)
+关键约束：蛇身坐标、方向、食物位置全部用 useRef，只有 score/gameOver 用 useState。`,
+
+  tetris: `【tetris 游戏架构建议】
+推荐文件结构（3 文件）：
+1. /components/GameBoard.jsx — 棋盘、方块下落、旋转、消行（maxLines: 400）
+   导出：GameBoard (default)
+2. /components/NextPiece.jsx — 下一个方块预览（maxLines: 60）
+   导出：NextPiece (default)
+3. /App.jsx — 入口 + 分数/等级 UI（maxLines: 100）
+   导出：App (default)
+关键约束：棋盘状态和当前方块用 useRef，消行检测在方块固定时执行。`,
+
+  platformer: `【platformer 游戏架构建议】
+推荐文件结构（3 文件）：
+1. /scenes/GameScene.js — Phaser.Scene 子类，preload/create/update（maxLines: 400）
+   导出：GameScene (default)
+2. /components/GameContainer.jsx — Phaser.Game 初始化 + React 包装（maxLines: 80）
+   导出：GameContainer (default)
+3. /App.jsx — 入口 + HUD overlay（maxLines: 80）
+   导出：App (default)
+关键约束：所有游戏逻辑在 Phaser Scene 内，React 只做 UI overlay。`,
+
+  card: `【card 游戏架构建议】
+推荐文件结构（3 文件）：
+1. /components/GameBoard.jsx — 牌堆、拖拽、翻牌逻辑（maxLines: 350）
+   导出：GameBoard (default)
+2. /components/Card.jsx — 单张牌渲染 + 翻牌动画（maxLines: 80）
+   导出：Card (default)
+3. /App.jsx — 入口 + 新游戏/分数 UI（maxLines: 80）
+   导出：App (default)
+关键约束：牌组状态集中在 GameBoard，Card 是纯展示组件。`,
+
+  board: `【board 游戏架构建议】
+推荐文件结构（2-3 文件）：
+1. /components/GameBoard.jsx — 棋盘渲染 + 落子 + 胜负判定（maxLines: 300）
+   导出：GameBoard (default)
+2. /App.jsx — 入口 + 回合/胜负状态 UI（maxLines: 100）
+   导出：App (default)
+关键约束：棋盘状态用 useRef 或 useState（回合制不需要高频更新），胜负检测在每次落子后执行。`,
+};
+
+const GAME_SCENES = new Set<Scene>(["game", "game-engine", "game-canvas"]);
+
+export function getEngineerSceneRules(scenes: Scene[], gameSubtype?: GameSubtype): string {
   const blocks = scenes
     .filter((s): s is Exclude<Scene, "general"> => s !== "general")
     .map((s) => SCENE_ENGINEER_RULES[s])
     .filter(Boolean);
+
+  // Append game subtype rules if applicable
+  if (gameSubtype && gameSubtype !== "generic" && scenes.some((s) => GAME_SCENES.has(s))) {
+    const subtypeRule = GAME_SUBTYPE_ENGINEER_RULES[gameSubtype];
+    if (subtypeRule) blocks.push(subtypeRule);
+  }
+
   return blocks.join("\n\n");
 }
 
-export function getArchitectSceneHint(scenes: Scene[]): string {
+export function getArchitectSceneHint(scenes: Scene[], gameSubtype?: GameSubtype): string {
   const hints = scenes
     .filter((s): s is Exclude<Scene, "general"> => s !== "general")
     .map((s) => SCENE_ARCHITECT_HINTS[s])
     .filter(Boolean);
+
+  // Append game subtype architecture hints if applicable
+  if (gameSubtype && gameSubtype !== "generic" && scenes.some((s) => GAME_SCENES.has(s))) {
+    const subtypeHint = GAME_SUBTYPE_ARCHITECT_HINTS[gameSubtype];
+    if (subtypeHint) hints.push(subtypeHint);
+  }
+
   if (hints.length === 0) return "";
   return `【场景提示】${hints.join(" ")}`;
 }

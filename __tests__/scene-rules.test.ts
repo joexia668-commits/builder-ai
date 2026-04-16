@@ -71,3 +71,65 @@ describe("getArchitectSceneHint", () => {
     expect(hint).toContain("持久化");
   });
 });
+
+describe("getEngineerSceneRules with gameSubtype", () => {
+  it("SR-GS-01: includes match3 rules when subtype is match3", () => {
+    const rules = getEngineerSceneRules(["game"], "match3");
+    expect(rules).toContain("match3");
+    expect(rules).toContain("swap");
+    expect(rules).toContain("cascade");
+  });
+
+  it("SR-GS-02: includes snake rules when subtype is snake", () => {
+    const rules = getEngineerSceneRules(["game"], "snake");
+    expect(rules).toContain("snake");
+    expect(rules).toContain("方向");
+  });
+
+  it("SR-GS-03: includes tetris rules when subtype is tetris", () => {
+    const rules = getEngineerSceneRules(["game"], "tetris");
+    expect(rules).toContain("tetris");
+    expect(rules).toContain("旋转");
+  });
+
+  it("SR-GS-04: includes platformer rules when subtype is platformer", () => {
+    const rules = getEngineerSceneRules(["game-engine"], "platformer");
+    expect(rules).toContain("platformer");
+    expect(rules).toContain("重力");
+  });
+
+  it("SR-GS-05: includes board rules when subtype is board", () => {
+    const rules = getEngineerSceneRules(["game"], "board");
+    expect(rules).toContain("board");
+    expect(rules).toContain("回合");
+  });
+
+  it("SR-GS-06: no subtype rules for generic", () => {
+    const withSubtype = getEngineerSceneRules(["game"], "generic");
+    const without = getEngineerSceneRules(["game"]);
+    expect(withSubtype).toBe(without);
+  });
+
+  it("SR-GS-07: no subtype rules when no game scene", () => {
+    const rules = getEngineerSceneRules(["dashboard"], "match3");
+    expect(rules).not.toContain("match3");
+  });
+});
+
+describe("getArchitectSceneHint with gameSubtype", () => {
+  it("SR-GA-01: includes match3 architecture hints", () => {
+    const hint = getArchitectSceneHint(["game"], "match3");
+    expect(hint).toContain("GameBoard");
+    expect(hint).toContain("maxLines");
+  });
+
+  it("SR-GA-02: includes snake architecture hints", () => {
+    const hint = getArchitectSceneHint(["game"], "snake");
+    expect(hint).toContain("GameBoard");
+  });
+
+  it("SR-GA-03: no subtype hints for generic", () => {
+    const hint = getArchitectSceneHint(["game"], "generic");
+    expect(hint).not.toContain("GameBoard");
+  });
+});
