@@ -4,7 +4,7 @@
 
 在意图分类（Intent）之上，系统额外识别用户需求所属的**应用场景类型（Scene）**，并向 Architect 和 Engineer 注入针对性规则，从源头杜绝特定场景下的常见 LLM 反模式。
 
-场景分类是纯关键词匹配，零额外 LLM 调用，零成本。
+直接路径和简单路径使用全局关键词匹配（零额外 LLM 调用）。复杂路径（Decomposer → Module Orchestrator）由 Decomposer 按模块标注 `sceneType`，每个模块只注入自己相关的场景规则，避免全局注入导致的规则矛盾。
 
 ---
 
@@ -51,12 +51,22 @@
     └─ full pipeline
            PM 输出 PmOutput（features/modules/persistence）
            │
-           classifySceneFromPm(pmOutput) ← 全流水线：从结构化 PM 输出检测
+           classifySceneFromPm(pmOutput) ← 全局场景检测（prompt + PM features/modules）
            │
-           detectedScenes → Architect + Engineer 均注入
+           ├─ 简单路径：detectedScenes → Architect + Engineer 均注入（全局）
+           │
+           └─ 复杂路径：
+                Decomposer 接收 detectedScenes 作为 hint
+                → 输出 ModuleDefinition[].sceneType（按模块标注）
+                → 输出 ModuleDefinition[].engineeringHints（LLM 生成的编码要点）
+                │
+                ├─ Skeleton Architect：仍使用全局 detectedScenes
+                ├─ Module Architect：使用 module.sceneType（fallback 全局）
+                ├─ Module Engineer：使用 module.sceneType（fallback 全局）
+                └─ Post-processing：使用所有模块 sceneType 的并集
 ```
 
-直接路径（Engineer only）从 prompt 检测；全流水线从 PM 结构化输出检测——PM 输出包含 features 列表和 modules 名称，场景识别更准确。
+直接路径从 prompt 检测；简单路径从 PM 结构化输出检测；复杂路径由 Decomposer 按模块标注 `sceneType`，每个模块独立获得场景规则。
 
 ---
 
@@ -86,15 +96,42 @@
 
 ---
 
+### 复杂路径：按模块注入（Per-Module Scene Rules）
+
+复杂路径下，全局注入会导致矛盾。例如"欢乐消消乐"可能同时命中 `game` + `animation` + `multiview`，导致所有模块收到互相矛盾的规则。
+
+解决方案：Decomposer 为每个模块标注独立的 `sceneType` 和 `engineeringHints`：
+
+```json
+{
+  "name": "game-board",
+  "sceneType": "game",
+  "engineeringHints": "游戏状态用 useRef 避免 re-render 循环，只有得分/游戏结束用 useState"
+}
+{
+  "name": "score-panel",
+  "sceneType": "general",
+  "engineeringHints": "纯展示组件，接收 score/level props"
+}
+```
+
+- **已知场景**（`sceneType` 非 `general`）：注入硬编码规则（强约束）+ `engineeringHints`（补充）
+- **未知场景**（`sceneType` = `general`）：仅注入 `engineeringHints`（LLM 生成的编码指导），覆盖关键词列表未覆盖的场景
+- **向后兼容**：若模块无 `sceneType` 字段（旧格式），fallback 到全局 `detectedScenes`
+
+---
+
 ## 核心文件
 
 | 文件 | 职责 |
 |------|------|
-| `lib/scene-classifier.ts` | `classifySceneFromPrompt` + `classifySceneFromPm` — 关键词匹配，返回 `Scene[]` |
+| `lib/scene-classifier.ts` | `classifySceneFromPrompt` + `classifySceneFromPm` — 关键词匹配，返回 `Scene[]`（直接路径和简单路径） |
 | `lib/scene-rules.ts` | `getEngineerSceneRules` + `getArchitectSceneHint` — 根据 scene 列表返回注入文本 |
-| `lib/types.ts` | `Scene` 类型定义 |
-| `components/workspace/chat-area.tsx` | 调用分类器，将 scene rules 传入各 Agent 上下文 |
-| `lib/generate-prompts.ts` | `MultiFileEngineerPromptInput.sceneRules` — 接收并注入规则块 |
+| `lib/types.ts` | `Scene` 类型定义 + `ModuleDefinition.sceneType` + `ModuleDefinition.engineeringHints` |
+| `lib/decomposer.ts` | 复杂路径：解析和校验 Decomposer 输出中的 `sceneType`（非法值 → `general`）和 `engineeringHints`（缺失 → `""`） |
+| `lib/agent-context.ts` | `buildModuleArchitectContext` — 按模块 `sceneType` 注入场景提示 + `engineeringHints` |
+| `lib/generate-prompts.ts` | `getMultiFileEngineerPrompt` — 接收 `sceneRules` + `engineeringHints` 并注入 prompt |
+| `components/workspace/chat-area.tsx` | 调用分类器，将 per-module scene rules 传入各 Agent 上下文 |
 
 ---
 

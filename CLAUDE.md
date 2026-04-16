@@ -86,7 +86,7 @@ ChatArea
                            →  findMissingLocalImportsWithNames()  →  ≤3 缺失文件时发起补全请求  └── ModuleOrchestrator.run() — while(plan.pending) pick→execute→observe→decide:
                            →  findMissingLocalImports()  →  stub 注入 / missing_imports 错误        ① planNext() — 依赖前置检查
                            →  checkImportExportConsistency()  →  ≤3 文件时发起修复请求               ② Architect(context + registry.toContextSummary + consumers)
-                           →  checkDisallowedImports(sceneTypes)  →  ≤3 文件时发起修复请求              → validateScaffold(scaffold, knownExternalPaths)
+                           →  checkDisallowedImports(allModuleSceneTypes)  →  ≤3 文件时发起修复请求              → validateScaffold(scaffold, knownExternalPaths)
                                                                                                      → Engineer × files (runLayerWithFallback)
                                                                                                   ③ registry.verifyContract() — declared vs actual exports
                                                                                                   ④ complete | patch(≤2) | degrade | fail→re-plan
@@ -135,9 +135,9 @@ Complexity check (after PM): `resolveComplexity(pm)` → `"complex"` if `pm.modu
 
 Context injected per path:
 - **PM** (`feature_add`): `buildPmHistoryContext(rounds)` — formats up to 5 past rounds (userPrompt, intent summary, pmSummary) so PM writes a delta PRD
-- **Decomposer** (complex path): `buildDecomposerContext(pm)` — PM output + scaffold rules for ≤5 module decomposition
-- **Skeleton Architect** (complex path): `buildSkeletonArchitectContext(pm, decomposerOutput)` — designs shared types + root layout only
-- **Module Architect** (complex path): `buildModuleArchitectContext(pm, moduleDef, skeletonFiles, completedModuleFiles, scenes, registrySummary?, planPosition?, consumers?, failedModules?)` — designs one module at a time; enhanced with InterfaceRegistry summary, topological position, downstream consumer list, and failed module info
+- **Decomposer** (complex path): `buildDecomposerContext(pm, existingFiles, scenes, gameSubtype?)` — PM output + scaffold rules + global scene hint + gameSubtype hint for ≤5 module decomposition. Each module in output includes `sceneType` and `engineeringHints` fields
+- **Skeleton Architect** (complex path): `buildSkeletonArchitectContext(pm, decomposerOutput, existingFiles, scenes, gameSubtype?)` — designs shared types + root layout only, uses global scene classification
+- **Module Architect** (complex path): `buildModuleArchitectContext(pm, moduleDef, skeletonFiles, completedModuleFiles, scenes, registrySummary?, planPosition?, consumers?, failedModules?, gameSubtype?)` — designs one module at a time; uses **per-module `sceneType`** (falls back to global scenes if absent); injects `engineeringHints` for LLM-generated coding guidance
 - **Architect** (simple path): `resolveArchContext(rounds, pmOutput, existingFiles)` — calls `deriveArchFromFiles(existingFiles)` to build a real-time architecture summary
 - **Engineer** (`feature_add`): `existingFiles: currentFiles` appended to `getMultiFileEngineerPrompt` as `// === EXISTING FILE: /path ===` blocks
 - **Engineer** (direct, single-file V1): `buildDirectEngineerContext` with `<source file="…">` XML tags
@@ -192,7 +192,7 @@ data: {"type":"done"}
 | `lib/types.ts` | All shared types: `AgentRole`, `Intent`, `SSEEvent`, `ScaffoldData`, `EngineerProgress`, `PmOutput`, `ArchOutput`, `RequestMeta`, `AttemptInfo`, `ChangedFiles`, `PipelineState`, `Complexity`, `DecomposerOutput`, `ModuleDefinition`, `ExportEntry`, `ModuleContract`, `ContractVerifyResult`, `ExecutionPlan`, `PlanRevision` |
 | `lib/intent-classifier.ts` | `classifyIntent(prompt, hasExistingCode)` — keyword router that selects pipeline path |
 | `lib/pipeline-controller.ts` | `createPipelineController()` — state machine: IDLE → CLASSIFYING → DECOMPOSING → SKELETON → MODULE_FILLING → POST_PROCESSING → COMPLETE |
-| `lib/decomposer.ts` | `parseDecomposerOutput()`, `validateDecomposerOutput()` (clamps ≤5 modules, removes phantom deps, **breaks module cycles, recomputes topo order**), `buildDecomposerContext()` |
+| `lib/decomposer.ts` | `parseDecomposerOutput()`, `validateDecomposerOutput()` (clamps ≤5 modules, removes phantom deps, **breaks module cycles, recomputes topo order**, validates `sceneType` enum, defaults `engineeringHints`), `buildDecomposerContext()` |
 | `lib/container-runtime.ts` | WebContainer singleton: `getContainer()`, `mountAndStart()`, `mountIncremental()`, `teardownContainer()`, `filesToWebContainerTree()` |
 | `lib/agent-context.ts` | Context builders: `buildEngineerContext`, `buildDirectEngineerContext`, `buildDirectMultiFileEngineerContext`, `buildTriageContext`, `buildPmIterationContext`, `deriveArchFromFiles`, `buildDecomposerContext`, `buildSkeletonArchitectContext`, `buildModuleArchitectContext` |
 | `lib/ai-providers.ts` | `AIProvider` interface, three provider classes, `resolveModelId`, `createProvider` |
@@ -213,8 +213,8 @@ data: {"type":"done"}
 | `lib/guest-cleanup.ts` | `deleteStaleGuestUsers()` — 定时清理 >5 天未活跃 Guest 账户 |
 | `lib/version-files.ts` | `getVersionFiles()` (legacy/multi-file 统一读取) + `computeChangedFiles()` (版本间文件差异计算) |
 | `lib/extract-json.ts` | 从 LLM 输出安全提取 JSON，含 fence 剥离与错误恢复 |
-| `lib/scene-classifier.ts` | `classifySceneFromPrompt()` + `classifySceneFromPm()` — 8 种场景识别（game/game-engine/game-canvas/dashboard/crud/multiview/animation/persistence） |
-| `lib/scene-rules.ts` | `getSceneRules()` — 场景专属 Architect/Engineer prompt 规则注入（game-engine 允许 Phaser.js）|
+| `lib/scene-classifier.ts` | `classifySceneFromPrompt()` + `classifySceneFromPm()` — 8 种场景识别（game/game-engine/game-canvas/dashboard/crud/multiview/animation/persistence）。直接路径和简单路径使用全局分类；复杂路径由 Decomposer 按模块标注 `sceneType` |
+| `lib/scene-rules.ts` | `getEngineerSceneRules()` + `getArchitectSceneHint()` — 场景专属 Architect/Engineer prompt 规则注入。复杂路径下按模块的 `sceneType` 注入（非全局），`general` 模块不注入硬编码规则，仅依赖 `engineeringHints` |
 | `lib/lucide-icon-names.ts` | Lucide 图标名称列表，用于自动修正 LLM 生成的错误图标名 |
 | `lib/error-codes.ts` | 生成错误码常量定义 |
 | `lib/module-topo-sort.ts` | `breakModuleCycles()` + `topologicalSortModules()` — 模块级循环检测（DFS + 反向流启发式断环）和拓扑排序（Kahn's algorithm），用于 `validateDecomposerOutput` |

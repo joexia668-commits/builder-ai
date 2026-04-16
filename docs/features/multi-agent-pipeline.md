@@ -84,12 +84,13 @@ classifyIntent()
     ▼ SSE: {"type":"pipeline_state","state":"DECOMPOSING","message":"..."}
 [Decomposer Agent]  POST /api/generate { agent: "decomposer" }
   输入：PmOutput JSON
-        + buildDecomposerContext(pm, existingFiles)
+        + buildDecomposerContext(pm, existingFiles, detectedScenes, gameSubtype?)
   输出：JSON DecomposerOutput {
-          modules: ModuleDefinition[],
-          generateOrder: string[][]   // 二维数组：外层串行，内层并行
+          modules: ModuleDefinition[],  // 每个模块含 sceneType + engineeringHints
+          generateOrder: string[][]     // 二维数组：外层串行，内层并行
         }
         → modules 数量上限 ≤5（超出时 Decomposer 被要求合并）
+        → sceneType 非法值 → "general"，engineeringHints 缺失 → ""
     │
     ▼ SSE: {"type":"pipeline_state","state":"SKELETON","message":"..."}
 [骨架 Architect]  POST /api/generate { agent: "architect" }
@@ -108,11 +109,14 @@ classifyIntent()
     ├─ [模块 Architect]  POST /api/generate { agent: "architect" }
     │     输入：buildModuleArchitectContext(module, skeletonFiles, completedModules)
     │           // 注入骨架文件 + 已完成模块的 interface 契约
+    │           // 场景规则按 module.sceneType 注入（非全局 detectedScenes）
+    │           // + module.engineeringHints（LLM 生成的编码要点）
     │     输出：ScaffoldData（仅本模块文件）
     │           → validateScaffold + topologicalSort
     │
     ├─ [模块 Engineer × N]  runLayerWithFallback（同简单路径层级逻辑）
     │     输入：模块 scaffold + 骨架文件 + 已完成模块文件
+    │           + per-module sceneRules（按 module.sceneType）+ engineeringHints
     │     输出：本模块所有文件
     │
     ├─ 将本模块文件增量挂载到 WebContainer（Vite HMR 热更新，无需重启）
