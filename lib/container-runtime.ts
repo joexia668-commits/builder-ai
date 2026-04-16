@@ -222,7 +222,8 @@ export async function mountAndStart(
   files: Record<string, string>,
   dependencies: Record<string, string>,
   onServerReady: (url: string) => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
+  onViteError?: (errorText: string) => void
 ): Promise<void> {
   try {
     const container = await getContainer();
@@ -267,9 +268,17 @@ export async function mountAndStart(
     devProcess.output.pipeTo(new WritableStream({
       write(chunk) {
         devOutput.push(chunk);
-        // Log Vite errors to console for debugging
-        if (chunk.includes("Error") || chunk.includes("error")) {
+        // Detect Vite compilation errors and report them
+        if (
+          chunk.includes("[vite] Internal server error") ||
+          chunk.includes("SyntaxError") ||
+          chunk.includes("ReferenceError") ||
+          chunk.includes("TypeError") ||
+          chunk.includes("Cannot find module") ||
+          chunk.includes("does not provide an export named")
+        ) {
           console.error("[WebContainer:vite]", chunk);
+          onViteError?.(chunk);
         }
       }
     })).catch(() => {});
