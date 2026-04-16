@@ -311,3 +311,39 @@ describe("Rule 7: blocked dependencies removal", () => {
     expect(scaffold.dependencies).toBeUndefined();
   });
 });
+
+describe("knownExternalPaths support", () => {
+  it("preserves cross-module dep when in knownExternalPaths", () => {
+    const input = makeScaffold([
+      { path: "/ui/card.js", deps: ["/auth/types.ts"] },
+      { path: "/ui/modal.js", deps: [] },
+    ]);
+    const external = new Set(["/auth/types.ts"]);
+    const { scaffold, warnings } = validateScaffold(input, external);
+    const card = scaffold.files.find((f) => f.path === "/ui/card.js")!;
+    expect(card.deps).toContain("/auth/types.ts");
+    expect(warnings.filter((w) => w.includes("幽灵依赖"))).toHaveLength(0);
+  });
+
+  it("removes dep not in scaffold and not in knownExternalPaths", () => {
+    const input = makeScaffold([
+      { path: "/ui/card.js", deps: ["/unknown/file.ts"] },
+    ]);
+    const external = new Set(["/auth/types.ts"]);
+    const { scaffold, warnings } = validateScaffold(input, external);
+    const card = scaffold.files.find((f) => f.path === "/ui/card.js")!;
+    expect(card.deps).not.toContain("/unknown/file.ts");
+    expect(warnings).toContainEqual(expect.stringContaining("幽灵依赖"));
+  });
+
+  it("preserves hints path when in knownExternalPaths", () => {
+    const input = makeScaffold([
+      { path: "/ui/card.js", deps: [], hints: "import { User } from /auth/types.ts" },
+    ]);
+    const external = new Set(["/auth/types.ts"]);
+    const { scaffold } = validateScaffold(input, external);
+    const card = scaffold.files.find((f) => f.path === "/ui/card.js")!;
+    expect(card.hints).toContain("/auth/types.ts");
+    expect(card.hints).not.toContain("在当前文件内实现");
+  });
+});

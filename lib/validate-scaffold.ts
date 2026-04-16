@@ -120,7 +120,10 @@ function breakCycles(
  * Returns a new ScaffoldData (immutable) plus a warnings list describing every change made.
  * If no issues are found, returns the original scaffold unchanged and an empty warnings array.
  */
-export function validateScaffold(raw: ScaffoldData): ScaffoldValidationResult {
+export function validateScaffold(
+  raw: ScaffoldData,
+  knownExternalPaths?: ReadonlySet<string>
+): ScaffoldValidationResult {
   const warnings: string[] = [];
   let files: readonly ScaffoldFile[] = raw.files;
 
@@ -136,10 +139,10 @@ export function validateScaffold(raw: ScaffoldData): ScaffoldValidationResult {
   const allPaths = new Set(files.map((f) => f.path));
   files = files.map((f) => {
     const validDeps = f.deps.filter(
-      (d) => allPaths.has(d) || WHITELISTED_DEPS.has(d)
+      (d) => allPaths.has(d) || WHITELISTED_DEPS.has(d) || knownExternalPaths?.has(d)
     );
     const removed = f.deps.filter(
-      (d) => !allPaths.has(d) && !WHITELISTED_DEPS.has(d)
+      (d) => !allPaths.has(d) && !WHITELISTED_DEPS.has(d) && !knownExternalPaths?.has(d)
     );
     if (removed.length === 0) return f;
     for (const d of removed) {
@@ -153,7 +156,7 @@ export function validateScaffold(raw: ScaffoldData): ScaffoldValidationResult {
   files = files.map((f) => {
     const phantomPaths: string[] = [];
     const cleanedHints = f.hints.replace(HINTS_PATH_RE, (match) => {
-      if (allPaths.has(match) || WHITELISTED_DEPS.has(match)) return match;
+      if (allPaths.has(match) || WHITELISTED_DEPS.has(match) || knownExternalPaths?.has(match)) return match;
       phantomPaths.push(match);
       return "(在当前文件内实现)";
     });
