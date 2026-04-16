@@ -432,3 +432,36 @@ export function buildModuleArchitectContext(
 
   return parts.join("\n");
 }
+
+/**
+ * Builds Engineer context for the auto-fix loop.
+ * Receives formatted error strings from the error-collector and current source files.
+ * Instructs the Engineer to surgically fix only the reported errors.
+ */
+export function buildAutoFixContext(
+  formattedErrors: string,
+  currentFiles: Record<string, string>
+): string {
+  const filesSection = Object.entries(currentFiles)
+    .map(([path, code]) => `// === FILE: ${path} ===\n${code}`)
+    .join("\n\n");
+
+  return `【自动修复模式 — WebContainer 检测到以下错误】
+
+${formattedErrors}
+
+当前代码：
+${filesSection}
+
+修复要求：
+1. 只修改导致上述错误的文件，未受影响的文件不要输出
+2. 不要重构、不要加新功能、不要修改 UI 样式
+3. 确保所有 import 路径正确，引用的文件确实存在
+4. 确保所有变量在使用前已定义
+5. 确保所有括号/花括号/方括号配对
+
+输出格式：
+- 每个修改的文件以 // === FILE: /path === 开头
+- 紧接完整修改后代码
+- 不输出 Markdown 围栏或解释文字`;
+}
