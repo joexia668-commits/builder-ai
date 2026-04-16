@@ -1,4 +1,5 @@
 import { buildModuleArchitectContext } from "@/lib/agent-context";
+import { getMultiFileEngineerPrompt } from "@/lib/generate-prompts";
 import type { PmOutput, ModuleDefinition, Scene } from "@/lib/types";
 
 const mockPm: PmOutput = {
@@ -75,5 +76,31 @@ describe("buildModuleArchitectContext — per-module scene + hints", () => {
     };
     const ctx = buildModuleArchitectContext(mockPm, mod, {}, {}, ["dashboard"]);
     expect(ctx).toContain("dashboard");
+  });
+});
+
+describe("getMultiFileEngineerPrompt — engineeringHints injection", () => {
+  it("includes engineeringHints when provided", () => {
+    const prompt = getMultiFileEngineerPrompt({
+      projectId: "test",
+      targetFiles: [{ path: "/App.jsx", description: "entry", exports: ["App"], deps: [], hints: "entry point" }],
+      sharedTypes: "",
+      completedFiles: {},
+      designNotes: "test app",
+      engineeringHints: "Audio 实例用 useRef 持有",
+    });
+    expect(prompt).toContain("Audio 实例用 useRef");
+    expect(prompt).toContain("模块编码要点");
+  });
+
+  it("omits hints block when not provided", () => {
+    const prompt = getMultiFileEngineerPrompt({
+      projectId: "test",
+      targetFiles: [{ path: "/App.jsx", description: "entry", exports: ["App"], deps: [], hints: "entry point" }],
+      sharedTypes: "",
+      completedFiles: {},
+      designNotes: "test app",
+    });
+    expect(prompt).not.toContain("模块编码要点");
   });
 });

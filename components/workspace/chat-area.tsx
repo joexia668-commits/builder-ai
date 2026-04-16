@@ -1716,7 +1716,15 @@ export function ChatArea({
                             completedFiles: { ...allFiles, ...moduleFiles },
                             designNotes: moduleScaffold.designNotes,
                             existingFiles: hasExistingCode ? currentFiles : undefined,
-                            sceneRules: getEngineerSceneRules(detectedScenes, gameSubtype),
+                            sceneRules: getEngineerSceneRules(
+                              moduleDef.sceneType !== undefined
+                                ? (moduleDef.sceneType !== "general" ? [moduleDef.sceneType] : ["general"])
+                                : detectedScenes,
+                              moduleDef.sceneType && ["game", "game-engine", "game-canvas"].includes(moduleDef.sceneType)
+                                ? gameSubtype
+                                : undefined
+                            ),
+                            engineeringHints: moduleDef.engineeringHints || undefined,
                             retryHint: meta.attempt > 1
                               ? { attempt: meta.attempt, reason: "string_truncated" as const, priorTail: undefined }
                               : undefined,
