@@ -29,6 +29,9 @@ import {
   buildModuleArchitectContext,
 } from "@/lib/agent-context";
 import { createPipelineController } from "@/lib/pipeline-controller";
+import { createExecutionPlan } from "@/lib/execution-plan";
+import { createInterfaceRegistry } from "@/lib/interface-registry";
+import { createModuleOrchestrator } from "@/lib/module-orchestrator";
 import { parseDecomposerOutput, validateDecomposerOutput, buildDecomposerContext } from "@/lib/decomposer";
 import { classifyIntent } from "@/lib/intent-classifier";
 import { classifySceneFromPrompt, classifySceneFromPm } from "@/lib/scene-classifier";
@@ -1346,10 +1349,10 @@ export function ChatArea({
             const validated = validateDecomposerOutput(decomposed);
             pipeline.onDecomposerComplete(validated);
 
-            const moduleQueue = validated.generateOrder.flat();
+            const plan = createExecutionPlan(validated);
+            const registry = createInterfaceRegistry(validated);
             const allModuleFiles: Record<string, string> = {};
             const skeletonFiles: Record<string, string> = {};
-            const failedModules: string[] = [];
 
             // ── SKELETON phase ──
             updateSession(project.id, { pipelineState: "SKELETON", transitionText: "正在生成应用骨架..." });
@@ -1489,149 +1492,171 @@ export function ChatArea({
               onFilesChange?.({ ...currentFiles, ...skeletonFiles });
             }
 
-            // ── MODULE_FILLING phase ──
-            for (let mi = 0; mi < moduleQueue.length; mi++) {
-              const moduleName = moduleQueue[mi];
-              const moduleDef = validated.modules.find((m) => m.name === moduleName);
-              if (!moduleDef) continue;
+            // ── MODULE_FILLING phase (Orchestrator) ──
+            const orchestrator = createModuleOrchestrator(
+              plan,
+              registry,
+              {
+                executeModule: async (moduleDef, reg, execPlan, _skelFiles, allFiles) => {
+                  // Module Architect
+                  updateAgentState("architect", { status: "thinking", output: "" });
 
-              updateSession(project.id, {
-                pipelineState: "MODULE_FILLING",
-                transitionText: `正在生成模块: ${moduleName}...`,
-                currentModule: moduleName,
-                moduleProgress: {
-                  total: moduleQueue.length,
-                  completed: moduleQueue.slice(0, mi).filter((n) => !failedModules.includes(n)),
-                  failed: failedModules,
-                  current: moduleName,
-                },
-              });
+                  const planLayer = validated.generateOrder.findIndex((l) => l.includes(moduleDef.name));
+                  const moduleArchContext = buildModuleArchitectContext(
+                    parsedPm!, moduleDef, skeletonFiles, allFiles, detectedScenes,
+                    reg.toContextSummary(),
+                    { layer: planLayer + 1, totalLayers: validated.generateOrder.length },
+                    reg.getConsumers(moduleDef.name, validated.modules),
+                    execPlan.failed.map((f) => ({ name: f.name, reason: f.reason })),
+                  );
 
-              try {
-                // Call Architect for this module
-                updateAgentState("architect", { status: "thinking", output: "" });
-                const moduleArchContext = buildModuleArchitectContext(
-                  parsedPm, moduleDef, skeletonFiles, allModuleFiles, detectedScenes
-                );
+                  const moduleArchResponse = await fetch("/api/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      projectId: project.id,
+                      prompt: `生成模块: ${moduleDef.name} - ${moduleDef.description}`,
+                      agent: "architect",
+                      context: moduleArchContext,
+                      modelId: selectedModel,
+                    }),
+                    signal: abortController.signal,
+                  });
 
-                const moduleArchResponse = await fetch("/api/generate", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    projectId: project.id,
-                    prompt: `生成模块: ${moduleName} - ${moduleDef.description}`,
-                    agent: "architect",
-                    context: moduleArchContext,
-                    modelId: selectedModel,
-                  }),
-                  signal: abortController.signal,
-                });
+                  if (!moduleArchResponse.ok) throw new Error(`HTTP ${moduleArchResponse.status}`);
+                  if (!moduleArchResponse.body) throw new Error("No response body");
 
-                if (!moduleArchResponse.ok) {
-                  throw new Error(`HTTP ${moduleArchResponse.status}`);
-                }
-                if (!moduleArchResponse.body) throw new Error("No response body");
+                  let moduleArchOutput = "";
+                  await readSSEBody<{ type: string; content?: string; error?: string; errorCode?: ErrorCode }>(
+                    moduleArchResponse.body,
+                    (event) => {
+                      if (event.type === "chunk") {
+                        moduleArchOutput += event.content ?? "";
+                        updateAgentState("architect", { output: moduleArchOutput });
+                      } else if (event.type === "error") {
+                        throw Object.assign(
+                          new Error(event.error ?? "Module architect error"),
+                          { errorCode: event.errorCode ?? "unknown" }
+                        );
+                      }
+                    },
+                    { tag: `architect:module:${moduleDef.name}`, onStall: () => updateSession(project.id, { stallWarning: true }) }
+                  );
+                  updateAgentState("architect", { status: "done", output: moduleArchOutput });
 
-                let moduleArchOutput = "";
-                await readSSEBody<{ type: string; content?: string; error?: string; errorCode?: ErrorCode }>(
-                  moduleArchResponse.body,
-                  (event) => {
-                    if (event.type === "chunk") {
-                      moduleArchOutput += event.content ?? "";
-                      updateAgentState("architect", { output: moduleArchOutput });
-                    } else if (event.type === "error") {
-                      throw Object.assign(
-                        new Error(event.error ?? "Module architect error"),
-                        { errorCode: event.errorCode ?? "unknown" }
-                      );
-                    }
-                  },
-                  { tag: `architect:module:${moduleName}`, onStall: () => updateSession(project.id, { stallWarning: true }) }
-                );
+                  const moduleScaffoldRaw = extractScaffoldFromTwoPhase(moduleArchOutput);
+                  const moduleScaffoldFiltered = moduleScaffoldRaw
+                    ? { ...moduleScaffoldRaw, files: moduleScaffoldRaw.files.filter((f) => f.path !== "/supabaseClient.js") }
+                    : null;
+                  const { scaffold: moduleScaffold } = moduleScaffoldFiltered
+                    ? validateScaffold(moduleScaffoldFiltered, new Set(Object.keys(allFiles)))
+                    : { scaffold: null };
 
-                updateAgentState("architect", { status: "done", output: moduleArchOutput });
+                  const moduleFiles: Record<string, string> = {};
 
-                const moduleScaffoldRaw = extractScaffoldFromTwoPhase(moduleArchOutput);
-                const moduleScaffoldFiltered = moduleScaffoldRaw
-                  ? { ...moduleScaffoldRaw, files: moduleScaffoldRaw.files.filter((f) => f.path !== "/supabaseClient.js") }
-                  : null;
-                const { scaffold: moduleScaffold } = moduleScaffoldFiltered
-                  ? validateScaffold(moduleScaffoldFiltered)
-                  : { scaffold: null };
+                  if (moduleScaffold && moduleScaffold.files.length > 0) {
+                    updateAgentState("engineer", { status: "thinking", output: `正在生成模块 ${moduleDef.name} 代码...` });
+                    const moduleLayers = topologicalSort(moduleScaffold.files);
 
-                if (moduleScaffold && moduleScaffold.files.length > 0) {
-                  // Engineer for this module's files
-                  updateAgentState("engineer", { status: "thinking", output: `正在生成模块 ${moduleName} 代码...` });
-                  const moduleLayers = topologicalSort(moduleScaffold.files);
+                    for (let layerIdx = 0; layerIdx < moduleLayers.length; layerIdx++) {
+                      const layerPaths = moduleLayers[layerIdx];
+                      const layerFiles = layerPaths
+                        .map((p) => moduleScaffold.files.find((f) => f.path === p))
+                        .filter((f): f is ScaffoldFile => f !== undefined);
 
-                  for (let layerIdx = 0; layerIdx < moduleLayers.length; layerIdx++) {
-                    const layerPaths = moduleLayers[layerIdx];
-                    const layerFiles = layerPaths
-                      .map((p) => moduleScaffold.files.find((f) => f.path === p))
-                      .filter((f): f is ScaffoldFile => f !== undefined);
+                      updateAgentState("engineer", {
+                        status: "streaming",
+                        output: `模块 ${moduleDef.name}: 第 ${layerIdx + 1}/${moduleLayers.length} 层`,
+                      });
 
-                    updateAgentState("engineer", {
-                      status: "streaming",
-                      output: `模块 ${moduleName}: 第 ${layerIdx + 1}/${moduleLayers.length} 层`,
-                    });
-
-                    const layerResult = await runLayerWithFallback(
-                      layerFiles,
-                      async (files, meta) => {
-                        const engineerPrompt = getMultiFileEngineerPrompt({
-                          projectId: project.id,
-                          targetFiles: files,
-                          sharedTypes: moduleScaffold.sharedTypes,
-                          completedFiles: allModuleFiles,
-                          designNotes: moduleScaffold.designNotes,
-                          existingFiles: hasExistingCode ? currentFiles : undefined,
-                          sceneRules: getEngineerSceneRules(detectedScenes),
-                          retryHint: meta.attempt > 1
-                            ? { attempt: meta.attempt, reason: "string_truncated" as const, priorTail: undefined }
-                            : undefined,
-                        });
-                        const resp = await fetch("/api/generate", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
+                      const layerResult = await runLayerWithFallback(
+                        layerFiles,
+                        async (files, meta) => {
+                          const engineerPrompt = getMultiFileEngineerPrompt({
                             projectId: project.id,
-                            prompt: `生成模块 ${moduleName}`,
-                            agent: "engineer",
-                            context: engineerPrompt,
-                            modelId: selectedModel,
                             targetFiles: files,
-                            completedFiles: allModuleFiles,
-                            scaffold: { sharedTypes: moduleScaffold.sharedTypes, designNotes: moduleScaffold.designNotes },
-                          }),
-                          signal: abortController.signal,
-                        });
-                        if (!resp.ok) {
-                          const errText = await resp.text();
-                          throw new Error(`HTTP ${resp.status}: ${errText.slice(0, 200)}`);
-                        }
-                        if (!resp.body) throw new Error("No response body");
-                        const sseResult = await readEngineerSSE(resp.body, `engineer:module:${moduleName}:layer-${layerIdx + 1}`);
-                        return { files: sseResult.files, failed: sseResult.failedInResponse };
-                      },
-                      abortController.signal,
-                      () => { /* retry UI handled via moduleProgress */ }
-                    );
+                            sharedTypes: moduleScaffold.sharedTypes,
+                            completedFiles: { ...allFiles, ...moduleFiles },
+                            designNotes: moduleScaffold.designNotes,
+                            existingFiles: hasExistingCode ? currentFiles : undefined,
+                            sceneRules: getEngineerSceneRules(detectedScenes),
+                            retryHint: meta.attempt > 1
+                              ? { attempt: meta.attempt, reason: "string_truncated" as const, priorTail: undefined }
+                              : undefined,
+                          });
+                          const resp = await fetch("/api/generate", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              projectId: project.id,
+                              prompt: `生成模块 ${moduleDef.name}`,
+                              agent: "engineer",
+                              context: engineerPrompt,
+                              modelId: selectedModel,
+                              targetFiles: files,
+                              completedFiles: { ...allFiles, ...moduleFiles },
+                              scaffold: { sharedTypes: moduleScaffold.sharedTypes, designNotes: moduleScaffold.designNotes },
+                            }),
+                            signal: abortController.signal,
+                          });
+                          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                          if (!resp.body) throw new Error("No response body");
+                          const sseResult = await readEngineerSSE(resp.body, `engineer:module:${moduleDef.name}:layer-${layerIdx + 1}`);
+                          return { files: sseResult.files, failed: sseResult.failedInResponse };
+                        },
+                        abortController.signal,
+                        () => { /* retry UI handled via moduleProgress */ }
+                      );
 
-                    Object.assign(allModuleFiles, layerResult.files);
+                      Object.assign(moduleFiles, layerResult.files);
+                    }
                   }
-                }
 
-                pipeline.onModuleComplete(moduleName, allModuleFiles);
+                  return moduleFiles;
+                },
 
-                // Progressive delivery: update preview with module files as they complete
-                onFilesChange?.({ ...allModuleFiles });
-              } catch (err) {
-                if (err instanceof DOMException && err.name === "AbortError") throw err;
-                failedModules.push(moduleName);
-                pipeline.onModuleFailed(moduleName, err instanceof Error ? err.message : "unknown");
-                continue; // skip to next module
-              }
-            }
+                onModuleComplete: (name, files) => {
+                  pipeline.onModuleComplete(name, { ...allModuleFiles, ...files });
+                  onFilesChange?.({ ...skeletonFiles, ...allModuleFiles, ...files });
+                },
+                onModuleFailed: (name, reason) => {
+                  pipeline.onModuleFailed(name, reason);
+                },
+                onModuleSkipped: (name, reason) => {
+                  console.warn(`[orchestrator] module ${name} skipped: ${reason}`);
+                },
+                onPlanRevised: (revision) => {
+                  console.log(`[orchestrator] plan revised: ${revision.description}`);
+                },
+                onProgress: (progress) => {
+                  updateSession(project.id, {
+                    pipelineState: "MODULE_FILLING",
+                    transitionText: `正在生成模块: ${progress.current ?? "..."}`,
+                    currentModule: progress.current,
+                    moduleProgress: {
+                      total: progress.total,
+                      completed: progress.completed,
+                      failed: progress.failed,
+                      current: progress.current,
+                    },
+                  });
+                },
+                patchMissingExports: async (_name, _missing, _files) => {
+                  // Future: use buildMissingFileEngineerPrompt to patch
+                  return null;
+                },
+                generateStub: (name, exports) => {
+                  const lines = exports.map((e) => `export const ${e} = {};`);
+                  return { [`/${name}/index.js`]: lines.join("\n") };
+                },
+                signal: abortController.signal,
+              },
+              skeletonFiles,
+              { ...allModuleFiles }
+            );
+
+            const orchResult = await orchestrator.run();
+            Object.assign(allModuleFiles, orchResult.files);
 
             // ── POST_PROCESSING (reuse existing post-processing logic) ──
             updateSession(project.id, { pipelineState: "POST_PROCESSING", transitionText: "正在检查代码一致性..." });
@@ -1759,8 +1784,9 @@ export function ChatArea({
 
             // Create summary message
             const completedList = Object.keys(finalFiles).join(", ");
-            const failedNote = failedModules.length > 0
-              ? `\n\n⚠️ 以下模块生成失败: ${failedModules.join(", ")}`
+            const orchFailedNames = orchResult.plan.failed.map((f) => f.name);
+            const failedNote = orchFailedNames.length > 0
+              ? `\n\n⚠️ 以下模块生成失败: ${orchFailedNames.join(", ")}`
               : "";
             const complexSummary = `✅ 模块化生成完成 (${Object.keys(finalFiles).length} 个文件):\n${completedList}${failedNote}`;
 
